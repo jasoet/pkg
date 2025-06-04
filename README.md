@@ -33,11 +33,11 @@ import (
 func main() {
     // Initialize global logger
     logging.Initialize("my-service", true) // service name and debug mode
-    
+
     // Create a context-aware logger for a component
     ctx := context.Background()
     logger := logging.ContextLogger(ctx, "user-service")
-    
+
     logger.Info().Msg("Service started successfully")
 }
 ```
@@ -57,20 +57,20 @@ func main() {
     config := &db.ConnectionConfig{
         DbType:       db.Postgresql,
         Host:         "localhost",
-        Port:         5432,
-        Username:     "postgres",
-        Password:     "password",
-        DbName:       "myapp",
+        Port:         5439,
+        Username:     "jasoet",
+        Password:     "localhost",
+        DbName:       "pkg_db",
         MaxIdleConns: 5,
         MaxOpenConns: 10,
     }
-    
+
     // Connect to database
     database, err := db.Connect(config)
     if err != nil {
         log.Fatal().Err(err).Msg("Failed to connect to database")
     }
-    
+
     // Use the database connection
     // ...
 }
@@ -141,14 +141,34 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### Development Setup
 
-The project uses [Mage](https://magefile.org/) for build automation. Common commands:
+The project uses [Mage](https://magefile.org/) for build automation and Docker Compose for local development services, including PostgreSQL.
 
-```bash
-mage test           # Run unit tests
-mage lint           # Run linter
-mage docker:up      # Start Docker services for integration tests
-mage integrationTest # Run integration tests
-```
+#### Setting up the development environment:
+
+1. Start the Docker Compose services:
+   ```bash
+   mage docker:up
+   ```
+   This will start PostgreSQL and any other services defined in the docker-compose.yml file.
+
+2. Common Mage commands:
+   ```bash
+   mage test           # Run unit tests
+   mage lint           # Run linter
+   mage docker:logs    # View logs from Docker services
+   mage docker:down    # Stop Docker services
+   mage docker:restart # Restart Docker services
+   mage integrationTest # Run integration tests (automatically starts Docker services)
+   ```
+
+#### PostgreSQL Configuration:
+- Host: localhost
+- Port: 5439 (mapped from container's 5432)
+- Username: jasoet
+- Password: localhost
+- Database: pkg_db
+
+The PostgreSQL container is configured to automatically load SQL files from the `scripts/compose/pg/backup` directory during initialization.
 
 ## License
 
