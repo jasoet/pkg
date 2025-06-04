@@ -47,6 +47,7 @@ The server can be customized using the `Config` struct:
 | MetricsPath | string | Path for metrics endpoint | "/metrics" |
 | MetricsSubsystem | string | Prometheus metrics subsystem name | "echo" |
 | ShutdownTimeout | time.Duration | Timeout for graceful shutdown | 10s |
+| EchoConfigurer | func(e *echo.Echo) | Function to configure Echo instance | nil |
 
 Example with custom configuration:
 
@@ -55,6 +56,28 @@ config := server.DefaultConfig(8080, operation, shutdown)
 config.EnableMetrics = true
 config.MetricsPath = "/custom-metrics"
 config.ShutdownTimeout = 30 * time.Second
+server.StartWithConfig(config)
+```
+
+### Using EchoConfigurer
+
+The `EchoConfigurer` allows you to configure the Echo instance directly after it's created but before the server starts. This is useful for Echo-specific configurations like custom error handlers, validators, or other Echo settings.
+
+```go
+config := server.DefaultConfig(8080, operation, shutdown)
+
+// Configure Echo instance
+config.EchoConfigurer = func(e *echo.Echo) {
+    // Custom error handler
+    e.HTTPErrorHandler = myCustomErrorHandler
+
+    // Custom validator
+    e.Validator = myValidator
+
+    // Other Echo-specific configurations
+    e.Debug = true
+}
+
 server.StartWithConfig(config)
 ```
 
@@ -379,42 +402,65 @@ func main() {
 
 ### Custom Error Handling
 
+#### Using EchoConfigurer (Recommended)
+
 ```go
 package main
 
 import (
     "github.com/labstack/echo/v4"
     "net/http"
+    "time"
     "your-module/server"
 )
 
 func main() {
-    operation := func(e *echo.Echo) {
-        // Set custom error handler
-        e.HTTPErrorHandler = func(err error, c echo.Context) {
-            code := http.StatusInternalServerError
-            message := "Internal Server Error"
+    // Define your custom error handler
+    customErrorHandler := func(err error, c echo.Context) {
+        code := http.StatusInternalServerError
+        message := "Internal Server Error"
 
-            if he, ok := err.(*echo.HTTPError); ok {
-                code = he.Code
-                message = he.Message.(string)
-            }
-
-            // Log the error
-            c.Logger().Error(err)
-
-            // Return a custom error response
-            c.JSON(code, map[string]interface{}{
-                "error": message,
-                "status": code,
-                "timestamp": time.Now().Format(time.RFC3339),
-            })
+        if he, ok := err.(*echo.HTTPError); ok {
+            code = he.Code
+            message = he.Message.(string)
         }
 
-        // Your routes here
+        // Log the error
+        c.Logger().Error(err)
+
+        // Return a custom error response
+        c.JSON(code, map[string]interface{}{
+            "error": message,
+            "status": code,
+            "timestamp": time.Now().Format(time.RFC3339),
+        })
+    }
+
+    // Define operation for business logic
+    operation := func(e *echo.Echo) {
+        // Register your routes here
+        e.GET("/api/users", listUsers)
+    }
+
+    // Define shutdown function
+    shutdown := func(e *echo.Echo) {
+        // Cleanup resources
+    }
+
+    // Create config with EchoConfigurer
+    config := server.DefaultConfig(8080, operation, shutdown)
+
+    // Set Echo-specific configurations
+    config.EchoConfigurer = func(e *echo.Echo) {
+        // Set custom error handler
+        e.HTTPErrorHandler = customErrorHandler
+
+        // Other Echo configurations
+        e.Debug = true
+        e.Validator = myCustomValidator
     }
 
     // Start the server
-    server.Start(8080, operation, func(e *echo.Echo) {})
+    server.StartWithConfig(config)
 }
 ```

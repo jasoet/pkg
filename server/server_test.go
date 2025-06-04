@@ -263,3 +263,42 @@ func TestServerStartStop(t *testing.T) {
 	// Wait for shutdown to be called
 	shutdownWg.Wait()
 }
+
+func TestEchoConfigurer(t *testing.T) {
+	// Test that EchoConfigurer is called and can modify the Echo instance
+	var configurerCalled bool
+	var customErrorHandlerCalled bool
+
+	// Custom error handler for testing
+	customErrorHandler := func(err error, c echo.Context) {
+		customErrorHandlerCalled = true
+		c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Create a configurer that sets a custom error handler
+	configurer := func(e *echo.Echo) {
+		configurerCalled = true
+		e.HTTPErrorHandler = customErrorHandler
+	}
+
+	// Create a config with the configurer
+	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	config.MetricsSubsystem = "TestEchoConfigurer"
+	config.EchoConfigurer = configurer
+
+	// Setup Echo with the config
+	e := setupEcho(config)
+
+	// Verify that the configurer was called
+	assert.True(t, configurerCalled, "EchoConfigurer should be called during setupEcho")
+
+	// Test that the custom error handler is used
+	req := httptest.NewRequest(http.MethodGet, "/non-existent-path", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	// Verify that the custom error handler was called
+	assert.True(t, customErrorHandlerCalled, "Custom error handler should be called for non-existent path")
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, rec.Body.String(), "error")
+}
