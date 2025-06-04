@@ -49,7 +49,7 @@ func DefaultConfig(port int, operation Operation, shutdown Shutdown) Config {
 	}
 }
 
-type Server struct {
+type httpServer struct {
 	echo   *echo.Echo
 	config Config
 }
@@ -103,15 +103,15 @@ func setupEcho(config Config) *echo.Echo {
 	return e
 }
 
-func NewServer(config Config) *Server {
+func newHttpServer(config Config) *httpServer {
 	e := setupEcho(config)
-	return &Server{
+	return &httpServer{
 		echo:   e,
 		config: config,
 	}
 }
 
-func (s *Server) Start() {
+func (s *httpServer) start() {
 	go s.config.Operation(s.echo)
 
 	go func() {
@@ -122,7 +122,7 @@ func (s *Server) Start() {
 	}()
 }
 
-func (s *Server) Stop() error {
+func (s *httpServer) stop() error {
 	log.Info().Msg("gracefully shutting down")
 
 	s.config.Shutdown(s.echo)
@@ -134,16 +134,16 @@ func (s *Server) Stop() error {
 }
 
 func StartWithConfig(config Config) {
-	server := NewServer(config)
+	server := newHttpServer(config)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	server.Start()
+	server.start()
 
 	<-ctx.Done()
 
-	if err := server.Stop(); err != nil {
+	if err := server.stop(); err != nil {
 		log.Fatal().Err(err).Msg("failed to shutdown server")
 	}
 }
