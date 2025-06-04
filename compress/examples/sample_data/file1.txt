@@ -1,0 +1,3 @@
+This is a sample text file for demonstrating the compress package.
+It contains multiple lines of text that will be compressed.
+The compress package supports tar, gzip, and base64 encoding.

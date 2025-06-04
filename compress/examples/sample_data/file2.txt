@@ -1,0 +1,3 @@
+This is another sample file.
+It will be included in the tar archive along with file1.txt.
+We'll use these files to demonstrate the compress package functionality.
