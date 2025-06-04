@@ -1,3 +1,5 @@
+//go:build example
+
 package worker
 
 import (
@@ -39,7 +41,7 @@ func RunBasicWorker() error {
 	// Step 2: Register a worker with the task queue
 	logger.Info().Str("taskQueue", TaskQueue).Msg("Registering worker")
 	w := workerManager.Register(TaskQueue, worker.Options{
-		MaxConcurrentActivityExecutionSize: 10,
+		MaxConcurrentActivityExecutionSize:     10,
 		MaxConcurrentWorkflowTaskExecutionSize: 10,
 	})
 
@@ -97,7 +99,7 @@ func RunMultiTaskQueueWorker() error {
 	// Worker 1: For simple workflows
 	logger.Info().Str("taskQueue", "simple-workflows").Msg("Registering worker for simple workflows")
 	simpleWorker := workerManager.Register("simple-workflows", worker.Options{
-		MaxConcurrentActivityExecutionSize: 5,
+		MaxConcurrentActivityExecutionSize:     5,
 		MaxConcurrentWorkflowTaskExecutionSize: 5,
 	})
 
@@ -108,7 +110,7 @@ func RunMultiTaskQueueWorker() error {
 	// Worker 2: For activity workflows
 	logger.Info().Str("taskQueue", "activity-workflows").Msg("Registering worker for activity workflows")
 	activityWorker := workerManager.Register("activity-workflows", worker.Options{
-		MaxConcurrentActivityExecutionSize: 10,
+		MaxConcurrentActivityExecutionSize:     10,
 		MaxConcurrentWorkflowTaskExecutionSize: 5,
 	})
 
@@ -159,7 +161,7 @@ func RunGracefulShutdownWorker() error {
 	// Step 2: Register a worker with the task queue
 	logger.Info().Str("taskQueue", TaskQueue).Msg("Registering worker")
 	w := workerManager.Register(TaskQueue, worker.Options{
-		MaxConcurrentActivityExecutionSize: 10,
+		MaxConcurrentActivityExecutionSize:     10,
 		MaxConcurrentWorkflowTaskExecutionSize: 10,
 	})
 
