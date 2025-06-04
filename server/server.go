@@ -58,8 +58,14 @@ func DefaultConfig(port int, operation Operation, shutdown Shutdown) Config {
 	}
 }
 
-// StartWithConfig starts the server with the given configuration
-func StartWithConfig(config Config) {
+// Server represents an HTTP server instance
+type Server struct {
+	echo   *echo.Echo
+	config Config
+}
+
+// setupEcho configures an Echo instance based on the provided configuration
+func setupEcho(config Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -109,26 +115,61 @@ func StartWithConfig(config Config) {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ALIVE"})
 	})
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	return e
+}
 
-	go config.Operation(e)
+// NewServer creates a new server instance with the given configuration
+func NewServer(config Config) *Server {
+	e := setupEcho(config)
+	return &Server{
+		echo:   e,
+		config: config,
+	}
+}
 
+// Start starts the server and returns immediately
+func (s *Server) Start() {
+	// Run the operation function
+	go s.config.Operation(s.echo)
+
+	// Start the server
 	go func() {
-		log.Info().Msgf("Starting server, on port %d", config.Port)
-		if err := e.Start(fmt.Sprintf(":%v", config.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Info().Msgf("Starting server, on port %d", s.config.Port)
+		if err := s.echo.Start(fmt.Sprintf(":%v", s.config.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal().Err(err).Msg("failed to start server")
 		}
 	}()
+}
 
+// Stop gracefully stops the server
+func (s *Server) Stop() error {
+	log.Info().Msg("gracefully shutting down")
+
+	// Run the shutdown function
+	s.config.Shutdown(s.echo)
+
+	// Shutdown the server with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
+	defer cancel()
+
+	return s.echo.Shutdown(ctx)
+}
+
+// StartWithConfig starts the server with the given configuration and blocks until interrupted
+func StartWithConfig(config Config) {
+	server := NewServer(config)
+
+	// Setup signal handling
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	server.Start()
+
+	// Wait for termination signal
 	<-ctx.Done()
 
-	log.Info().Msg("gracefully shutting down")
-	config.Shutdown(e)
-
-	ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
-	defer cancel()
-	if err := e.Shutdown(ctx); err != nil {
+	// Stop the server
+	if err := server.Stop(); err != nil {
 		log.Fatal().Err(err).Msg("failed to shutdown server")
 	}
 }
