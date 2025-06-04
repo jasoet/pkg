@@ -7,7 +7,6 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"net/http"
 	"os"
@@ -16,75 +15,51 @@ import (
 	"time"
 )
 
-var (
-	httpRequestsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_requests_total",
-			Help: "Total number of HTTP requests by status code, method, and path",
-		},
-		[]string{"status", "method", "path"},
-	)
-
-	httpRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_request_duration_seconds",
-			Help:    "HTTP request latencies in seconds",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"method", "path"},
-	)
-
-	httpResponseSize = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_response_size_bytes",
-			Help:    "HTTP response sizes in bytes",
-			Buckets: prometheus.ExponentialBuckets(100, 10, 8),
-		},
-		[]string{"method", "path"},
-	)
-)
-
 type Operation func(e *echo.Echo)
 type Shutdown func(e *echo.Echo)
 
-// metricsMiddleware creates a middleware that collects HTTP metrics
-func metricsMiddleware() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			req := c.Request()
-			res := c.Response()
-			start := time.Now()
+// Config ServerConfig contains configuration options for the server
+type Config struct {
+	// Port to run the server on
+	Port int
 
-			err := next(c)
+	// Operation function to execute during server execution
+	Operation Operation
 
-			latency := time.Since(start)
-			status := res.Status
+	// Shutdown function to execute before server shutdown
+	Shutdown Shutdown
 
-			httpRequestsTotal.WithLabelValues(
-				fmt.Sprintf("%d", status),
-				req.Method,
-				req.URL.Path,
-			).Inc()
+	// Middleware functions to add to the server
+	Middleware []echo.MiddlewareFunc
 
-			httpRequestDuration.WithLabelValues(
-				req.Method,
-				req.URL.Path,
-			).Observe(latency.Seconds())
+	// EnableMetrics determines whether to enable Prometheus metrics
+	EnableMetrics bool
 
-			httpResponseSize.WithLabelValues(
-				req.Method,
-				req.URL.Path,
-			).Observe(float64(res.Size))
+	// MetricsPath is the path to expose Prometheus metrics
+	MetricsPath string
 
-			return err
-		}
+	// ShutdownTimeout is the timeout for graceful shutdown
+	ShutdownTimeout time.Duration
+}
+
+// DefaultConfig returns a default server configuration
+func DefaultConfig(port int, operation Operation, shutdown Shutdown) Config {
+	return Config{
+		Port:            port,
+		Operation:       operation,
+		Shutdown:        shutdown,
+		EnableMetrics:   true,
+		MetricsPath:     "/metrics",
+		ShutdownTimeout: 10 * time.Second,
 	}
 }
 
-func Start(port int, operation Operation, shutdown Shutdown) {
+// StartWithConfig starts the server with the given configuration
+func StartWithConfig(config Config) {
 	e := echo.New()
 	e.HideBanner = true
 
+	// Add request logger middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogURI:    true,
 		LogStatus: true,
@@ -102,15 +77,16 @@ func Start(port int, operation Operation, shutdown Shutdown) {
 		},
 	}))
 
-	e.GET("/metrics", echoprometheus.NewHandler())
+	// Setup Prometheus metrics if enabled
+	if config.EnableMetrics {
+		e.GET(config.MetricsPath, echoprometheus.NewHandler())
+		e.Use(echoprometheus.NewMiddleware("echo"))
+	}
 
-	// Register all metrics
-	prometheus.MustRegister(httpRequestsTotal)
-	prometheus.MustRegister(httpRequestDuration)
-	prometheus.MustRegister(httpResponseSize)
-
-	// Add metrics middleware
-	e.Use(metricsMiddleware())
+	// Add custom middleware
+	for _, m := range config.Middleware {
+		e.Use(m)
+	}
 
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Home")
@@ -132,11 +108,11 @@ func Start(port int, operation Operation, shutdown Shutdown) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go operation(e)
+	go config.Operation(e)
 
 	go func() {
-		log.Info().Msgf("Starting server, on port %d", port)
-		if err := e.Start(fmt.Sprintf(":%v", port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Info().Msgf("Starting server, on port %d", config.Port)
+		if err := e.Start(fmt.Sprintf(":%v", config.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal().Err(err).Msg("failed to start server")
 		}
 	}()
@@ -144,12 +120,19 @@ func Start(port int, operation Operation, shutdown Shutdown) {
 	<-ctx.Done()
 
 	log.Info().Msg("gracefully shutting down")
-	shutdown(e)
+	config.Shutdown(e)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
 	defer cancel()
 	if err := e.Shutdown(ctx); err != nil {
 		log.Fatal().Err(err).Msg("failed to shutdown server")
 	}
+}
 
+// Start starts the server with the given port, operation, and shutdown functions
+// Optional middleware can be passed using variadic parameters
+func Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) {
+	config := DefaultConfig(port, operation, shutdown)
+	config.Middleware = middleware
+	StartWithConfig(config)
 }
