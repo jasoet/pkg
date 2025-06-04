@@ -1,3 +1,9 @@
+## 1.0.0 (2025-06-04)
+
+### Features
+
+* integrate semantic-release for automated versioning and changelog generation ([d62c61e](https://github.com/jasoet/pkg/commit/d62c61e5362b3432cc081735b9e6f89e76882548))
+
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
