@@ -1,6 +1,8 @@
 module github.com/jasoet/pkg
 
-go 1.24.2
+go 1.23.0
+
+toolchain go1.24.2
 
 require (
 	github.com/go-playground/validator/v10 v10.26.0
@@ -8,6 +10,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/labstack/echo-contrib v0.17.4
 	github.com/labstack/echo/v4 v4.13.4
+	github.com/lib/pq v1.10.9
 	github.com/magefile/mage v1.15.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/rs/zerolog v1.34.0
@@ -48,7 +51,6 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lib/pq v1.10.9 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/microsoft/go-mssqldb v1.0.0 // indirect
