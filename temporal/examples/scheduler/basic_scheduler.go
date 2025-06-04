@@ -1,3 +1,5 @@
+//go:build example
+
 package scheduler
 
 import (
