@@ -38,6 +38,9 @@ type Config struct {
 	// MetricsPath is the path to expose Prometheus metrics
 	MetricsPath string
 
+	// MetricsSubsystem is the subsystem name for Prometheus metrics
+	MetricsSubsystem string
+
 	// ShutdownTimeout is the timeout for graceful shutdown
 	ShutdownTimeout time.Duration
 }
@@ -45,12 +48,13 @@ type Config struct {
 // DefaultConfig returns a default server configuration
 func DefaultConfig(port int, operation Operation, shutdown Shutdown) Config {
 	return Config{
-		Port:            port,
-		Operation:       operation,
-		Shutdown:        shutdown,
-		EnableMetrics:   true,
-		MetricsPath:     "/metrics",
-		ShutdownTimeout: 10 * time.Second,
+		Port:             port,
+		Operation:        operation,
+		Shutdown:         shutdown,
+		EnableMetrics:    true,
+		MetricsPath:      "/metrics",
+		MetricsSubsystem: "echo",
+		ShutdownTimeout:  10 * time.Second,
 	}
 }
 
@@ -80,7 +84,7 @@ func StartWithConfig(config Config) {
 	// Setup Prometheus metrics if enabled
 	if config.EnableMetrics {
 		e.GET(config.MetricsPath, echoprometheus.NewHandler())
-		e.Use(echoprometheus.NewMiddleware("echo"))
+		e.Use(echoprometheus.NewMiddleware(config.MetricsSubsystem))
 	}
 
 	// Add custom middleware
