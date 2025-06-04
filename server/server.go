@@ -17,6 +17,7 @@ import (
 
 type Operation func(e *echo.Echo)
 type Shutdown func(e *echo.Echo)
+type EchoConfigurer func(e *echo.Echo)
 
 type Config struct {
 	Port int
@@ -34,6 +35,8 @@ type Config struct {
 	MetricsSubsystem string
 
 	ShutdownTimeout time.Duration
+
+	EchoConfigurer EchoConfigurer
 }
 
 // DefaultConfig returns a default server configuration
@@ -99,6 +102,11 @@ func setupEcho(config Config) *echo.Echo {
 	e.GET("/health/live", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ALIVE"})
 	})
+
+	// Apply custom Echo configuration if provided
+	if config.EchoConfigurer != nil {
+		config.EchoConfigurer(e)
+	}
 
 	return e
 }
