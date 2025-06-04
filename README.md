@@ -108,12 +108,61 @@ Utilities for working with Temporal workflow engine, including client creation, 
 
 ## Roadmap
 
-- [ ] Integration with GitHub Actions for CI/CD
-- [ ] Automated versioning using semantic-release
+- [x] Integration with GitHub Actions for CI/CD
+- [x] Automated versioning using semantic-release
 - [ ] Unit testing coverage improvements
 - [ ] Documentation improvements
 - [ ] Additional database drivers support
 - [ ] More comprehensive examples
+
+## Semantic Versioning
+
+This project uses [semantic-release](https://github.com/semantic-release/semantic-release) for automated versioning and CHANGELOG generation. The versioning process is triggered automatically when commits are pushed to the main branch.
+
+### How it works
+
+1. When code is pushed to the main branch, GitHub Actions runs the tests
+2. If tests pass, semantic-release analyzes the commit messages
+3. Based on the commit messages, it determines the next version number
+4. A new GitHub release is created with release notes
+5. The CHANGELOG.md file is updated with the release notes
+6. Changes are committed back to the repository
+
+### Commit Message Format
+
+This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification. Your commit messages should be structured as follows:
+
+```
+<type>(<optional scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Types that trigger version updates:
+- `feat`: A new feature (minor version bump)
+- `fix`: A bug fix (patch version bump)
+- `perf`: A performance improvement (patch version bump)
+- `docs`: Documentation changes (no version bump unless scope is README)
+- `style`: Changes that do not affect the meaning of the code (no version bump)
+- `refactor`: Code changes that neither fix a bug nor add a feature (patch version bump)
+- `test`: Adding or correcting tests (patch version bump)
+- `build`: Changes to the build system or dependencies (no version bump)
+- `ci`: Changes to CI configuration files and scripts (no version bump)
+- `chore`: Other changes that don't modify src or test files (patch version bump)
+
+Breaking changes (major version bump) are indicated by:
+- Adding `BREAKING CHANGE:` in the commit message body
+- Adding a `!` after the type/scope (e.g., `feat!: introduce breaking API change`)
+
+### GitHub Repository Settings
+
+For semantic-release to work properly, ensure:
+
+1. The repository has a `GITHUB_TOKEN` secret (automatically provided by GitHub Actions)
+2. Branch protection rules are set up for the main branch (optional but recommended)
+3. The GitHub Actions workflow has permission to write to the repository
 
 ## Contributing
 
