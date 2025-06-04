@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestNewServer(t *testing.T) {
+func TestNewHttpServer(t *testing.T) {
 	// Test server initialization with default config
 	operationCalled := false
 	shutdownCalled := false
@@ -26,7 +26,7 @@ func TestNewServer(t *testing.T) {
 	}
 
 	config := DefaultConfig(8080, operation, shutdown)
-	server := NewServer(config)
+	server := newHttpServer(config)
 
 	assert.NotNil(t, server)
 	assert.NotNil(t, server.echo)
@@ -102,10 +102,10 @@ func TestOperationExecution(t *testing.T) {
 
 	config := DefaultConfig(0, operation, func(e *echo.Echo) {})
 	config.MetricsSubsystem = "TestOperationExecution"
-	server := NewServer(config)
+	server := newHttpServer(config)
 
 	// Start the server
-	server.Start()
+	server.start()
 
 	// Wait for operation to be called or timeout
 	select {
@@ -116,7 +116,7 @@ func TestOperationExecution(t *testing.T) {
 	}
 
 	// Stop the server
-	_ = server.Stop()
+	_ = server.stop()
 }
 
 func TestShutdownExecution(t *testing.T) {
@@ -128,13 +128,13 @@ func TestShutdownExecution(t *testing.T) {
 
 	config := DefaultConfig(0, func(e *echo.Echo) {}, shutdown)
 	config.MetricsSubsystem = "TestShutdownExecution"
-	server := NewServer(config)
+	server := newHttpServer(config)
 
 	// Start the server
-	server.Start()
+	server.start()
 
 	// Stop the server
-	_ = server.Stop()
+	_ = server.stop()
 
 	// Wait for shutdown to be called or timeout
 	select {
@@ -199,10 +199,10 @@ func TestIntegration(t *testing.T) {
 	// Create a server with a random port
 	config := DefaultConfig(0, operation, shutdown)
 	config.MetricsSubsystem = "TestIntegration"
-	server := NewServer(config)
+	server := newHttpServer(config)
 
 	// Start the server
-	server.Start()
+	server.start()
 
 	// Give some time for the server to start and operation to be called
 	time.Sleep(100 * time.Millisecond)
@@ -225,7 +225,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	// Stop the server
-	err = server.Stop()
+	err = server.stop()
 	assert.NoError(t, err)
 	assert.True(t, shutdownCalled, "Shutdown should be called after server stopFunc")
 }
@@ -248,16 +248,16 @@ func TestServerStartStop(t *testing.T) {
 
 	config := DefaultConfig(0, operation, shutdown) // Use port 0 to get a random available port
 	config.MetricsSubsystem = "TestServerStartStop"
-	server := NewServer(config)
+	server := newHttpServer(config)
 
 	// Start the server
-	server.Start()
+	server.start()
 
 	// Wait for operation to be called
 	operationWg.Wait()
 
 	// Stop the server
-	err := server.Stop()
+	err := server.stop()
 	assert.NoError(t, err)
 
 	// Wait for shutdown to be called
