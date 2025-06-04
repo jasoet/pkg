@@ -1,9 +1,41 @@
 name: pkg
 services:
+  
+  mariadb:
+    image: mariadb:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=localhost
+      - MYSQL_DATABASE=pkg_db
+      - MYSQL_USER=jasoet
+      - MYSQL_PASSWORD=localhost
+      - TZ=UTC
+    ports:
+      - "3309:3306"
+    volumes:
+      - mariadb:/var/lib/mysql
+      - ./mariadb/init:/docker-entrypoint-initdb.d
+      - ./mariadb/backup:/var/lib/mysql/backup
+    networks:
+      - net
+  
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    user: root
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Localhost12$
+      - MSSQL_PID=Developer
+      - MSSQL_BACKUP_DIR=/var/opt/mssql/backup
+      - TZ=UTC
+    ports:
+      - "1439:1433"
+    volumes:
+      - mssql:/var/opt/mssql/data
+    networks:
+      - net
 
   postgres:
     image: postgres:latest
-    hostname: postgres  # Added explicit hostname
     environment:
       - POSTGRES_USER=jasoet
       - POSTGRES_PASSWORD=localhost
@@ -22,3 +54,5 @@ networks:
 
 volumes:
   pg:
+  mssql:
+  mariadb:
