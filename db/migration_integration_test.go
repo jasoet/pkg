@@ -25,49 +25,6 @@ const (
 	dbTimeout  = 10 * time.Second
 )
 
-// TestPostgresMigrations tests the database migration functionality
-func TestPostgresMigrations(t *testing.T) {
-	// Create a connection config using values from docker-compose.yml
-	config := &ConnectionConfig{
-		DbType:       Postgresql,
-		Host:         dbHost,
-		Port:         dbPort,
-		Username:     dbUser,
-		Password:     dbPassword,
-		DbName:       dbName,
-		Timeout:      dbTimeout,
-		MaxIdleConns: 5,
-		MaxOpenConns: 10,
-	}
-
-	// Connect to the database
-	db, err := config.SqlDB()
-	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	// Clean the database schema
-	if err := cleanDatabase(db); err != nil {
-		t.Fatalf("Failed to clean database: %v", err)
-	}
-
-	// Create a test context
-	ctx := context.Background()
-
-	// Run migrations
-	err = RunPostgresMigrations(ctx, db, migrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-
-	// Verify migrations were applied
-	if err := verifyMigrations(db); err != nil {
-		t.Fatalf("Migration verification failed: %v", err)
-	}
-}
-
-// TestPostgresMigrationsDownAndDrop tests the database migration down and drop functionality
 func TestPostgresMigrationsDownAndDrop(t *testing.T) {
 	// Create a connection config using values from docker-compose.yml
 	config := &ConnectionConfig{
@@ -88,11 +45,6 @@ func TestPostgresMigrationsDownAndDrop(t *testing.T) {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
-
-	// Clean the database schema
-	if err := cleanDatabase(db); err != nil {
-		t.Fatalf("Failed to clean database: %v", err)
-	}
 
 	// Create a test context
 	ctx := context.Background()
@@ -118,71 +70,8 @@ func TestPostgresMigrationsDownAndDrop(t *testing.T) {
 	if err := verifyTablesDropped(db); err != nil {
 		t.Fatalf("Migration DOWN verification failed: %v", err)
 	}
-
-	// Run migrations UP again
-	err = RunPostgresMigrations(ctx, db, migrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations UP again: %v", err)
-	}
-
-	// Verify migrations were applied again
-	if err := verifyMigrations(db); err != nil {
-		t.Fatalf("Migration verification failed after second UP: %v", err)
-	}
-
-	// Run migrations DROP
-	err = RunPostgresMigrationsDrop(ctx, db, migrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations DROP: %v", err)
-	}
-
-	// Verify schema_migrations table was dropped
-	if err := verifyMigrationsTableDropped(db); err != nil {
-		t.Fatalf("Migration DROP verification failed: %v", err)
-	}
 }
 
-// cleanDatabase drops all tables in the public schema
-func cleanDatabase(db *sql.DB) error {
-	// Disable foreign key checks to allow dropping tables with dependencies
-	_, err := db.Exec("SET session_replication_role = 'replica';")
-	if err != nil {
-		return fmt.Errorf("failed to disable foreign key checks: %w", err)
-	}
-
-	// Get all tables in the public schema
-	rows, err := db.Query(`
-		SELECT tablename FROM pg_tables 
-		WHERE schemaname = 'public'
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to get table list: %w", err)
-	}
-	defer rows.Close()
-
-	// Drop each table
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return fmt.Errorf("failed to scan table name: %w", err)
-		}
-
-		_, err = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", tableName))
-		if err != nil {
-			return fmt.Errorf("failed to drop table %s: %w", tableName, err)
-		}
-	}
-
-	// Re-enable foreign key checks
-	_, err = db.Exec("SET session_replication_role = 'origin';")
-	if err != nil {
-		return fmt.Errorf("failed to re-enable foreign key checks: %w", err)
-	}
-
-	return nil
-}
-
-// verifyMigrations checks if migrations were applied correctly
 func verifyMigrations(db *sql.DB) error {
 	// Check if schema_migrations table exists
 	var exists bool
@@ -254,7 +143,6 @@ func verifyMigrations(db *sql.DB) error {
 	return nil
 }
 
-// verifyTablesDropped checks if tables were dropped after running migrations DOWN
 func verifyTablesDropped(db *sql.DB) error {
 	// Check if schema_migrations table still exists
 	var exists bool
@@ -310,49 +198,6 @@ func verifyTablesDropped(db *sql.DB) error {
 
 	if exists {
 		return fmt.Errorf("idx_posts_user_id index still exists, migration DOWN may not have been applied correctly")
-	}
-
-	return nil
-}
-
-// verifyMigrationsTableDropped checks if schema_migrations table was dropped after running migrations DROP
-func verifyMigrationsTableDropped(db *sql.DB) error {
-	// Check if schema_migrations table was dropped
-	var exists bool
-	err := db.QueryRow(`
-		SELECT EXISTS (
-			SELECT FROM pg_tables 
-			WHERE schemaname = 'public' AND 
-			tablename = 'schema_migrations'
-		)
-	`).Scan(&exists)
-
-	if err != nil {
-		return fmt.Errorf("failed to check if schema_migrations table exists: %w", err)
-	}
-
-	if exists {
-		return fmt.Errorf("schema_migrations table still exists, migration DROP may not have been applied correctly")
-	}
-
-	// Verify specific tables from our migrations are dropped
-	tables := []string{"users", "posts"}
-	for _, table := range tables {
-		err := db.QueryRow(`
-			SELECT EXISTS (
-				SELECT FROM pg_tables 
-				WHERE schemaname = 'public' AND 
-				tablename = $1
-			)
-		`, table).Scan(&exists)
-
-		if err != nil {
-			return fmt.Errorf("failed to check if %s table exists: %w", table, err)
-		}
-
-		if exists {
-			return fmt.Errorf("%s table still exists, migration DROP may not have been applied correctly", table)
-		}
 	}
 
 	return nil

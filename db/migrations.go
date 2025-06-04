@@ -36,17 +36,6 @@ func RunPostgresMigrationsDownWithGorm(ctx context.Context, db *gorm.DB, migrati
 	return RunPostgresMigrationsDown(ctx, sqlDb, migrationFs, migrationsPath)
 }
 
-func RunPostgresMigrationsDropWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
-	logger := logging.ContextLogger(ctx, "db.migrations")
-	logger.Debug().Msg("Starting PostgreSQL migrations DROP with GORM")
-
-	sqlDb, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get SQL DB from GORM: %w", err)
-	}
-	return RunPostgresMigrationsDrop(ctx, sqlDb, migrationFs, migrationsPath)
-}
-
 func setupMigration(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) (*migrate.Migrate, zerolog.Logger, error) {
 	logger := logging.ContextLogger(ctx, "db.migrations")
 
@@ -97,21 +86,6 @@ func RunPostgresMigrationsDown(ctx context.Context, db *sql.DB, migrationFs embe
 		return fmt.Errorf("failed to roll back migrations: %w", err)
 	}
 	logger.Debug().Msg("Migrations rolled back successfully")
-
-	return nil
-}
-
-func RunPostgresMigrationsDrop(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) error {
-	m, logger, err := setupMigration(ctx, db, migrationFs, migrationsPath)
-	if err != nil {
-		return err
-	}
-
-	logger.Debug().Msg("Starting PostgreSQL migrations DROP")
-	if err := m.Drop(); err != nil {
-		return fmt.Errorf("failed to drop migrations: %w", err)
-	}
-	logger.Debug().Msg("Migrations dropped successfully")
 
 	return nil
 }
