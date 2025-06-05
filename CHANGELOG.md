@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/jasoet/pkg/compare/v1.0.0...v1.1.0) (2025-06-05)
+
+### Features
+
+* **config:** add support for string slice configurations with environment variable overrides ([184c527](https://github.com/jasoet/pkg/commit/184c527acf078e4b58fdaf2c5d69752e6b981bd2))
+
 ## 1.0.0 (2025-06-04)
 
 ### Features
