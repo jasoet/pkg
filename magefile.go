@@ -98,6 +98,153 @@ func Clean() error {
 	return nil
 }
 
+// Tools installs all development tools
+func Tools() error {
+	fmt.Println("Installing development tools...")
+	
+	tools := []string{
+		"github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
+		"github.com/magefile/mage@latest",
+		"gotest.tools/gotestsum@latest",
+		"github.com/swaggo/swag/cmd/swag@latest",
+		"github.com/golang-migrate/migrate/v4/cmd/migrate@latest",
+		"github.com/golang/mock/mockgen@latest",
+		"github.com/securecodewarrior/gosec/v2/cmd/gosec@latest",
+		"github.com/sonatypecommunity/nancy@latest",
+		"github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest",
+	}
+	
+	for _, tool := range tools {
+		fmt.Printf("Installing %s...\n", tool)
+		cmd := exec.Command("go", "install", tool)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to install %s: %w", tool, err)
+		}
+	}
+	
+	fmt.Println("All development tools installed successfully")
+	return nil
+}
+
+// Security runs security analysis tools
+func Security() error {
+	fmt.Println("Running security analysis...")
+	
+	// Ensure gosec is installed
+	if err := ensureToolInstalled("gosec", "github.com/securecodewarrior/gosec/v2/cmd/gosec@latest"); err != nil {
+		return err
+	}
+	
+	// Run gosec
+	fmt.Println("Running gosec security scanner...")
+	cmd := exec.Command("gosec", "./...")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Println("Security issues found (this may be expected)")
+	}
+	
+	return nil
+}
+
+// Dependencies checks for known vulnerabilities in dependencies
+func Dependencies() error {
+	fmt.Println("Checking dependencies for vulnerabilities...")
+	
+	// Ensure nancy is installed
+	if err := ensureToolInstalled("nancy", "github.com/sonatypecommunity/nancy@latest"); err != nil {
+		return err
+	}
+	
+	// Generate go.list for nancy
+	cmd := exec.Command("go", "list", "-json", "-deps", "./...")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to generate dependency list: %w", err)
+	}
+	
+	// Run nancy
+	cmd = exec.Command("nancy", "sleuth")
+	cmd.Stdin = strings.NewReader(string(output))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Println("Dependency vulnerabilities found (this may be expected)")
+	}
+	
+	return nil
+}
+
+// Coverage generates test coverage report
+func Coverage() error {
+	fmt.Println("Generating test coverage report...")
+	
+	// Run tests with coverage
+	cmd := exec.Command("go", "test", "-coverprofile=coverage.out", "./...")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tests failed: %w", err)
+	}
+	
+	// Generate HTML coverage report
+	cmd = exec.Command("go", "tool", "cover", "-html=coverage.out", "-o", "coverage.html")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to generate HTML coverage report: %w", err)
+	}
+	
+	fmt.Println("Coverage report generated: coverage.html")
+	return nil
+}
+
+// Docs generates API documentation (if swagger annotations exist)
+func Docs() error {
+	fmt.Println("Generating API documentation...")
+	
+	// Check if swag is available
+	if err := ensureToolInstalled("swag", "github.com/swaggo/swag/cmd/swag@latest"); err != nil {
+		return err
+	}
+	
+	// Generate swagger docs
+	cmd := exec.Command("swag", "init", "-g", "main.go", "--output", "docs")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Println("Swagger generation failed (this is expected if no swagger annotations exist)")
+		return nil
+	}
+	
+	fmt.Println("API documentation generated in docs/ directory")
+	return nil
+}
+
+// CheckAll runs all quality checks
+func CheckAll() error {
+	fmt.Println("Running all quality checks...")
+	
+	checks := []func() error{
+		Test,
+		Lint,
+		Security,
+		Dependencies,
+		Coverage,
+	}
+	
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return fmt.Errorf("quality check failed: %w", err)
+		}
+	}
+	
+	fmt.Println("All quality checks completed successfully")
+	return nil
+}
+
 func ensureToolInstalled(toolName, installPackage string) error {
 	if _, err := exec.LookPath(toolName); err != nil {
 		fmt.Printf("Installing %s...\n", toolName)

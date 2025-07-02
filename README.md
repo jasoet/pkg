@@ -76,6 +76,365 @@ func main() {
 }
 ```
 
+## Package Integration Examples
+
+The packages are designed to work seamlessly together. Here are some real-world integration patterns:
+
+### Complete Web Service Example
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/jasoet/pkg/config"
+    "github.com/jasoet/pkg/db"
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/server"
+)
+
+type AppConfig struct {
+    Server struct {
+        Port int `yaml:"port" mapstructure:"port"`
+    } `yaml:"server" mapstructure:"server"`
+    Database db.ConnectionConfig `yaml:"database" mapstructure:"database"`
+}
+
+func main() {
+    // 1. Initialize logging first
+    logging.Initialize("my-web-service", true)
+    
+    ctx := context.Background()
+    logger := logging.ContextLogger(ctx, "main")
+    
+    // 2. Load configuration
+    yamlConfig := `
+server:
+  port: 8080
+database:
+  dbType: POSTGRES
+  host: localhost
+  port: 5432
+  username: user
+  password: pass
+  dbName: myapp
+  maxIdleConns: 10
+  maxOpenConns: 100
+`
+    
+    appConfig, err := config.LoadString[AppConfig](yamlConfig)
+    if err != nil {
+        logger.Fatal().Err(err).Msg("Failed to load configuration")
+    }
+    
+    // 3. Setup database
+    database, err := appConfig.Database.Pool()
+    if err != nil {
+        logger.Fatal().Err(err).Msg("Failed to connect to database")
+    }
+    
+    // 4. Start HTTP server with integrated components
+    serverConfig := &server.Config{
+        Port: appConfig.Server.Port,
+    }
+    
+    srv := server.New(serverConfig)
+    
+    // Server automatically includes logging middleware and health checks
+    logger.Info().Int("port", appConfig.Server.Port).Msg("Starting server")
+    srv.Start(ctx)
+}
+```
+
+### Microservice with External APIs
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "time"
+
+    "github.com/jasoet/pkg/concurrent"
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/rest"
+)
+
+type UserService struct {
+    apiClient *rest.Client
+    logger    zerolog.Logger
+}
+
+func (s *UserService) GetDashboardData(ctx context.Context, userID int) (*DashboardData, error) {
+    // Use concurrent package to fetch data from multiple APIs in parallel
+    apiFunctions := map[string]concurrent.Func[*resty.Response]{
+        "profile": func(ctx context.Context) (*resty.Response, error) {
+            return s.apiClient.MakeRequest(ctx, "GET", 
+                fmt.Sprintf("/users/%d", userID), "", nil)
+        },
+        "orders": func(ctx context.Context) (*resty.Response, error) {
+            return s.apiClient.MakeRequest(ctx, "GET", 
+                fmt.Sprintf("/users/%d/orders", userID), "", nil)
+        },
+        "preferences": func(ctx context.Context) (*resty.Response, error) {
+            return s.apiClient.MakeRequest(ctx, "GET", 
+                fmt.Sprintf("/users/%d/preferences", userID), "", nil)
+        },
+    }
+    
+    s.logger.Info().Int("user_id", userID).Msg("Fetching dashboard data")
+    
+    results, err := concurrent.ExecuteConcurrently(ctx, apiFunctions)
+    if err != nil {
+        s.logger.Error().Err(err).Int("user_id", userID).Msg("Failed to fetch dashboard data")
+        return nil, err
+    }
+    
+    // Process results...
+    dashboard := &DashboardData{}
+    // ... marshal JSON responses into dashboard struct
+    
+    s.logger.Info().Int("user_id", userID).Msg("Dashboard data retrieved successfully")
+    return dashboard, nil
+}
+```
+
+### Database Operations with SSH Tunneling
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/jasoet/pkg/config"
+    "github.com/jasoet/pkg/db"
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/ssh"
+)
+
+type SecureDBConfig struct {
+    SSH      ssh.Config            `yaml:"ssh" mapstructure:"ssh"`
+    Database db.ConnectionConfig `yaml:"database" mapstructure:"database"`
+}
+
+func connectToSecureDatabase(ctx context.Context) (*gorm.DB, error) {
+    logger := logging.ContextLogger(ctx, "secure-db")
+    
+    // Load configuration
+    configYAML := `
+ssh:
+  host: bastion.example.com
+  port: 22
+  user: deploy
+  password: ssh-password
+  remoteHost: internal-db.example.com
+  remotePort: 5432
+  localPort: 5433
+database:
+  dbType: POSTGRES
+  host: localhost
+  port: 5433  # Local port from SSH tunnel
+  username: dbuser
+  password: dbpass
+  dbName: production_db
+`
+    
+    config, err := config.LoadString[SecureDBConfig](configYAML)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 1. Establish SSH tunnel
+    logger.Info().Msg("Establishing SSH tunnel to database")
+    tunnel := ssh.New(config.SSH)
+    err = tunnel.Start()
+    if err != nil {
+        logger.Error().Err(err).Msg("Failed to start SSH tunnel")
+        return nil, err
+    }
+    
+    // 2. Connect to database through tunnel
+    logger.Info().Msg("Connecting to database through SSH tunnel")
+    database, err := config.Database.Pool()
+    if err != nil {
+        tunnel.Close()
+        logger.Error().Err(err).Msg("Failed to connect to database")
+        return nil, err
+    }
+    
+    logger.Info().Msg("Secure database connection established")
+    return database, nil
+}
+```
+
+### Background Worker with All Components
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/jasoet/pkg/concurrent"
+    "github.com/jasoet/pkg/db"
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/rest"
+)
+
+type WorkerService struct {
+    db        *gorm.DB
+    apiClient *rest.Client
+    logger    zerolog.Logger
+}
+
+func (w *WorkerService) ProcessBatch(ctx context.Context, jobIDs []int) error {
+    w.logger.Info().Int("job_count", len(jobIDs)).Msg("Starting batch processing")
+    
+    // Process jobs concurrently
+    jobFunctions := make(map[string]concurrent.Func[ProcessResult])
+    
+    for _, jobID := range jobIDs {
+        jobKey := fmt.Sprintf("job_%d", jobID)
+        jobFunctions[jobKey] = w.createJobProcessor(jobID)
+    }
+    
+    results, err := concurrent.ExecuteConcurrently(ctx, jobFunctions)
+    if err != nil {
+        w.logger.Error().Err(err).Msg("Batch processing failed")
+        return err
+    }
+    
+    // Update database with results
+    for jobKey, result := range results {
+        err := w.updateJobStatus(ctx, result.JobID, result.Status)
+        if err != nil {
+            w.logger.Error().
+                Err(err).
+                Int("job_id", result.JobID).
+                Msg("Failed to update job status")
+        }
+    }
+    
+    w.logger.Info().
+        Int("total_jobs", len(jobIDs)).
+        Int("successful", len(results)).
+        Msg("Batch processing completed")
+    
+    return nil
+}
+
+func (w *WorkerService) createJobProcessor(jobID int) concurrent.Func[ProcessResult] {
+    return func(ctx context.Context) (ProcessResult, error) {
+        jobLogger := logging.ContextLogger(ctx, "job-processor")
+        
+        // 1. Fetch job details from database
+        var job Job
+        err := w.db.WithContext(ctx).First(&job, jobID).Error
+        if err != nil {
+            jobLogger.Error().Err(err).Int("job_id", jobID).Msg("Failed to fetch job")
+            return ProcessResult{}, err
+        }
+        
+        // 2. Call external API to process
+        response, err := w.apiClient.MakeRequest(ctx, "POST", 
+            "/process", job.Data, map[string]string{
+                "Content-Type": "application/json",
+            })
+        if err != nil {
+            jobLogger.Error().Err(err).Int("job_id", jobID).Msg("API call failed")
+            return ProcessResult{JobID: jobID, Status: "failed"}, err
+        }
+        
+        jobLogger.Info().
+            Int("job_id", jobID).
+            Int("status_code", response.StatusCode()).
+            Msg("Job processed successfully")
+        
+        return ProcessResult{JobID: jobID, Status: "completed"}, nil
+    }
+}
+```
+
+## Quick Start Guide
+
+### 1. Basic Setup
+
+```go
+// main.go
+package main
+
+import (
+    "context"
+    "github.com/jasoet/pkg/logging"
+)
+
+func main() {
+    // Always start with logging initialization
+    logging.Initialize("my-app", true)
+    
+    ctx := context.Background()
+    logger := logging.ContextLogger(ctx, "main")
+    
+    logger.Info().Msg("Application started")
+    // Your application logic here...
+}
+```
+
+### 2. Add Configuration
+
+```go
+import "github.com/jasoet/pkg/config"
+
+type AppConfig struct {
+    Port     int    `yaml:"port" mapstructure:"port"`
+    LogLevel string `yaml:"logLevel" mapstructure:"logLevel"`
+}
+
+func loadConfig() (*AppConfig, error) {
+    return config.LoadString[AppConfig](`
+port: 8080
+logLevel: info
+`)
+}
+```
+
+### 3. Add Database
+
+```go
+import "github.com/jasoet/pkg/db"
+
+func setupDatabase() (*gorm.DB, error) {
+    config := &db.ConnectionConfig{
+        DbType:   db.Postgresql,
+        Host:     "localhost",
+        Port:     5432,
+        Username: "user",
+        Password: "pass",
+        DbName:   "myapp",
+    }
+    
+    return config.Pool()
+}
+```
+
+### 4. Add HTTP Server
+
+```go
+import "github.com/jasoet/pkg/server"
+
+func startServer(port int) {
+    config := &server.Config{Port: port}
+    srv := server.New(config)
+    srv.Start(context.Background())
+}
+```
+
 ## Packages Overview
 
 ### concurrent
@@ -106,14 +465,66 @@ SSH tunnel utilities for securely connecting to remote services.
 
 Utilities for working with Temporal workflow engine, including client creation, metrics reporting, and logging integration.
 
+## Troubleshooting
+
+### Common Issues
+
+#### Package Import Errors
+```bash
+# Ensure you're using the correct import path
+go mod tidy
+```
+
+#### Database Connection Issues
+```go
+// Check connection configuration and network access
+config := &db.ConnectionConfig{
+    DbType: db.Postgresql, // Ensure correct database type
+    Host:   "localhost",   // Verify host is accessible
+    Port:   5432,          // Check port is correct
+    // ... other config
+}
+```
+
+#### SSH Tunnel Connection Problems
+- Verify SSH server is accessible
+- Check SSH credentials and permissions
+- Ensure remote service is running and accessible from SSH server
+- Verify local port is not already in use
+
+#### HTTP Client Timeout Issues
+```go
+// Adjust timeout configuration based on your needs
+config := &rest.Config{
+    Timeout: 30 * time.Second, // Increase for slow APIs
+    RetryCount: 3,             // Adjust retry behavior
+}
+```
+
+### Performance Tips
+
+1. **Database Connections**: Configure connection pools appropriately
+2. **HTTP Clients**: Reuse clients instead of creating new ones for each request
+3. **Concurrent Operations**: Use the concurrent package for I/O-bound operations
+4. **Logging**: Use appropriate log levels in production (avoid debug)
+
+### Getting Help
+
+- Check package-specific README files in each `examples/` directory
+- Review the comprehensive examples provided
+- Use the logging package to debug issues with structured logging
+
 ## Roadmap
 
 - [x] Integration with GitHub Actions for CI/CD
 - [x] Automated versioning using semantic-release
+- [x] Comprehensive examples and documentation
+- [x] Package integration patterns
 - [ ] Unit testing coverage improvements
-- [ ] Documentation improvements
 - [ ] Additional database drivers support
-- [ ] More comprehensive examples
+- [ ] Performance benchmarks and optimization guides
+- [ ] Advanced middleware examples
+- [ ] Distributed tracing integration
 
 ## Semantic Versioning
 
