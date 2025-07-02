@@ -1,3 +1,9 @@
+## [1.1.4](https://github.com/jasoet/pkg/compare/v1.1.3...v1.1.4) (2025-07-02)
+
+### Chores
+
+* **tests:** update Temporal integration tests with consistent naming and improved task queue checks ([add78f0](https://github.com/jasoet/pkg/commit/add78f033fa9b4d50e6ed2815255926f088300a3))
+
 ## [1.1.3](https://github.com/jasoet/pkg/compare/v1.1.2...v1.1.3) (2025-07-02)
 
 ### Chores
