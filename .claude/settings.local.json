@@ -16,7 +16,8 @@
       "Bash(touch:*)",
       "Bash(mage test:*)",
       "Bash(mage lint:*)",
-      "Bash(mage:*)"
+      "Bash(mage:*)",
+      "Bash(go doc:*)"
     ],
     "deny": []
   }

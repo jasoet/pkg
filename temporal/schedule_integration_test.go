@@ -88,7 +88,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "interval-workflow-" + scheduleID,
-			Workflow:  "TestWorkflow", // Reference by name
+			Workflow:  "SampleWorkflow", // Reference by name
 			TaskQueue: "test-interval-queue",
 			Args:      []interface{}{"interval-test"},
 		}
@@ -120,7 +120,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "list-test-workflow",
-			Workflow:  "TestWorkflow",
+			Workflow:  "SampleWorkflow",
 			TaskQueue: "test-list-queue",
 		}
 
@@ -137,7 +137,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		// We should have at least our created schedule
 		found := false
 		for _, schedule := range schedules {
-			if schedule.ScheduleId == scheduleID {
+			if schedule.ID == scheduleID {
 				found = true
 				break
 			}
@@ -165,7 +165,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "get-test-workflow",
-			Workflow:  "TestWorkflow",
+			Workflow:  "SampleWorkflow",
 			TaskQueue: "test-get-queue",
 		}
 
@@ -204,7 +204,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "update-test-workflow",
-			Workflow:  "TestWorkflow",
+			Workflow:  "SampleWorkflow",
 			TaskQueue: "test-update-queue",
 		}
 
@@ -242,11 +242,11 @@ func TestScheduleManagerIntegration(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "delete-test-workflow",
-			Workflow:  "TestWorkflow",
+			Workflow:  "SampleWorkflow",
 			TaskQueue: "test-delete-queue",
 		}
 
-		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
+		_, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
 		if err != nil {
 			t.Logf("Could not create schedule for delete test: %v", err)
 			return
@@ -284,7 +284,7 @@ func TestScheduleManagerErrorHandling(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "duplicate-workflow",
-			Workflow:  "TestWorkflow",
+			Workflow:  "SampleWorkflow",
 			TaskQueue: "duplicate-queue",
 		}
 
@@ -332,7 +332,7 @@ func TestScheduleManagerErrorHandling(t *testing.T) {
 
 		scheduleAction := &client.ScheduleWorkflowAction{
 			ID:        "invalid-cron-workflow",
-			Workflow:  "TestWorkflow",
+			Workflow:  "SampleWorkflow",
 			TaskQueue: "invalid-cron-queue",
 		}
 
