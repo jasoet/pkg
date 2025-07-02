@@ -1,0 +1,92 @@
+# Gitpod configuration for Go development
+image:
+  file: .gitpod.Dockerfile
+
+# Exposed ports
+ports:
+  - port: 8080
+    onOpen: notify
+    name: Web Service
+    description: Main application server
+  - port: 5432
+    onOpen: ignore
+    name: PostgreSQL
+    description: Database server
+  - port: 6379
+    onOpen: ignore
+    name: Redis
+    description: Cache server
+
+# VS Code extensions to install
+vscode:
+  extensions:
+    - golang.go
+    - ms-vscode.vscode-docker
+    - redhat.vscode-yaml
+    - ms-vscode.makefile-tools
+    - eamodio.gitlens
+    - humao.rest-client
+    - mtxr.sqltools
+    - mtxr.sqltools-driver-pg
+
+# Tasks to run on startup
+tasks:
+  - name: Setup Development Environment
+    init: |
+      # Install Go tools
+      go install github.com/magefile/mage@latest
+      go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+      go install gotest.tools/gotestsum@latest
+      
+      # Install project dependencies
+      go mod download
+      go mod tidy
+      
+      # Install additional tools via mage
+      mage tools || echo "Some tools may have failed to install"
+      
+      echo "✅ Development environment ready!"
+    command: |
+      echo "🚀 Welcome to the Go Utility Library development environment!"
+      echo ""
+      echo "🎯 Quick start commands:"
+      echo "  mage test           - Run tests"
+      echo "  mage lint           - Run linter"
+      echo "  mage integrationTest - Run integration tests"
+      echo "  mage docker:up      - Start development services"
+      echo ""
+      echo "📁 Project structure:"
+      echo "  .claude/           - Claude Code integration guides"
+      echo "  templates/         - Project templates"
+      echo "  integration-examples/ - Complete working examples"
+
+  - name: Start Development Services
+    init: |
+      echo "🐳 Starting development services..."
+      cd scripts/compose
+      docker-compose up -d
+    command: |
+      echo "📊 Development services status:"
+      cd scripts/compose
+      docker-compose ps
+
+# GitHub integration
+github:
+  prebuilds:
+    master: true
+    branches: true
+    pullRequests: true
+    pullRequestsFromForks: false
+    addCheck: false
+    addComment: false
+    addBadge: false
+
+# Workspace configuration
+workspaceLocation: "."
+
+# JetBrains integration (optional)
+jetbrains:
+  intellij:
+    plugins:
+      - com.intellij.go

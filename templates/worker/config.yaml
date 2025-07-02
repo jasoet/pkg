@@ -1,0 +1,35 @@
+# Worker Service Configuration Template
+# This file demonstrates how to configure a background worker using github.com/jasoet/pkg
+
+environment: development
+debug: true
+
+database:
+  dbType: POSTGRES
+  host: localhost
+  port: 5432
+  username: postgres
+  password: password
+  dbName: worker_db
+  timeout: 30s
+  maxIdleConns: 5
+  maxOpenConns: 25
+  enableLogging: true
+
+worker:
+  pollInterval: 30s        # How often to check for new jobs
+  batchSize: 10           # Maximum jobs to process in one batch
+  maxConcurrency: 5       # Maximum concurrent job processing
+  processTimeout: 5m      # Timeout for processing a batch
+
+externalApi:
+  baseUrl: https://api.example.com
+  timeout: 30s
+  retryCount: 3
+  apiKey: your-api-key-here
+
+# Optional: Job queue configuration
+queue:
+  deadLetterQueue: failed_jobs
+  maxRetryAttempts: 3
+  retryBackoffMultiplier: 2
