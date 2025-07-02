@@ -1,3 +1,13 @@
+## [1.2.0](https://github.com/jasoet/pkg/compare/v1.1.4...v1.2.0) (2025-07-02)
+
+### Features
+
+* **temporal:** add Docker Compose services for Temporal and enhance integration tests ([d770acb](https://github.com/jasoet/pkg/commit/d770acb7a63d0e98e6542b57f08cfbc90d96cb82))
+
+### Documentation
+
+* **tests:** add comprehensive testing guide and refine integration test execution ([1e358e6](https://github.com/jasoet/pkg/commit/1e358e661f4952fecb24a800f13e6bb7c34a506e))
+
 ## [1.1.4](https://github.com/jasoet/pkg/compare/v1.1.3...v1.1.4) (2025-07-02)
 
 ### Chores
