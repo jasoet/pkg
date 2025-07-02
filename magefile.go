@@ -45,17 +45,25 @@ func IntegrationTest() error {
 		"./ssh/...",
 	}
 
+	var testErr error
 	for _, pkg := range packages {
 		cmd := exec.Command("go", "test", "-count=1", "-tags=integration", pkg)
 		cmd.Env = append(os.Environ(), "AUTOMATION=true")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			return err
+			testErr = err
+			break
 		}
 	}
 
-	return nil
+	// Clean up Docker services
+	fmt.Println("Cleaning up Docker services...")
+	if cleanupErr := docker.Down(); cleanupErr != nil {
+		fmt.Printf("Warning: Failed to clean up Docker services: %v\n", cleanupErr)
+	}
+
+	return testErr
 }
 
 // TemporalTest runs temporal integration tests with Temporal server

@@ -17,7 +17,9 @@
       "Bash(mage test:*)",
       "Bash(mage lint:*)",
       "Bash(mage:*)",
-      "Bash(go doc:*)"
+      "Bash(go doc:*)",
+      "Bash(docker compose:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
