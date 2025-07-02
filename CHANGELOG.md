@@ -1,3 +1,13 @@
+## [1.1.1](https://github.com/jasoet/pkg/compare/v1.1.0...v1.1.1) (2025-07-02)
+
+### Documentation
+
+* add `CLAUDE.md` with development guidelines and architecture overview ([1d73b75](https://github.com/jasoet/pkg/commit/1d73b75b67d30166afdc7f07a4eb441761054e56))
+
+### Chores
+
+* introduce initial project templates, dev container, and Gitpod setup ([35278bf](https://github.com/jasoet/pkg/commit/35278bfd2ea24441e2fbb9a12cfb43ae3f54fbd8))
+
 ## [1.1.0](https://github.com/jasoet/pkg/compare/v1.0.0...v1.1.0) (2025-06-05)
 
 ### Features
