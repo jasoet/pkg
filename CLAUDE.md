@@ -14,6 +14,9 @@ mage test
 # Run integration tests (starts Docker services automatically)
 mage integrationTest
 
+# Run Temporal integration tests (starts Temporal server automatically)
+mage temporalTest
+
 # Run linter (installs golangci-lint if not present)
 mage lint
 
@@ -48,13 +51,23 @@ mage docker:up        # Start PostgreSQL and other services
 mage docker:down      # Stop services and remove volumes
 mage docker:logs      # View service logs
 mage docker:restart   # Restart all services
+
+# Temporal Service Management
+mage temporal:up      # Start Temporal server with PostgreSQL
+mage temporal:down    # Stop Temporal services and remove volumes
+mage temporal:logs    # View Temporal service logs
+mage temporal:restart # Restart Temporal services
 ```
 
 ## Development Environment
 
 - **PostgreSQL**: localhost:5439 (user: jasoet, password: localhost, database: pkg_db)
+- **Temporal Server**: localhost:7233 (for integration tests)
+- **Temporal UI**: localhost:8233 (when running temporal tests)
 - **Docker Compose**: Services defined in `scripts/compose/docker-compose.yml`
+- **Temporal Compose**: Services defined in `scripts/compose/temporal-compose.yml`
 - **Integration Tests**: Use `AUTOMATION=true` environment variable and `-tags=integration`
+- **Temporal Tests**: Use `TEMPORAL_INTEGRATION=true` environment variable and `-tags=integration`
 
 ## Architecture Overview
 

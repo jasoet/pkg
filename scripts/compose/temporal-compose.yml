@@ -1,0 +1,89 @@
+# Temporal Workflow Engine Docker Compose for Integration Tests
+name: temporal-test
+
+services:
+  postgresql-temporal:
+    image: postgres:15
+    container_name: temporal-postgres
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_DB: temporal
+    networks:
+      - temporal-test-network
+    ports:
+      - "5434:5432"
+    volumes:
+      - temporal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  temporal-server:
+    image: temporalio/auto-setup:1.27.2
+    container_name: temporal-server
+    depends_on:
+      postgresql-temporal:
+        condition: service_healthy
+    environment:
+      # Service configuration
+      - TEMPORAL_ADDRESS=temporal-server:7233
+      - TEMPORAL_CLI_ADDRESS=temporal-server:7233
+      - PROMETHEUS_ENDPOINT=0.0.0.0:7244
+
+      # Database configuration
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql-temporal
+      - DBNAME=temporal
+      - VISIBILITY_DBNAME=temporal_visibility
+
+      # Logging
+      - LOG_LEVEL=info
+
+      # Schema setup configuration
+      - SKIP_SCHEMA_SETUP=false
+      - SKIP_DB_CREATE=false
+
+      # Namespace configuration
+      - DEFAULT_NAMESPACE=default
+      - DEFAULT_NAMESPACE_RETENTION=7d
+      - SKIP_DEFAULT_NAMESPACE_CREATION=false
+      - SKIP_ADD_CUSTOM_SEARCH_ATTRIBUTES=false
+    networks:
+      - temporal-test-network
+    ports:
+      - "7233:7233"
+      - "7244:7244"
+    healthcheck:
+      test: ["CMD-SHELL", "tctl cluster health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: temporal-ui
+    depends_on:
+      temporal-server:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal-server:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+      - TEMPORAL_UI_PORT=8233
+    networks:
+      - temporal-test-network
+    ports:
+      - "8233:8233"
+
+networks:
+  temporal-test-network:
+    name: temporal-test-network
+
+volumes:
+  temporal_postgres_data:

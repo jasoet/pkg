@@ -1,3 +1,5 @@
+//go:build template
+
 package main
 
 import (
@@ -5,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,10 +27,10 @@ type AppConfig struct {
 }
 
 type ExternalAPIConfig struct {
-	BaseURL     string        `yaml:"baseUrl" mapstructure:"baseUrl" validate:"url"`
-	Timeout     time.Duration `yaml:"timeout" mapstructure:"timeout"`
-	RetryCount  int           `yaml:"retryCount" mapstructure:"retryCount"`
-	APIKey      string        `yaml:"apiKey" mapstructure:"apiKey"`
+	BaseURL    string        `yaml:"baseUrl" mapstructure:"baseUrl" validate:"url"`
+	Timeout    time.Duration `yaml:"timeout" mapstructure:"timeout"`
+	RetryCount int           `yaml:"retryCount" mapstructure:"retryCount"`
+	APIKey     string        `yaml:"apiKey" mapstructure:"apiKey"`
 }
 
 // Services contains all CLI dependencies
@@ -158,8 +159,6 @@ externalApi:
 }
 
 func executeCommand(ctx context.Context, services *Services, command string, userID int, userName, userEmail string) error {
-	logger := logging.ContextLogger(ctx, "command-executor")
-
 	switch strings.ToLower(command) {
 	case "migrate":
 		return runMigrations(ctx, services)
@@ -253,8 +252,6 @@ func backupData(ctx context.Context, services *Services) error {
 }
 
 func userCommands(ctx context.Context, services *Services, userID int, userName, userEmail string) error {
-	logger := logging.ContextLogger(ctx, "user-commands")
-
 	// If no specific user parameters provided, list all users
 	if userID == 0 && userName == "" && userEmail == "" {
 		return listUsers(ctx, services)

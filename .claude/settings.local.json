@@ -13,7 +13,10 @@
       "Bash(gofmt:*)",
       "Bash(./example)",
       "Bash(go run:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(mage test:*)",
+      "Bash(mage lint:*)",
+      "Bash(mage:*)"
     ],
     "deny": []
   }

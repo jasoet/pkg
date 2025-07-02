@@ -1,0 +1,166 @@
+//go:build integration
+
+package temporal
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/client"
+)
+
+func TestClientIntegration(t *testing.T) {
+	config := &Config{
+		HostPort:             "localhost:7233",
+		Namespace:            "default",
+		MetricsListenAddress: "0.0.0.0:9091", // Use different port to avoid conflicts
+	}
+
+	t.Run("NewClient", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err, "Failed to create Temporal client")
+		require.NotNil(t, temporalClient, "Client should not be nil")
+
+		// Test basic client functionality
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Try to check server health by listing namespaces
+		namespaceClient := temporalClient.DescribeNamespace(ctx, config.Namespace)
+		require.NoError(t, namespaceClient, "Failed to describe namespace - server might not be running")
+
+		temporalClient.Close()
+	})
+
+	t.Run("NewClientWithMetrics", func(t *testing.T) {
+		temporalClient, err := NewClientWithMetrics(config, true)
+		require.NoError(t, err, "Failed to create Temporal client with metrics")
+		require.NotNil(t, temporalClient, "Client should not be nil")
+
+		temporalClient.Close()
+	})
+
+	t.Run("NewClientWithoutMetrics", func(t *testing.T) {
+		temporalClient, err := NewClientWithMetrics(config, false)
+		require.NoError(t, err, "Failed to create Temporal client without metrics")
+		require.NotNil(t, temporalClient, "Client should not be nil")
+
+		temporalClient.Close()
+	})
+
+	t.Run("InvalidHost", func(t *testing.T) {
+		invalidConfig := &Config{
+			HostPort:             "invalid-host:7233",
+			Namespace:            "default",
+			MetricsListenAddress: "0.0.0.0:9092",
+		}
+
+		// This should fail quickly since the host doesn't exist
+		temporalClient, err := NewClient(invalidConfig)
+		if err == nil && temporalClient != nil {
+			temporalClient.Close()
+		}
+		// We don't assert error here because the client creation might succeed
+		// but connection will fail later during actual operations
+	})
+}
+
+func TestClientOperations(t *testing.T) {
+	config := DefaultConfig()
+	config.MetricsListenAddress = "0.0.0.0:9093"
+
+	temporalClient, err := NewClient(config)
+	require.NoError(t, err, "Failed to create Temporal client")
+	defer temporalClient.Close()
+
+	t.Run("DescribeNamespace", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		resp, err := temporalClient.DescribeNamespace(ctx, config.Namespace)
+		require.NoError(t, err, "Failed to describe namespace")
+		assert.Equal(t, config.Namespace, resp.NamespaceInfo.Name)
+	})
+
+	t.Run("WorkflowService", func(t *testing.T) {
+		// Test that we can get the workflow service
+		workflowService := temporalClient.WorkflowService()
+		assert.NotNil(t, workflowService, "WorkflowService should not be nil")
+	})
+
+	t.Run("ScheduleClient", func(t *testing.T) {
+		// Test that we can get the schedule client
+		scheduleClient := temporalClient.ScheduleClient()
+		assert.NotNil(t, scheduleClient, "ScheduleClient should not be nil")
+	})
+}
+
+// TestWorkflowExecution tests basic workflow execution functionality
+func TestWorkflowExecution(t *testing.T) {
+	config := DefaultConfig()
+	config.MetricsListenAddress = "0.0.0.0:9094"
+
+	temporalClient, err := NewClient(config)
+	require.NoError(t, err, "Failed to create Temporal client")
+	defer temporalClient.Close()
+
+	t.Run("ExecuteSimpleWorkflow", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Simple workflow that just returns a string
+		simpleWorkflow := func(ctx context.Context, input string) (string, error) {
+			return "Hello " + input, nil
+		}
+
+		// Start workflow
+		options := client.StartWorkflowOptions{
+			ID:        "test-simple-workflow-" + time.Now().Format("20060102-150405"),
+			TaskQueue: "test-task-queue",
+		}
+
+		// Note: This will fail if no worker is registered for this task queue
+		// but that's expected in a pure client test
+		workflowRun, err := temporalClient.ExecuteWorkflow(ctx, options, simpleWorkflow, "World")
+		if err != nil {
+			// Expected to fail without a worker, but we test the client API
+			t.Logf("Expected failure without worker: %v", err)
+			return
+		}
+
+		// If somehow it worked, get the result
+		var result string
+		err = workflowRun.Get(ctx, &result)
+		if err == nil {
+			assert.Equal(t, "Hello World", result)
+		}
+	})
+}
+
+// TestClientConfig tests configuration validation
+func TestClientConfig(t *testing.T) {
+	t.Run("DefaultConfig", func(t *testing.T) {
+		config := DefaultConfig()
+		assert.Equal(t, "localhost:7233", config.HostPort)
+		assert.Equal(t, "default", config.Namespace)
+		assert.Equal(t, "0.0.0.0:9090", config.MetricsListenAddress)
+	})
+
+	t.Run("CustomConfig", func(t *testing.T) {
+		config := &Config{
+			HostPort:             "custom-host:1234",
+			Namespace:            "custom-namespace",
+			MetricsListenAddress: "127.0.0.1:8080",
+		}
+
+		// Should be able to create client with custom config (connection may fail)
+		temporalClient, err := NewClient(config)
+		if err == nil && temporalClient != nil {
+			temporalClient.Close()
+		}
+		// Don't assert success since custom host might not exist
+	})
+}

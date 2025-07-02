@@ -2,7 +2,6 @@ package compress
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -14,7 +13,7 @@ func TestUnTar(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-un-tar")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-un-tar")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -29,7 +28,7 @@ func TestUnTarFailed(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-un-tar")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-un-tar")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -43,7 +42,7 @@ func TestUnTarGz(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-un-tar-gz")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-un-tar-gz")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -58,7 +57,7 @@ func TestUnTarGzFailed(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-un-tar-gz")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-un-tar-gz")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -72,7 +71,7 @@ func TestTar(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-tar")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-tar")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -81,7 +80,7 @@ func TestTar(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, written)
 
-	destinationFile, err := ioutil.TempFile("/tmp", "test-tar")
+	destinationFile, err := os.CreateTemp("/tmp", "test-tar")
 	assert.Nil(t, err)
 
 	err = Tar(destinationDir, destinationFile)
@@ -93,7 +92,7 @@ func TestTarGz(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-tar-gz")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-tar-gz")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -102,7 +101,7 @@ func TestTarGz(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, written)
 
-	destinationFile, err := ioutil.TempFile("/tmp", "test-tar-gz")
+	destinationFile, err := os.CreateTemp("/tmp", "test-tar-gz")
 	assert.Nil(t, err)
 
 	err = TarGz(destinationDir, destinationFile)
@@ -114,7 +113,7 @@ func TestTarGzBase64(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-tar-gz")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-tar-gz")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)
@@ -132,7 +131,7 @@ func TestUnTarGzBase64(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-tar-gz")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-tar-gz")
 	fmt.Printf("created temp dir: %s", destinationDir)
 	assert.Nil(t, err)
 	assert.NotNil(t, destinationDir)

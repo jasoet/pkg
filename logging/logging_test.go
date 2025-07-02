@@ -34,7 +34,9 @@ func TestContextLogger(t *testing.T) {
 	log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
 	// Create a context with values
-	ctx := context.WithValue(context.Background(), "request_id", "123456")
+	type contextKey string
+	const requestIDKey contextKey = "request_id"
+	ctx := context.WithValue(context.Background(), requestIDKey, "123456")
 
 	// Get a logger with context
 	logger := ContextLogger(ctx, "test-component")

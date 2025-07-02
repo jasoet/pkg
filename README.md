@@ -1,116 +1,100 @@
-# Go Utility Packages
+# 🚀 Go Utility Packages
 
-A collection of commonly used Go packages designed to reduce boilerplate and standardize common patterns across Go applications. These battle-tested, reusable components can be imported into new Go applications with minimal setup.
+[![Go Version](https://img.shields.io/badge/Go-1.23+-blue.svg)](https://golang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://github.com/jasoet/pkg/workflows/CI/badge.svg)](https://github.com/jasoet/pkg/actions)
 
-## Installation
+A comprehensive collection of production-ready Go utility packages designed to eliminate boilerplate and standardize common patterns across Go applications. These battle-tested components integrate seamlessly to accelerate development while maintaining best practices.
+
+## 📦 What's Inside
+
+| Package | Description | Key Features |
+|---------|-------------|--------------|
+| **[config](./config/)** | YAML configuration with env overrides | Type-safe, validation, hot-reload |
+| **[logging](./logging/)** | Structured logging with zerolog | Context-aware, performance optimized |
+| **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations |
+| **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
+| **[rest](./rest/)** | HTTP client framework | Retries, timeouts, middleware support |
+| **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation |
+| **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring |
+| **[ssh](./ssh/)** | SSH tunneling utilities | Secure connections, port forwarding |
+| **[compress](./compress/)** | File compression utilities | ZIP, tar.gz with security validation |
+
+## 🎯 Quick Start
+
+### Installation
 
 ```bash
 go get github.com/jasoet/pkg
 ```
 
-## Usage
-
-Import the specific package you need:
-
-```go
-import (
-    "github.com/jasoet/pkg/db"
-    "github.com/jasoet/pkg/logging"
-    // ... other packages as needed
-)
-```
-
-### Example: Setting up logging
+### Hello World Example
 
 ```go
 package main
 
 import (
     "context"
-    "github.com/jasoet/pkg/logging"
-)
-
-func main() {
-    // Initialize global logger
-    logging.Initialize("my-service", true) // service name and debug mode
-
-    // Create a context-aware logger for a component
-    ctx := context.Background()
-    logger := logging.ContextLogger(ctx, "user-service")
-
-    logger.Info().Msg("Service started successfully")
-}
-```
-
-### Example: Database Connection
-
-```go
-package main
-
-import (
-    "context"
-    "github.com/jasoet/pkg/db"
-    "github.com/rs/zerolog/log"
-)
-
-func main() {
-    config := &db.ConnectionConfig{
-        DbType:       db.Postgresql,
-        Host:         "localhost",
-        Port:         5439,
-        Username:     "jasoet",
-        Password:     "localhost",
-        DbName:       "pkg_db",
-        MaxIdleConns: 5,
-        MaxOpenConns: 10,
-    }
-
-    // Connect to database
-    database, err := db.Connect(config)
-    if err != nil {
-        log.Fatal().Err(err).Msg("Failed to connect to database")
-    }
-
-    // Use the database connection
-    // ...
-}
-```
-
-## Package Integration Examples
-
-The packages are designed to work seamlessly together. Here are some real-world integration patterns:
-
-### Complete Web Service Example
-
-```go
-package main
-
-import (
-    "context"
-    "time"
-
-    "github.com/jasoet/pkg/config"
-    "github.com/jasoet/pkg/db"
     "github.com/jasoet/pkg/logging"
     "github.com/jasoet/pkg/server"
 )
 
+func main() {
+    // 1. Initialize logging (always first!)
+    logging.Initialize("my-app", true)
+    
+    // 2. Get a context logger
+    ctx := context.Background()
+    logger := logging.ContextLogger(ctx, "main")
+    
+    // 3. Start a web server with built-in health checks
+    logger.Info().Msg("Starting server on :8080")
+    
+    config := server.Config{Port: 8080}
+    server.StartWithConfig(config)
+}
+```
+
+Visit `http://localhost:8080/health` to see your server running! 🎉
+
+## 🔧 Usage Patterns
+
+### 🌐 Complete Web Service
+
+Build a production-ready web service in minutes:
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+    
+    "github.com/jasoet/pkg/config"
+    "github.com/jasoet/pkg/db"
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/server"
+    "github.com/labstack/echo/v4"
+)
+
 type AppConfig struct {
-    Server struct {
-        Port int `yaml:"port" mapstructure:"port"`
-    } `yaml:"server" mapstructure:"server"`
+    Server   ServerConfig        `yaml:"server" mapstructure:"server"`
     Database db.ConnectionConfig `yaml:"database" mapstructure:"database"`
+}
+
+type ServerConfig struct {
+    Port int `yaml:"port" mapstructure:"port"`
 }
 
 func main() {
     // 1. Initialize logging first
-    logging.Initialize("my-web-service", true)
+    logging.Initialize("web-service", os.Getenv("DEBUG") == "true")
     
     ctx := context.Background()
     logger := logging.ContextLogger(ctx, "main")
     
     // 2. Load configuration
-    yamlConfig := `
+    appConfig, err := config.LoadString[AppConfig](`
 server:
   port: 8080
 database:
@@ -122,9 +106,7 @@ database:
   dbName: myapp
   maxIdleConns: 10
   maxOpenConns: 100
-`
-    
-    appConfig, err := config.LoadString[AppConfig](yamlConfig)
+`)
     if err != nil {
         logger.Fatal().Err(err).Msg("Failed to load configuration")
     }
@@ -135,152 +117,44 @@ database:
         logger.Fatal().Err(err).Msg("Failed to connect to database")
     }
     
-    // 4. Start HTTP server with integrated components
-    serverConfig := &server.Config{
+    // 4. Setup routes
+    serverConfig := server.Config{
         Port: appConfig.Server.Port,
+        EchoConfigurer: func(e *echo.Echo) {
+            // Add your routes here
+            e.GET("/api/users", getUsersHandler)
+            e.POST("/api/users", createUserHandler)
+        },
     }
     
-    srv := server.New(serverConfig)
-    
-    // Server automatically includes logging middleware and health checks
+    // 5. Start server with automatic graceful shutdown
     logger.Info().Int("port", appConfig.Server.Port).Msg("Starting server")
-    srv.Start(ctx)
+    server.StartWithConfig(serverConfig)
+}
+
+func getUsersHandler(c echo.Context) error {
+    // Your handler logic
+    return c.JSON(200, map[string]string{"message": "Users endpoint"})
+}
+
+func createUserHandler(c echo.Context) error {
+    // Your handler logic  
+    return c.JSON(201, map[string]string{"message": "User created"})
 }
 ```
 
-### Microservice with External APIs
+### 🔄 Background Worker
+
+Process jobs concurrently with full observability:
 
 ```go
 package main
 
 import (
     "context"
-    "encoding/json"
+    "fmt"
     "time"
-
-    "github.com/jasoet/pkg/concurrent"
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/rest"
-)
-
-type UserService struct {
-    apiClient *rest.Client
-    logger    zerolog.Logger
-}
-
-func (s *UserService) GetDashboardData(ctx context.Context, userID int) (*DashboardData, error) {
-    // Use concurrent package to fetch data from multiple APIs in parallel
-    apiFunctions := map[string]concurrent.Func[*resty.Response]{
-        "profile": func(ctx context.Context) (*resty.Response, error) {
-            return s.apiClient.MakeRequest(ctx, "GET", 
-                fmt.Sprintf("/users/%d", userID), "", nil)
-        },
-        "orders": func(ctx context.Context) (*resty.Response, error) {
-            return s.apiClient.MakeRequest(ctx, "GET", 
-                fmt.Sprintf("/users/%d/orders", userID), "", nil)
-        },
-        "preferences": func(ctx context.Context) (*resty.Response, error) {
-            return s.apiClient.MakeRequest(ctx, "GET", 
-                fmt.Sprintf("/users/%d/preferences", userID), "", nil)
-        },
-    }
     
-    s.logger.Info().Int("user_id", userID).Msg("Fetching dashboard data")
-    
-    results, err := concurrent.ExecuteConcurrently(ctx, apiFunctions)
-    if err != nil {
-        s.logger.Error().Err(err).Int("user_id", userID).Msg("Failed to fetch dashboard data")
-        return nil, err
-    }
-    
-    // Process results...
-    dashboard := &DashboardData{}
-    // ... marshal JSON responses into dashboard struct
-    
-    s.logger.Info().Int("user_id", userID).Msg("Dashboard data retrieved successfully")
-    return dashboard, nil
-}
-```
-
-### Database Operations with SSH Tunneling
-
-```go
-package main
-
-import (
-    "context"
-    "time"
-
-    "github.com/jasoet/pkg/config"
-    "github.com/jasoet/pkg/db"
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/ssh"
-)
-
-type SecureDBConfig struct {
-    SSH      ssh.Config            `yaml:"ssh" mapstructure:"ssh"`
-    Database db.ConnectionConfig `yaml:"database" mapstructure:"database"`
-}
-
-func connectToSecureDatabase(ctx context.Context) (*gorm.DB, error) {
-    logger := logging.ContextLogger(ctx, "secure-db")
-    
-    // Load configuration
-    configYAML := `
-ssh:
-  host: bastion.example.com
-  port: 22
-  user: deploy
-  password: ssh-password
-  remoteHost: internal-db.example.com
-  remotePort: 5432
-  localPort: 5433
-database:
-  dbType: POSTGRES
-  host: localhost
-  port: 5433  # Local port from SSH tunnel
-  username: dbuser
-  password: dbpass
-  dbName: production_db
-`
-    
-    config, err := config.LoadString[SecureDBConfig](configYAML)
-    if err != nil {
-        return nil, err
-    }
-    
-    // 1. Establish SSH tunnel
-    logger.Info().Msg("Establishing SSH tunnel to database")
-    tunnel := ssh.New(config.SSH)
-    err = tunnel.Start()
-    if err != nil {
-        logger.Error().Err(err).Msg("Failed to start SSH tunnel")
-        return nil, err
-    }
-    
-    // 2. Connect to database through tunnel
-    logger.Info().Msg("Connecting to database through SSH tunnel")
-    database, err := config.Database.Pool()
-    if err != nil {
-        tunnel.Close()
-        logger.Error().Err(err).Msg("Failed to connect to database")
-        return nil, err
-    }
-    
-    logger.Info().Msg("Secure database connection established")
-    return database, nil
-}
-```
-
-### Background Worker with All Components
-
-```go
-package main
-
-import (
-    "context"
-    "time"
-
     "github.com/jasoet/pkg/concurrent"
     "github.com/jasoet/pkg/db"
     "github.com/jasoet/pkg/logging"
@@ -293,343 +167,567 @@ type WorkerService struct {
     logger    zerolog.Logger
 }
 
-func (w *WorkerService) ProcessBatch(ctx context.Context, jobIDs []int) error {
+func (w *WorkerService) ProcessJobsBatch(ctx context.Context, jobIDs []int) error {
     w.logger.Info().Int("job_count", len(jobIDs)).Msg("Starting batch processing")
     
-    // Process jobs concurrently
-    jobFunctions := make(map[string]concurrent.Func[ProcessResult])
+    // Create concurrent job processors
+    jobFunctions := make(map[string]concurrent.Func[JobResult])
     
     for _, jobID := range jobIDs {
         jobKey := fmt.Sprintf("job_%d", jobID)
         jobFunctions[jobKey] = w.createJobProcessor(jobID)
     }
     
+    // Execute all jobs concurrently
     results, err := concurrent.ExecuteConcurrently(ctx, jobFunctions)
     if err != nil {
         w.logger.Error().Err(err).Msg("Batch processing failed")
         return err
     }
     
-    // Update database with results
+    // Process results
+    successCount := 0
     for jobKey, result := range results {
-        err := w.updateJobStatus(ctx, result.JobID, result.Status)
-        if err != nil {
-            w.logger.Error().
-                Err(err).
-                Int("job_id", result.JobID).
-                Msg("Failed to update job status")
+        if result.Success {
+            successCount++
         }
+        w.logger.Info().
+            Str("job_key", jobKey).
+            Bool("success", result.Success).
+            Msg("Job completed")
     }
     
     w.logger.Info().
-        Int("total_jobs", len(jobIDs)).
-        Int("successful", len(results)).
+        Int("total", len(jobIDs)).
+        Int("successful", successCount).
         Msg("Batch processing completed")
     
     return nil
 }
 
-func (w *WorkerService) createJobProcessor(jobID int) concurrent.Func[ProcessResult] {
-    return func(ctx context.Context) (ProcessResult, error) {
-        jobLogger := logging.ContextLogger(ctx, "job-processor")
-        
-        // 1. Fetch job details from database
+func (w *WorkerService) createJobProcessor(jobID int) concurrent.Func[JobResult] {
+    return func(ctx context.Context) (JobResult, error) {
+        // 1. Fetch job from database
         var job Job
         err := w.db.WithContext(ctx).First(&job, jobID).Error
         if err != nil {
-            jobLogger.Error().Err(err).Int("job_id", jobID).Msg("Failed to fetch job")
-            return ProcessResult{}, err
+            return JobResult{Success: false}, err
         }
         
-        // 2. Call external API to process
+        // 2. Process via external API
         response, err := w.apiClient.MakeRequest(ctx, "POST", 
             "/process", job.Data, map[string]string{
                 "Content-Type": "application/json",
             })
         if err != nil {
-            jobLogger.Error().Err(err).Int("job_id", jobID).Msg("API call failed")
-            return ProcessResult{JobID: jobID, Status: "failed"}, err
+            return JobResult{Success: false}, err
         }
         
-        jobLogger.Info().
-            Int("job_id", jobID).
-            Int("status_code", response.StatusCode()).
-            Msg("Job processed successfully")
+        // 3. Update job status
+        job.Status = "completed"
+        job.ProcessedAt = time.Now()
+        w.db.WithContext(ctx).Save(&job)
         
-        return ProcessResult{JobID: jobID, Status: "completed"}, nil
+        return JobResult{Success: true, JobID: jobID}, nil
     }
+}
+
+type JobResult struct {
+    Success bool
+    JobID   int
+}
+
+type Job struct {
+    ID          int       `gorm:"primaryKey"`
+    Data        string    `gorm:"type:jsonb"`
+    Status      string    `gorm:"default:'pending'"`
+    ProcessedAt time.Time
 }
 ```
 
-## Quick Start Guide
+### 🔐 Secure Database Access
 
-### 1. Basic Setup
+Connect to databases through SSH tunnels:
 
 ```go
-// main.go
 package main
 
 import (
     "context"
+    
+    "github.com/jasoet/pkg/config"
+    "github.com/jasoet/pkg/db"
     "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/ssh"
 )
 
-func main() {
-    // Always start with logging initialization
-    logging.Initialize("my-app", true)
-    
-    ctx := context.Background()
-    logger := logging.ContextLogger(ctx, "main")
-    
-    logger.Info().Msg("Application started")
-    // Your application logic here...
-}
-```
-
-### 2. Add Configuration
-
-```go
-import "github.com/jasoet/pkg/config"
-
-type AppConfig struct {
-    Port     int    `yaml:"port" mapstructure:"port"`
-    LogLevel string `yaml:"logLevel" mapstructure:"logLevel"`
+type SecureDBConfig struct {
+    SSH      ssh.Config            `yaml:"ssh" mapstructure:"ssh"`
+    Database db.ConnectionConfig   `yaml:"database" mapstructure:"database"`
 }
 
-func loadConfig() (*AppConfig, error) {
-    return config.LoadString[AppConfig](`
-port: 8080
-logLevel: info
+func connectSecurely(ctx context.Context) (*gorm.DB, error) {
+    logger := logging.ContextLogger(ctx, "secure-db")
+    
+    // Load configuration
+    config, err := config.LoadString[SecureDBConfig](`
+ssh:
+  host: bastion.example.com
+  port: 22
+  user: deploy
+  privateKeyPath: ~/.ssh/id_rsa
+  remoteHost: internal-db.example.com
+  remotePort: 5432
+  localPort: 5433
+database:
+  dbType: POSTGRES
+  host: localhost
+  port: 5433  # Local tunnel port
+  username: dbuser
+  password: dbpass
+  dbName: production_db
 `)
-}
-```
-
-### 3. Add Database
-
-```go
-import "github.com/jasoet/pkg/db"
-
-func setupDatabase() (*gorm.DB, error) {
-    config := &db.ConnectionConfig{
-        DbType:   db.Postgresql,
-        Host:     "localhost",
-        Port:     5432,
-        Username: "user",
-        Password: "pass",
-        DbName:   "myapp",
+    if err != nil {
+        return nil, err
     }
     
-    return config.Pool()
+    // 1. Start SSH tunnel
+    logger.Info().Msg("Establishing SSH tunnel")
+    tunnel := ssh.New(config.SSH)
+    if err := tunnel.Start(); err != nil {
+        return nil, fmt.Errorf("failed to start SSH tunnel: %w", err)
+    }
+    
+    // 2. Connect to database through tunnel
+    logger.Info().Msg("Connecting to database through tunnel")
+    database, err := config.Database.Pool()
+    if err != nil {
+        tunnel.Close()
+        return nil, fmt.Errorf("failed to connect to database: %w", err)
+    }
+    
+    logger.Info().Msg("Secure database connection established")
+    return database, nil
 }
 ```
 
-### 4. Add HTTP Server
+### ⚡ Temporal Workflows
+
+Build robust, durable workflows:
 
 ```go
-import "github.com/jasoet/pkg/server"
+package main
 
-func startServer(port int) {
-    config := &server.Config{Port: port}
-    srv := server.New(config)
-    srv.Start(context.Background())
+import (
+    "context"
+    "fmt"
+    "time"
+    
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/temporal"
+    "go.temporal.io/sdk/workflow"
+    "go.temporal.io/sdk/activity"
+)
+
+// Order processing workflow
+func OrderProcessingWorkflow(ctx workflow.Context, orderID string) error {
+    logger := workflow.GetLogger(ctx)
+    logger.Info("Starting order processing", "orderID", orderID)
+    
+    // Configure activity options
+    activityOptions := workflow.ActivityOptions{
+        StartToCloseTimeout: 30 * time.Second,
+        RetryPolicy: &temporal.RetryPolicy{
+            MaximumAttempts: 3,
+        },
+    }
+    ctx = workflow.WithActivityOptions(ctx, activityOptions)
+    
+    // Step 1: Validate order
+    err := workflow.ExecuteActivity(ctx, ValidateOrderActivity, orderID).Get(ctx, nil)
+    if err != nil {
+        logger.Error("Order validation failed", "orderID", orderID, "error", err)
+        return err
+    }
+    
+    // Step 2: Process payment
+    var paymentID string
+    err = workflow.ExecuteActivity(ctx, ProcessPaymentActivity, orderID).Get(ctx, &paymentID)
+    if err != nil {
+        logger.Error("Payment processing failed", "orderID", orderID, "error", err)
+        return err
+    }
+    
+    // Step 3: Update inventory
+    err = workflow.ExecuteActivity(ctx, UpdateInventoryActivity, orderID).Get(ctx, nil)
+    if err != nil {
+        // Compensate: refund payment
+        workflow.ExecuteActivity(ctx, RefundPaymentActivity, paymentID)
+        return err
+    }
+    
+    // Step 4: Ship order
+    err = workflow.ExecuteActivity(ctx, ShipOrderActivity, orderID).Get(ctx, nil)
+    if err != nil {
+        // Compensate: restore inventory and refund
+        workflow.ExecuteActivity(ctx, RestoreInventoryActivity, orderID)
+        workflow.ExecuteActivity(ctx, RefundPaymentActivity, paymentID)
+        return err
+    }
+    
+    logger.Info("Order processing completed successfully", "orderID", orderID)
+    return nil
+}
+
+// Activities
+func ValidateOrderActivity(ctx context.Context, orderID string) error {
+    logger := activity.GetLogger(ctx)
+    logger.Info("Validating order", "orderID", orderID)
+    
+    // Your validation logic here
+    time.Sleep(1 * time.Second) // Simulate work
+    
+    return nil
+}
+
+func ProcessPaymentActivity(ctx context.Context, orderID string) (string, error) {
+    logger := activity.GetLogger(ctx)
+    logger.Info("Processing payment", "orderID", orderID)
+    
+    // Your payment processing logic here
+    time.Sleep(2 * time.Second) // Simulate work
+    
+    return fmt.Sprintf("payment_%s", orderID), nil
+}
+
+func UpdateInventoryActivity(ctx context.Context, orderID string) error {
+    logger := activity.GetLogger(ctx)
+    logger.Info("Updating inventory", "orderID", orderID)
+    
+    // Your inventory update logic here
+    time.Sleep(1 * time.Second) // Simulate work
+    
+    return nil
+}
+
+func ShipOrderActivity(ctx context.Context, orderID string) error {
+    logger := activity.GetLogger(ctx)
+    logger.Info("Shipping order", "orderID", orderID)
+    
+    // Your shipping logic here
+    time.Sleep(3 * time.Second) // Simulate work
+    
+    return nil
+}
+
+func RefundPaymentActivity(ctx context.Context, paymentID string) error {
+    logger := activity.GetLogger(ctx)
+    logger.Info("Refunding payment", "paymentID", paymentID)
+    
+    // Your refund logic here
+    return nil
+}
+
+func RestoreInventoryActivity(ctx context.Context, orderID string) error {
+    logger := activity.GetLogger(ctx)
+    logger.Info("Restoring inventory", "orderID", orderID)
+    
+    // Your inventory restoration logic here
+    return nil
+}
+
+// Worker setup
+func main() {
+    logging.Initialize("temporal-worker", true)
+    
+    // Create Temporal client
+    client, err := temporal.NewClient(temporal.ClientConfig{
+        HostPort: "localhost:7233",
+    })
+    if err != nil {
+        log.Fatal().Err(err).Msg("Failed to create Temporal client")
+    }
+    defer client.Close()
+    
+    // Create and start worker
+    worker := temporal.NewWorker(client, "order-processing-queue")
+    
+    // Register workflows and activities
+    worker.RegisterWorkflow(OrderProcessingWorkflow)
+    worker.RegisterActivity(ValidateOrderActivity)
+    worker.RegisterActivity(ProcessPaymentActivity)
+    worker.RegisterActivity(UpdateInventoryActivity)
+    worker.RegisterActivity(ShipOrderActivity)
+    worker.RegisterActivity(RefundPaymentActivity)
+    worker.RegisterActivity(RestoreInventoryActivity)
+    
+    // Start worker
+    err = worker.Run(context.Background())
+    if err != nil {
+        log.Fatal().Err(err).Msg("Worker failed")
+    }
 }
 ```
 
-## Packages Overview
+## 📖 Package Documentation
 
-### concurrent
+### Core Packages
 
-Utilities for executing functions concurrently with proper error handling and context cancellation.
+#### 🔧 [config](./config/)
+Type-safe YAML configuration with environment variable overrides.
 
-### db
+```go
+type Config struct {
+    Port     int    `yaml:"port" mapstructure:"port" validate:"min=1,max=65535"`
+    LogLevel string `yaml:"logLevel" mapstructure:"logLevel" validate:"oneof=debug info warn error"`
+}
 
-Database connection utilities supporting MySQL, PostgreSQL, and SQL Server with connection pooling and migrations.
-
-### logging
-
-Standardized logging setup using zerolog with context-aware logging capabilities.
-
-### rest
-
-HTTP client utilities with retry mechanisms, timeouts, and standardized error handling.
-
-### server
-
-HTTP server utilities using Echo framework with built-in metrics, logging, and health checks.
-
-### ssh
-
-SSH tunnel utilities for securely connecting to remote services.
-
-### temporal
-
-Utilities for working with Temporal workflow engine, including client creation, metrics reporting, and logging integration.
-
-## Troubleshooting
-
-### Common Issues
-
-#### Package Import Errors
-```bash
-# Ensure you're using the correct import path
-go mod tidy
+config, err := config.LoadString[Config](yamlString)
 ```
 
-#### Database Connection Issues
+#### 📝 [logging](./logging/)
+Structured logging with context awareness and performance optimization.
+
 ```go
-// Check connection configuration and network access
+logging.Initialize("service-name", true) // debug mode
+logger := logging.ContextLogger(ctx, "component")
+logger.Info().Str("user_id", "123").Msg("User created")
+```
+
+#### 🗄️ [db](./db/)
+Multi-database support with connection pooling and migrations.
+
+```go
 config := &db.ConnectionConfig{
-    DbType: db.Postgresql, // Ensure correct database type
-    Host:   "localhost",   // Verify host is accessible
-    Port:   5432,          // Check port is correct
+    DbType: db.Postgresql,
+    Host:   "localhost",
+    Port:   5432,
     // ... other config
 }
+database, err := config.Pool()
 ```
 
-#### SSH Tunnel Connection Problems
-- Verify SSH server is accessible
-- Check SSH credentials and permissions
-- Ensure remote service is running and accessible from SSH server
-- Verify local port is not already in use
+#### 🌐 [server](./server/)
+HTTP server with built-in health checks, metrics, and graceful shutdown.
 
-#### HTTP Client Timeout Issues
 ```go
-// Adjust timeout configuration based on your needs
-config := &rest.Config{
-    Timeout: 30 * time.Second, // Increase for slow APIs
-    RetryCount: 3,             // Adjust retry behavior
+config := server.Config{
+    Port: 8080,
+    EchoConfigurer: func(e *echo.Echo) {
+        e.GET("/api/hello", helloHandler)
+    },
 }
+server.StartWithConfig(config)
 ```
 
-### Performance Tips
+#### 🌍 [rest](./rest/)
+HTTP client with retries, timeouts, and middleware support.
 
-1. **Database Connections**: Configure connection pools appropriately
-2. **HTTP Clients**: Reuse clients instead of creating new ones for each request
-3. **Concurrent Operations**: Use the concurrent package for I/O-bound operations
-4. **Logging**: Use appropriate log levels in production (avoid debug)
+```go
+client := rest.NewClient()
+response, err := client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+```
 
-### Getting Help
+#### ⚡ [concurrent](./concurrent/)
+Type-safe concurrent execution with generics.
 
-- Check package-specific README files in each `examples/` directory
-- Review the comprehensive examples provided
-- Use the logging package to debug issues with structured logging
+```go
+functions := map[string]concurrent.Func[string]{
+    "api1": func(ctx context.Context) (string, error) { /* ... */ },
+    "api2": func(ctx context.Context) (string, error) { /* ... */ },
+}
+results, err := concurrent.ExecuteConcurrently(ctx, functions)
+```
 
-## Roadmap
+#### 🔄 [temporal](./temporal/)
+Temporal workflow integration with monitoring and logging.
 
-- [x] Integration with GitHub Actions for CI/CD
-- [x] Automated versioning using semantic-release
-- [x] Comprehensive examples and documentation
-- [x] Package integration patterns
-- [ ] Unit testing coverage improvements
-- [ ] Additional database drivers support
-- [ ] Performance benchmarks and optimization guides
-- [ ] Advanced middleware examples
-- [ ] Distributed tracing integration
+```go
+client, err := temporal.NewClient(temporal.ClientConfig{HostPort: "localhost:7233"})
+worker := temporal.NewWorker(client, "task-queue")
+worker.RegisterWorkflow(MyWorkflow)
+```
 
-## Semantic Versioning
+#### 🔐 [ssh](./ssh/)
+SSH tunneling for secure remote connections.
 
-This project uses [semantic-release](https://github.com/semantic-release/semantic-release) for automated versioning and CHANGELOG generation. The versioning process is triggered automatically when commits are pushed to the main branch.
+```go
+config := ssh.Config{
+    Host: "bastion.example.com",
+    Port: 22,
+    User: "deploy",
+    // ... other config
+}
+tunnel := ssh.New(config)
+err := tunnel.Start()
+```
 
-### How it works
+#### 📦 [compress](./compress/)
+File compression with security validation.
 
-1. When code is pushed to the main branch, GitHub Actions runs the tests
-2. If tests pass, semantic-release analyzes the commit messages
-3. Based on the commit messages, it determines the next version number
-4. A new GitHub release is created with release notes
-5. The CHANGELOG.md file is updated with the release notes
-6. Changes are committed back to the repository
+```go
+err := compress.CreateZip("output.zip", []string{"file1.txt", "file2.txt"})
+err := compress.ExtractZip("archive.zip", "output/directory")
+```
+
+## 🎭 Examples & Templates
+
+### Running Examples
+
+Examples are isolated with build tags. To run them:
+
+```bash
+# Run specific examples
+go run -tags=example ./logging/examples
+go run -tags=example ./db/examples
+go run -tags=example ./server/examples
+
+# Build all examples
+go build -tags=example ./...
+```
+
+### Project Templates
+
+Bootstrap new projects with our templates:
+
+```bash
+# Copy a template to start a new project
+cp -r templates/web-service my-new-service
+cd my-new-service
+
+# Initialize as new module
+go mod init my-new-service
+go mod tidy
+
+# Build and run
+go build -tags=template .
+./my-new-service
+```
+
+Available templates:
+- **web-service**: Complete REST API with database
+- **worker**: Background job processor
+- **cli-app**: Command-line application
+
+## 🔧 Development
+
+### Prerequisites
+
+- Go 1.23+
+- [Mage](https://magefile.org/) for build automation
+- Docker & Docker Compose for services
+
+### Development Commands
+
+```bash
+# Development environment
+mage docker:up          # Start PostgreSQL and other services
+mage test              # Run unit tests
+mage integrationTest   # Run integration tests
+mage lint              # Run linter
+mage security          # Security analysis
+mage coverage          # Generate coverage report
+
+# Docker services management
+mage docker:down       # Stop services
+mage docker:restart    # Restart services
+mage docker:logs       # View service logs
+
+# Quality checks
+mage checkall          # Run all quality checks
+mage dependencies      # Check for vulnerabilities
+mage docs              # Generate documentation
+```
+
+### Database Configuration
+
+PostgreSQL is available for testing:
+- **Host**: localhost:5439
+- **Username**: jasoet
+- **Password**: localhost
+- **Database**: pkg_db
+
+## 🤝 Contributing
+
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Quick Contribution Guide
+
+1. **Fork & Clone**
+   ```bash
+   git clone https://github.com/your-username/pkg.git
+   cd pkg
+   ```
+
+2. **Setup Development Environment**
+   ```bash
+   mage docker:up
+   mage test
+   ```
+
+3. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+4. **Make Changes & Test**
+   ```bash
+   mage test
+   mage lint
+   mage integrationTest
+   ```
+
+5. **Commit with Conventional Commits**
+   ```bash
+   git commit -m "feat: add new feature"
+   git commit -m "fix: resolve issue"
+   git commit -m "docs: update README"
+   ```
+
+6. **Push & Create PR**
+   ```bash
+   git push origin feature/your-feature-name
+   # Create pull request on GitHub
+   ```
 
 ### Commit Message Format
 
-This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification. Your commit messages should be structured as follows:
+We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-<type>(<optional scope>): <description>
+<type>(<scope>): <description>
 
 [optional body]
 
-[optional footer(s)]
+[optional footer]
 ```
 
-Types that trigger version updates:
-- `feat`: A new feature (minor version bump)
-- `fix`: A bug fix (patch version bump)
-- `perf`: A performance improvement (patch version bump)
-- `docs`: Documentation changes (no version bump unless scope is README)
-- `style`: Changes that do not affect the meaning of the code (no version bump)
-- `refactor`: Code changes that neither fix a bug nor add a feature (patch version bump)
-- `test`: Adding or correcting tests (patch version bump)
-- `build`: Changes to the build system or dependencies (no version bump)
-- `ci`: Changes to CI configuration files and scripts (no version bump)
-- `chore`: Other changes that don't modify src or test files (patch version bump)
+**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+**Breaking Changes**: Add `!` after type or `BREAKING CHANGE:` in footer
 
-Breaking changes (major version bump) are indicated by:
-- Adding `BREAKING CHANGE:` in the commit message body
-- Adding a `!` after the type/scope (e.g., `feat!: introduce breaking API change`)
+## 📈 Roadmap
 
-### GitHub Repository Settings
+- [x] **Core Packages**: All essential utilities implemented
+- [x] **Integration Examples**: Real-world usage patterns
+- [x] **Build Automation**: Mage-based development workflow
+- [x] **CI/CD Pipeline**: Automated testing and releases
+- [x] **Comprehensive Documentation**: Examples and guides
+- [ ] **Performance Benchmarks**: Optimization guides and metrics
+- [ ] **Distributed Tracing**: OpenTelemetry integration
+- [ ] **Additional Database Drivers**: MongoDB, Redis support
+- [ ] **Cloud Provider Integrations**: AWS, GCP, Azure utilities
+- [ ] **Kubernetes Helpers**: Service discovery, health checks
 
-For semantic-release to work properly, ensure:
+## 📄 License
 
-1. The repository has a `GITHUB_TOKEN` secret (automatically provided by GitHub Actions)
-2. Branch protection rules are set up for the main branch (optional but recommended)
-3. The GitHub Actions workflow has permission to write to the repository
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
+---
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+<div align="center">
 
-### Development Guidelines
+**[⬆ Back to Top](#-go-utility-packages)**
 
-1. **Branching Strategy**
-   - `main` branch is the stable release branch
-   - Create feature branches from `main` using the format `feature/your-feature-name`
-   - Create bugfix branches using the format `bugfix/issue-description`
+Made with ❤️ by [Jasoet](https://github.com/jasoet)
 
-2. **Code Style**
-   - Run `mage lint` to ensure code follows the project's style guidelines
-   - All code should be properly documented with comments
-
-3. **Testing**
-   - Run `mage test` to run unit tests
-   - Run `mage integrationTest` to run integration tests (requires Docker)
-   - Aim for high test coverage for all new code
-
-4. **Commit Messages**
-   - Follow [Conventional Commits](https://www.conventionalcommits.org/) format
-   - This will be used for automated versioning in the future
-
-### Development Setup
-
-The project uses [Mage](https://magefile.org/) for build automation and Docker Compose for local development services, including PostgreSQL.
-
-#### Setting up the development environment:
-
-1. Start the Docker Compose services:
-   ```bash
-   mage docker:up
-   ```
-   This will start PostgreSQL and any other services defined in the docker-compose.yml file.
-
-2. Common Mage commands:
-   ```bash
-   mage test           # Run unit tests
-   mage lint           # Run linter
-   mage docker:logs    # View logs from Docker services
-   mage docker:down    # Stop Docker services
-   mage docker:restart # Restart Docker services
-   mage integrationTest # Run integration tests (automatically starts Docker services)
-   ```
-
-#### PostgreSQL Configuration:
-- Host: localhost
-- Port: 5439 (mapped from container's 5432)
-- Username: jasoet
-- Password: localhost
-- Database: pkg_db
-
-The PostgreSQL container is configured to automatically load SQL files from the `scripts/compose/pg/backup` directory during initialization.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+</div>
