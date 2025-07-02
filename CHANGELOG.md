@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/jasoet/pkg/compare/v1.2.0...v1.2.1) (2025-07-02)
+
+### Chores
+
+* **tests:** remove redundant test cases and improve order failure simulation ([48c7eae](https://github.com/jasoet/pkg/commit/48c7eae3bb9226c44e6126c084c918349b9293e0))
+
 ## [1.2.0](https://github.com/jasoet/pkg/compare/v1.1.4...v1.2.0) (2025-07-02)
 
 ### Features
