@@ -272,7 +272,7 @@ func TestEchoConfigurer(t *testing.T) {
 	// Custom error handler for testing
 	customErrorHandler := func(err error, c echo.Context) {
 		customErrorHandlerCalled = true
-		c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		_ = c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	// Create a configurer that sets a custom error handler

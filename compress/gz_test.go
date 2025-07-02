@@ -1,7 +1,6 @@
 package compress
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -13,7 +12,7 @@ func TestGz(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationFile, err := ioutil.TempFile("/tmp", "test-gz")
+	destinationFile, err := os.CreateTemp("/tmp", "test-gz")
 	assert.Nil(t, err)
 	err = Gz(archiveReader, destinationFile)
 	assert.Nil(t, err)
@@ -21,7 +20,8 @@ func TestGz(t *testing.T) {
 	readFile, err := os.Open(destinationFile.Name())
 	assert.Nil(t, err)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-gs")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-gs")
+	assert.Nil(t, err)
 	_, err = UnTarGz(readFile, destinationDir)
 	assert.Nil(t, err)
 }
@@ -31,7 +31,7 @@ func TestUnGz(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, archiveReader)
 
-	destinationFile, err := ioutil.TempFile("/tmp", "test-gz")
+	destinationFile, err := os.CreateTemp("/tmp", "test-gz")
 	assert.Nil(t, err)
 	_, err = UnGz(archiveReader, destinationFile.Name())
 	assert.Nil(t, err)
@@ -39,7 +39,8 @@ func TestUnGz(t *testing.T) {
 	readFile, err := os.Open(destinationFile.Name())
 	assert.Nil(t, err)
 
-	destinationDir, err := ioutil.TempDir("/tmp", "test-gs")
+	destinationDir, err := os.MkdirTemp("/tmp", "test-gs")
+	assert.Nil(t, err)
 	_, err = UnTar(readFile, destinationDir)
 	assert.Nil(t, err)
 }

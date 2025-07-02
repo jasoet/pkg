@@ -61,3 +61,53 @@ func (m *LoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) 
 		logger.Info().Msg("Request completed")
 	}
 }
+
+// NoOpMiddleware is a middleware that does nothing - useful for testing and as a placeholder
+type NoOpMiddleware struct{}
+
+// NewNoOpMiddleware creates a new NoOpMiddleware instance
+func NewNoOpMiddleware() *NoOpMiddleware {
+	return &NoOpMiddleware{}
+}
+
+// BeforeRequest does nothing and returns the context unchanged
+func (m *NoOpMiddleware) BeforeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) context.Context {
+	return ctx
+}
+
+// AfterRequest does nothing
+func (m *NoOpMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
+	// No-op
+}
+
+// DatabaseLoggingMiddleware logs HTTP requests and responses to a database (placeholder implementation)
+type DatabaseLoggingMiddleware struct{}
+
+// NewDatabaseLoggingMiddleware creates a new DatabaseLoggingMiddleware instance  
+func NewDatabaseLoggingMiddleware() *DatabaseLoggingMiddleware {
+	return &DatabaseLoggingMiddleware{}
+}
+
+// BeforeRequest stores the start time in context for later use
+func (m *DatabaseLoggingMiddleware) BeforeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) context.Context {
+	return context.WithValue(ctx, requestStartTimeKeyValue, time.Now())
+}
+
+// AfterRequest logs the request to database (placeholder - just logs to console for now)
+func (m *DatabaseLoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
+	// TODO: Implement actual database logging
+	// For now, just log to console similar to LoggingMiddleware
+	logger := log.With().Ctx(ctx).
+		Str("middleware", "database").
+		Str("method", info.Method).
+		Str("url", info.URL).
+		Int("status_code", info.StatusCode).
+		Dur("duration", info.Duration).
+		Logger()
+
+	if info.Error != nil {
+		logger.Error().Err(info.Error).Msg("Request failed (would log to database)")
+	} else {
+		logger.Info().Msg("Request completed (would log to database)")
+	}
+}

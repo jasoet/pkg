@@ -40,6 +40,33 @@ func IntegrationTest() error {
 	return cmd.Run()
 }
 
+// TemporalTest runs temporal integration tests with Temporal server
+func TemporalTest() error {
+	fmt.Println("Running Temporal integration tests...")
+
+	temporal := Temporal{}
+	if err := temporal.Up(); err != nil {
+		return fmt.Errorf("failed to start Temporal services: %w", err)
+	}
+
+	fmt.Println("Waiting for Temporal server to initialize...")
+	time.Sleep(10 * time.Second)
+
+	cmd := exec.Command("go", "test", "-count=1", "-tags=integration", "-timeout=10m", "./temporal/...")
+	cmd.Env = append(os.Environ(), "TEMPORAL_INTEGRATION=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+
+	// Clean up Temporal services
+	fmt.Println("Cleaning up Temporal services...")
+	if cleanupErr := temporal.Down(); cleanupErr != nil {
+		fmt.Printf("Warning: Failed to clean up Temporal services: %v\n", cleanupErr)
+	}
+
+	return err
+}
+
 func Lint() error {
 	fmt.Println("Running linter...")
 
@@ -54,6 +81,7 @@ func Lint() error {
 }
 
 type Docker mg.Namespace
+type Temporal mg.Namespace
 
 func (d Docker) Up() error {
 	fmt.Println("Starting Docker Compose services...")
@@ -88,6 +116,41 @@ func (d Docker) Restart() error {
 		return err
 	}
 	return d.Up()
+}
+
+func (t Temporal) Up() error {
+	fmt.Println("Starting Temporal services...")
+	cmd := exec.Command("docker", "compose", "-f", "temporal-compose.yml", "up", "-d")
+	cmd.Dir = "scripts/compose"
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (t Temporal) Down() error {
+	fmt.Println("Stopping Temporal services...")
+	cmd := exec.Command("docker", "compose", "-f", "temporal-compose.yml", "down", "-v")
+	cmd.Dir = "scripts/compose"
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (t Temporal) Logs() error {
+	fmt.Println("Showing Temporal logs...")
+	cmd := exec.Command("docker", "compose", "-f", "temporal-compose.yml", "logs", "-f")
+	cmd.Dir = "scripts/compose"
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (t Temporal) Restart() error {
+	fmt.Println("Restarting Temporal services...")
+	if err := t.Down(); err != nil {
+		return err
+	}
+	return t.Up()
 }
 
 func Clean() error {

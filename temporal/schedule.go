@@ -20,24 +20,39 @@ type ScheduleManager struct {
 	scheduleHandlers map[string]client.ScheduleHandle
 }
 
-func NewScheduleManager(config *Config) (*ScheduleManager, error) {
+func NewScheduleManager(clientOrConfig interface{}) *ScheduleManager {
 	logger := log.With().Str("function", "temporal.NewScheduleManager").Logger()
-	logger.Debug().
-		Str("hostPort", config.HostPort).
-		Str("namespace", config.Namespace).
-		Msg("Creating new Schedule Manager")
 
-	temporalClient, err := NewClientWithMetrics(config, false)
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create Temporal client for Schedule Manager")
-		return nil, err
+	var temporalClient client.Client
+
+	switch v := clientOrConfig.(type) {
+	case client.Client:
+		// If passed a client directly, use it
+		temporalClient = v
+		logger.Debug().Msg("Using provided Temporal client for Schedule Manager")
+	case *Config:
+		// If passed a config, create a new client
+		logger.Debug().
+			Str("hostPort", v.HostPort).
+			Str("namespace", v.Namespace).
+			Msg("Creating new Schedule Manager with config")
+
+		var err error
+		temporalClient, err = NewClientWithMetrics(v, false)
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to create Temporal client for Schedule Manager")
+			return nil
+		}
+	default:
+		logger.Error().Msg("Invalid argument type for NewScheduleManager")
+		return nil
 	}
 
 	logger.Debug().Msg("Schedule Manager created successfully")
 	return &ScheduleManager{
 		client:           temporalClient,
 		scheduleHandlers: make(map[string]client.ScheduleHandle),
-	}, nil
+	}
 }
 
 func (sm *ScheduleManager) Close() {
@@ -52,7 +67,38 @@ func (sm *ScheduleManager) Close() {
 	logger.Debug().Msg("Schedule Manager closed")
 }
 
-func (sm *ScheduleManager) CreateSchedule(ctx context.Context, options client.ScheduleOptions) (client.ScheduleHandle, error) {
+func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) (client.ScheduleHandle, error) {
+	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.CreateSchedule").Logger()
+	logger.Debug().
+		Str("scheduleID", scheduleID).
+		Msg("Creating schedule")
+
+	options := client.ScheduleOptions{
+		ID:     scheduleID,
+		Spec:   spec,
+		Action: action,
+	}
+
+	sh, err := sm.client.ScheduleClient().Create(ctx, options)
+	if err != nil {
+		logger.Error().Err(err).
+			Str("scheduleID", scheduleID).
+			Msg("Failed to create schedule")
+		return nil, err
+	}
+
+	logger.Debug().
+		Str("scheduleID", scheduleID).
+		Msg("Adding schedule to handlers map")
+	sm.scheduleHandlers[scheduleID] = sh
+
+	logger.Debug().
+		Str("scheduleID", scheduleID).
+		Msg("Schedule created successfully")
+	return sh, nil
+}
+
+func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, options client.ScheduleOptions) (client.ScheduleHandle, error) {
 	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.CreateSchedule").Logger()
 	logger.Debug().
 		Str("scheduleName", options.ID).
@@ -103,7 +149,7 @@ func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleN
 		},
 	}
 
-	handle, err := sm.CreateSchedule(ctx, scheduleOptions)
+	handle, err := sm.CreateScheduleWithOptions(ctx, scheduleOptions)
 	if err != nil {
 		logger.Error().Err(err).
 			Str("scheduleName", scheduleName).
@@ -153,4 +199,101 @@ func (sm *ScheduleManager) GetClient() client.Client {
 
 func (sm *ScheduleManager) GetScheduleHandlers() map[string]client.ScheduleHandle {
 	return sm.scheduleHandlers
+}
+
+// GetSchedule retrieves a schedule handle by ID
+func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (client.ScheduleHandle, error) {
+	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.GetSchedule").Logger()
+	logger.Debug().Str("scheduleID", scheduleID).Msg("Getting schedule")
+
+	handle := sm.client.ScheduleClient().GetHandle(ctx, scheduleID)
+
+	// Test if the schedule exists by trying to describe it
+	_, err := handle.Describe(ctx)
+	if err != nil {
+		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to get schedule")
+		return nil, err
+	}
+
+	logger.Debug().Str("scheduleID", scheduleID).Msg("Schedule retrieved successfully")
+	return handle, nil
+}
+
+// ListSchedules lists all schedules with a limit
+func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*client.ScheduleListEntry, error) {
+	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.ListSchedules").Logger()
+	logger.Debug().Int("limit", limit).Msg("Listing schedules")
+
+	scheduleClient := sm.client.ScheduleClient()
+
+	var schedules []*client.ScheduleListEntry
+	iter, err := scheduleClient.List(ctx, client.ScheduleListOptions{
+		PageSize: limit,
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create schedule list iterator")
+		return nil, err
+	}
+
+	for iter.HasNext() {
+		schedule, err := iter.Next()
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to get next schedule from iterator")
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+
+		if len(schedules) >= limit {
+			break
+		}
+	}
+
+	logger.Debug().Int("count", len(schedules)).Msg("Schedules listed successfully")
+	return schedules, nil
+}
+
+// UpdateSchedule updates an existing schedule
+func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) error {
+	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.UpdateSchedule").Logger()
+	logger.Debug().Str("scheduleID", scheduleID).Msg("Updating schedule")
+
+	handle := sm.client.ScheduleClient().GetHandle(ctx, scheduleID)
+
+	err := handle.Update(ctx, client.ScheduleUpdateOptions{
+		DoUpdate: func(input client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
+			return &client.ScheduleUpdate{
+				Schedule: &client.Schedule{
+					Spec:   &spec,
+					Action: action,
+				},
+			}, nil
+		},
+	})
+
+	if err != nil {
+		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to update schedule")
+		return err
+	}
+
+	logger.Debug().Str("scheduleID", scheduleID).Msg("Schedule updated successfully")
+	return nil
+}
+
+// DeleteSchedule deletes a specific schedule by ID
+func (sm *ScheduleManager) DeleteSchedule(ctx context.Context, scheduleID string) error {
+	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.DeleteSchedule").Logger()
+	logger.Debug().Str("scheduleID", scheduleID).Msg("Deleting schedule")
+
+	handle := sm.client.ScheduleClient().GetHandle(ctx, scheduleID)
+	err := handle.Delete(ctx)
+	if err != nil {
+		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to delete schedule")
+		return err
+	}
+
+	// Remove from local handlers map if it exists
+	delete(sm.scheduleHandlers, scheduleID)
+
+	logger.Debug().Str("scheduleID", scheduleID).Msg("Schedule deleted successfully")
+	return nil
 }
