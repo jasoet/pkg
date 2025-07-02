@@ -216,3 +216,4 @@ aof/
 
 .env.prod
 .secret
+temporal.db
