@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/jasoet/pkg/compare/v1.1.1...v1.1.2) (2025-07-02)
+
+### Chores
+
+* remove Gitpod configuration and unused server examples ([7578588](https://github.com/jasoet/pkg/commit/757858844f4b3ad4a8bd3da492493202badfa98f))
+
 ## [1.1.1](https://github.com/jasoet/pkg/compare/v1.1.0...v1.1.1) (2025-07-02)
 
 ### Documentation
