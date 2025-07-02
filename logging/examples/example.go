@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/jasoet/pkg/logging"
@@ -189,7 +188,7 @@ func errorLoggingExample() {
 	logger := logging.ContextLogger(ctx, "error-handling")
 
 	// Simulate different types of errors
-	errors := []struct {
+	errorCases := []struct {
 		err       error
 		operation string
 		context   map[string]interface{}
@@ -211,7 +210,7 @@ func errorLoggingExample() {
 		},
 	}
 
-	for _, errInfo := range errors {
+	for _, errInfo := range errorCases {
 		logger.Error().
 			Err(errInfo.err).
 			Str("operation", errInfo.operation).
@@ -501,7 +500,8 @@ func userServiceExample(ctx context.Context) {
 	// Simulate cache operation
 	cacheStart := time.Now()
 	// cache.Set(userKey, user) - simulated
-	cacheDuration := 5 * time.Millisecond
+	time.Sleep(5 * time.Millisecond) // Simulate cache operation
+	cacheDuration := time.Since(cacheStart)
 
 	logger.Debug().
 		Int("user_id", user.ID).
@@ -529,12 +529,13 @@ func apiClientExample(ctx context.Context) {
 	start := time.Now()
 
 	// Simulate API call
+	time.Sleep(250 * time.Millisecond) // Simulate API call duration
 	response := APIResponse{
 		Status:    "success",
 		Data:      []User{{ID: 1, Name: "API User", Email: "api@example.com"}},
 		Timestamp: time.Now(),
 	}
-	duration := 250 * time.Millisecond
+	duration := time.Since(start)
 
 	logger.Info().
 		Str("url", apiURL).

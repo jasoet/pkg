@@ -61,6 +61,10 @@ func basicTunnelExample() {
 		config.User, config.Host, config.Port,
 		config.LocalPort, config.RemoteHost, config.RemotePort)
 
+	fmt.Printf("Created tunnel instance: %T\n", tunnel)
+
+	// Note: Actual connection would require valid SSH server
+	fmt.Println("✓ SSH tunnel configu
 	// Note: Actual connection would require valid SSH server
 	fmt.Println("✓ SSH tunnel configuration created (connection not attempted in example)")
 }
@@ -84,6 +88,9 @@ func databaseTunnelExample() {
 		tunnelConfig.User, tunnelConfig.Host,
 		tunnelConfig.RemoteHost, tunnelConfig.RemotePort)
 
+, tunnel)
+
+	// In
 	// Create tunnel
 	tunnel := ssh.New(tunnelConfig)
 
@@ -162,6 +169,10 @@ func multipleTunnelsExample() {
 	services := []string{"PostgreSQL", "Redis", "Web API"}
 
 	fmt.Println("Tunnel configurations:")
+alhost:%d\n", service, []int{5433, 6380, 8081}[i])
+	}
+
+	fmt.Printf("Created %d tunnel instances\n", len(tunne
 	for i, service := range services {
 		fmt.Printf("- %s: localhost:%d\n", service, []int{5433, 6380, 8081}[i])
 	}
@@ -202,7 +213,7 @@ timeout: 30s
 		log.Printf("Failed to parse YAML config: %v", err)
 		return
 	}
-
+	fmt.Printf("✓ SSH tunnel created from YAML configuration: %T\n", tunnel)
 	fmt.Printf("Loaded config: %s@%s:%d -> localhost:%d -> %s:%d (timeout: %v)\n",
 		config.User, config.Host, config.Port,
 		config.LocalPort, config.RemoteHost, config.RemotePort, config.Timeout)
@@ -237,6 +248,7 @@ func errorHandlingExample() {
 		User:       getEnvOrDefault("SSH_USER", "testuser"),
 		Password:   getEnvOrDefault("SSH_PASSWORD", "wrongpassword"),
 		RemoteHost: "localhost",
+"Attempting to star
 		RemotePort: 5432,
 		LocalPort:  5433,
 		Timeout:    5 * time.Second,

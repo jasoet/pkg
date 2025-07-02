@@ -7,7 +7,13 @@
       "Bash(go mod:*)",
       "Bash(grep:*)",
       "Bash(go list:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(gofmt:*)",
+      "Bash(./example)",
+      "Bash(go run:*)",
+      "Bash(touch:*)"
     ],
     "deny": []
   }

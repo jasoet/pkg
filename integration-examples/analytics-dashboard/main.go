@@ -1,3 +1,5 @@
+//go:build example
+
 package main
 
 import (
@@ -6,9 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/jasoet/pkg/concurrent"

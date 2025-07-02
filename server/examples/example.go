@@ -3,22 +3,16 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/jasoet/pkg/logging"
 	"github.com/jasoet/pkg/server"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog"
 )
 
 // Example data structures
@@ -266,9 +260,9 @@ func testCustomEndpoints(port int, config *server.Config) {
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
 
 	endpoints := []string{
-		config.HealthPath,
-		config.ReadyPath,
-		config.LivePath,
+		"/health",
+		"/health/ready",
+		"/health/live",
 		config.MetricsPath,
 	}
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -606,7 +605,7 @@ func integrationExample() {
 	userService := &UserService{
 		client:  client,
 		baseURL: server.URL,
-		logger:  logger,
+		logger:  &logger,
 	}
 
 	// Use the service
@@ -683,7 +682,7 @@ func productionPatternsExample() {
 type UserService struct {
 	client  *rest.Client
 	baseURL string
-	logger  logger
+	logger  *zerolog.Logger
 }
 
 func (s *UserService) GetUsers(ctx context.Context) ([]User, error) {
