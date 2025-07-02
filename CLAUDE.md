@@ -11,11 +11,14 @@ This project uses [Mage](https://magefile.org/) for build automation. Common com
 # Run unit tests
 mage test
 
-# Run integration tests (starts Docker services automatically)
+# Run database integration tests (starts PostgreSQL/MySQL/MSSQL automatically)
 mage integrationTest
 
 # Run Temporal integration tests (starts Temporal server automatically)
 mage temporalTest
+
+# Run all integration tests (database + temporal)
+mage allIntegrationTests
 
 # Run linter (installs golangci-lint if not present)
 mage lint
@@ -66,8 +69,8 @@ mage temporal:restart # Restart Temporal services
 - **Temporal UI**: localhost:8233 (when running temporal tests)
 - **Docker Compose**: Services defined in `scripts/compose/docker-compose.yml`
 - **Temporal Compose**: Services defined in `scripts/compose/temporal-compose.yml`
-- **Integration Tests**: Use `AUTOMATION=true` environment variable and `-tags=integration`
-- **Temporal Tests**: Use `TEMPORAL_INTEGRATION=true` environment variable and `-tags=integration`
+- **Database Integration Tests**: Use `AUTOMATION=true` environment variable and `-tags=integration`
+- **Temporal Integration Tests**: Use `TEMPORAL_INTEGRATION=true` environment variable and `-tags=temporal`
 
 ## Architecture Overview
 
