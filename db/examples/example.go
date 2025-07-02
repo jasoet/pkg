@@ -4,11 +4,9 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -19,7 +17,6 @@ import (
 
 // Embed migration files for examples
 //
-//go:embed migrations/*.
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
@@ -33,22 +30,22 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Product struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Name        string    `gorm:"not null" json:"name"`
 	Description string    `json:"description"`
 	Price       float64   `gorm:"not null" json:"price"`
 	Stock       int       `gorm:"default:0" json:"stock"`
-	Stock       int     `gorm:"default:0" json:"stock"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type Order struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserID    uint      `gorm:"not null" json:"user_id"`
 	User      User      `gorm:"foreignKey:UserID" json:"user"`
 	Total     float64   `gorm:"not null" json:"total"`
 	Status    string    `gorm:"default:'pending'" json:"status"`
-	Status   string    `gorm:"default:'pending'" json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -208,8 +205,6 @@ func connectionPoolExample(ctx context.Context) {
 				logger.Warn().Err(err).Str("env", env).Msg("Failed to connect")
 				fmt.Printf("  ✗ Connection failed (expected for demo)\n")
 			} else {
-
-
 				// Demonstrate connection pool usage
 				demonstrateConnectionPool(ctx, database)
 			}
@@ -224,8 +219,6 @@ func demonstrateConnectionPool(ctx context.Context, database *gorm.DB) {
 	if err != nil {
 		return
 	}
-
-
 
 	// Show initial stats
 	stats := sqlDB.Stats()
@@ -300,17 +293,16 @@ func migrationExample(ctx context.Context) {
 	fmt.Println("   └── 002_add_users_table.down.sql")
 
 	// Demonstrate the migration function call (would fail without actual files)
-		logger.Info().Msg("Running database migrations")
-		err = db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, "migrations")
-		if err != nil {
-			logger.Error().Err(err).Msg("Migration failed")
-			fmt.Printf("✗ Migration failed: %v\n", err)
-			return
-		}
-		logger.Info().Msg("Migrations completed successfully")
-		fmt.Println("✓ Migrations completed successfully")
+	logger.Info().Msg("Running database migrations")
+	err = db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, "migrations")
+	if err != nil {
+		logger.Error().Err(err).Msg("Migration failed")
+		fmt.Printf("✗ Migration failed: %v\n", err)
+		return
+	}
+	logger.Info().Msg("Migrations completed successfully")
 	fmt.Println("✓ Migrations completed successfully")
-	*/
+	fmt.Println("✓ Migrations completed successfully")
 
 	fmt.Println("✓ Migration example completed (conceptual)")
 }
@@ -356,9 +348,6 @@ func multipleConnectionsExample(ctx context.Context) {
 
 	for name, config := range databases {
 
-
-
-
 		// Only connect to primary database for demo
 		if name == "primary" {
 			database, err := config.Pool()
@@ -366,12 +355,11 @@ func multipleConnectionsExample(ctx context.Context) {
 				logger.Error().Err(err).Str("database", name).Msg("Connection failed")
 				fmt.Printf("✗ %s connection failed: %v\n", name, err)
 				continue
-
-
+			}
 			connections[name] = database
 			logger.Info().Str("database", name).Msg("Connection successful")
 			fmt.Printf("✓ %s connection successful\n", name)
-			fmt.Printf("ℹ %s connection skipped for demo (would connect to %s:%d)\n",
+		} else {
 			fmt.Printf("ℹ %s connection skipped for demo (would connect to %s:%d)\n",
 				name, config.Host, config.Port)
 		}
@@ -397,8 +385,6 @@ func demonstrateMultiDBOperations(ctx context.Context, primaryDB *gorm.DB) {
 		logger.Error().Err(err).Msg("Auto-migration failed")
 		return
 	}
-
-
 
 	// Create sample data
 	user := User{Name: "John Doe", Email: "john@example.com"}
@@ -448,7 +434,6 @@ func gormOperationsExample(ctx context.Context) {
 
 	// Create operations
 
-
 	// Create users
 	users := []User{
 		{Name: "Alice Johnson", Email: "alice@example.com"},
@@ -476,14 +461,13 @@ func gormOperationsExample(ctx context.Context) {
 		result := database.Create(&product)
 		if result.Error != nil {
 			logger.Error().Err(result.Error).Str("name", product.Name).Msg("Failed to create product")
-			fmt.Printf("✓ Created product: %s (ID: %d, Price: $%.2f)\n",
+		} else {
 			fmt.Printf("✓ Created product: %s (ID: %d, Price: $%.2f)\n",
 				product.Name, product.ID, product.Price)
 		}
 	}
 
 	// Read operations
-
 
 	var allUsers []User
 	database.Find(&allUsers)
@@ -499,7 +483,6 @@ func gormOperationsExample(ctx context.Context) {
 
 	// Update operations
 
-
 	if len(allUsers) > 0 {
 		user := allUsers[0]
 		database.Model(&user).Update("Email", "newemail@example.com")
@@ -511,7 +494,6 @@ func gormOperationsExample(ctx context.Context) {
 	fmt.Println("✓ Restocked products with low inventory")
 
 	// Delete operations (soft delete since we have gorm.Model)
-
 
 	if len(allUsers) > 2 {
 		user := allUsers[2]
@@ -556,7 +538,7 @@ func rawSQLExample(ctx context.Context) {
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS demo_users (
 		id SERIAL PRIMARY KEY,
-		name VARCHAR(255) NOT NULL,
+		NAME VARCHAR(255) NOT NULL,
 		email VARCHAR(255) UNIQUE NOT NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	)`
@@ -607,14 +589,12 @@ func rawSQLExample(ctx context.Context) {
 	for rows.Next() {
 		var id int
 		var name, email string
-
-
+		var createdAt time.Time
 		err := rows.Scan(&id, &name, &email, &createdAt)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to scan row")
 			continue
-
-
+		}
 		fmt.Printf("- ID: %d, Name: %s, Email: %s, Created: %s\n",
 			id, name, email, createdAt.Format("2006-01-02 15:04:05"))
 	}
@@ -635,7 +615,7 @@ func rawSQLExample(ctx context.Context) {
 	}
 
 	// Aggregate query
-	countSQL := `SELECT COUNT(*) as total_users FROM demo_users`
+	countSQL := `SELECT COUNT(*) AS total_users FROM demo_users`
 	var totalUsers int
 	err = sqlDB.QueryRowContext(ctx, countSQL).Scan(&totalUsers)
 	if err != nil {
@@ -738,8 +718,7 @@ func transactionExample(ctx context.Context) {
 
 	// Example 3: Manual transaction control
 	fmt.Println("\n3. Manual Transaction Control:")
-
-
+	tx := database.Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -777,7 +756,6 @@ func transactionExample(ctx context.Context) {
 	fmt.Printf("   ✓ Transaction committed successfully\n")
 
 	// Example 4: Transaction with context timeout
-
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -941,8 +919,7 @@ func monitorConnectionPool(ctx context.Context, database *gorm.DB) {
 
 func testQueryPerformance(ctx context.Context, database *gorm.DB) {
 	// Simple query performance test
-
-
+	start := time.Now()
 	var result int
 	err := database.Raw("SELECT 1").Scan(&result).Error
 	queryTime := time.Since(start)
@@ -950,8 +927,7 @@ func testQueryPerformance(ctx context.Context, database *gorm.DB) {
 	if err != nil {
 		fmt.Printf("   ✗ Query failed: %v\n", err)
 	} else {
-
-
+		fmt.Printf("   ✓ Query executed successfully in %v\n", queryTime)
 		if queryTime > 100*time.Millisecond {
 			fmt.Printf("   ⚠ Warning: Query took longer than expected\n")
 		}
@@ -959,8 +935,7 @@ func testQueryPerformance(ctx context.Context, database *gorm.DB) {
 
 	// Test multiple concurrent queries
 	start = time.Now()
-
-
+	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
 			var result int
@@ -971,8 +946,7 @@ func testQueryPerformance(ctx context.Context, database *gorm.DB) {
 
 	for i := 0; i < 10; i++ {
 		<-done
-
-
+	}
 	concurrentTime := time.Since(start)
 	fmt.Printf("   ✓ 10 concurrent queries executed in %v\n", concurrentTime)
 }
@@ -1000,5 +974,4 @@ func maskPassword(dsn string) string {
 		return dsn[:20] + "***masked***" + dsn[len(dsn)-10:]
 	}
 	return "***masked***"
-l
 }

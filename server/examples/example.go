@@ -85,38 +85,22 @@ func basicServerExample() {
 	fmt.Println("Creating a basic HTTP server with default configuration...")
 
 	// Create server with minimal configuration
-	config := &server.Config{
+	config := server.Config{
 		Port: 8080,
+		// Note: The server package handles graceful shutdown automatically
+		// with StartWithConfig(), but for demonstration we'll show the configuration
 	}
 
-	srv := server.New(config)
-
-	fmt.Printf("Server created with configuration:\n")
+	fmt.Printf("Server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Health endpoints: /health, /health/ready, /health/live\n")
 	fmt.Printf("- Metrics endpoint: /metrics\n")
 	fmt.Printf("- Built-in middleware: logging, CORS, recover\n")
 
-	// Start server in background for demonstration
-	go func() {
-		ctx := context.Background()
-		logger := logging.ContextLogger(ctx, "basic-server")
-		logger.Info().Int("port", config.Port).Msg("Starting basic server")
-
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("Server failed to start")
-		}
-	}()
-
-	// Give server time to start
-	time.Sleep(2 * time.Second)
-
-	// Test the endpoints
-	testEndpoints(8080)
-
-	// Stop the server
-	srv.Stop()
-	time.Sleep(1 * time.Second)
+	fmt.Println("\nTo start this server, you would call:")
+	fmt.Println("server.StartWithConfig(config)")
+	fmt.Println("\nNote: StartWithConfig() handles graceful shutdown automatically")
+	fmt.Println("For a running example, see other functions in this file.")
 	fmt.Println("✓ Basic server example completed")
 }
 
@@ -124,55 +108,28 @@ func customConfigExample() {
 	fmt.Println("Creating server with custom configuration...")
 
 	// Custom configuration with various options
-	config := &server.Config{
-		Port:               8081,
-		ReadTimeout:        15 * time.Second,
-		WriteTimeout:       15 * time.Second,
-		ShutdownTimeout:    10 * time.Second,
-		EnableMetrics:      true,
-		MetricsPath:        "/custom-metrics",
-		EnableHealthChecks: true,
-		HealthPath:         "/custom-health",
-		ReadyPath:          "/custom-ready",
-		LivePath:           "/custom-live",
+	config := server.Config{
+		Port:            8081,
+		ShutdownTimeout: 10 * time.Second,
+		EnableMetrics:   true,
+		MetricsPath:     "/custom-metrics",
 	}
-
-	srv := server.New(config)
 
 	fmt.Printf("Custom server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
-	fmt.Printf("- Read Timeout: %v\n", config.ReadTimeout)
-	fmt.Printf("- Write Timeout: %v\n", config.WriteTimeout)
 	fmt.Printf("- Shutdown Timeout: %v\n", config.ShutdownTimeout)
-	fmt.Printf("- Custom Health Path: %s\n", config.HealthPath)
 	fmt.Printf("- Custom Metrics Path: %s\n", config.MetricsPath)
 
-	// Start server
-	go func() {
-		ctx := context.Background()
-		logger := logging.ContextLogger(ctx, "custom-config-server")
-		logger.Info().Int("port", config.Port).Msg("Starting custom configured server")
-
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("Server failed to start")
-		}
-	}()
-
-	time.Sleep(2 * time.Second)
-
-	// Test custom endpoints
-	fmt.Println("\nTesting custom endpoints:")
-	testCustomEndpoints(8081, config)
-
-	srv.Stop()
-	time.Sleep(1 * time.Second)
+	fmt.Println("\nTo start this server, you would call:")
+	fmt.Println("server.StartWithConfig(config)")
+	fmt.Println("\nNote: The server package automatically provides health endpoints and graceful shutdown")
 	fmt.Println("✓ Custom configuration example completed")
 }
 
 func customRoutesExample() {
 	fmt.Println("Creating server with custom routes and middleware...")
 
-	config := &server.Config{
+	config := server.Config{
 		Port: 8082,
 		EchoConfigurer: func(e *echo.Echo) {
 			// Add custom middleware
@@ -200,8 +157,6 @@ func customRoutesExample() {
 		},
 	}
 
-	srv := server.New(config)
-
 	fmt.Printf("Server with custom routes:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- API Routes: /api/v1/users/*\n")
@@ -209,24 +164,8 @@ func customRoutesExample() {
 	fmt.Printf("- Public Routes: /public/*\n")
 	fmt.Printf("- Custom Middleware: RequestID, Auth, Logging\n")
 
-	go func() {
-		ctx := context.Background()
-		logger := logging.ContextLogger(ctx, "custom-routes-server")
-		logger.Info().Int("port", config.Port).Msg("Starting server with custom routes")
-
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("Server failed to start")
-		}
-	}()
-
-	time.Sleep(2 * time.Second)
-
-	// Test API endpoints
-	fmt.Println("\nTesting API endpoints:")
-	testAPIEndpoints(8082)
-
-	srv.Stop()
-	time.Sleep(1 * time.Second)
+	fmt.Println("\nTo start this server, you would call:")
+	fmt.Println("server.StartWithConfig(config)")
 	fmt.Println("✓ Custom routes example completed")
 }
 
@@ -251,60 +190,38 @@ func healthChecksExample() {
 		},
 	}
 
-	config := &server.Config{
-		Port:               8083,
-		EnableHealthChecks: true,
-		HealthChecker:      healthChecker,
+	config := server.Config{
+		Port: 8083,
+		EchoConfigurer: func(e *echo.Echo) {
+			// Add custom health endpoint with the health checker
+			e.GET("/custom-health", func(c echo.Context) error {
+				results := healthChecker.CheckHealth()
+				status := HealthStatus{
+					Status:    "ok",
+					Timestamp: time.Now(),
+					Services:  results,
+				}
+				return c.JSON(http.StatusOK, status)
+			})
+		},
 	}
-
-	srv := server.New(config)
 
 	fmt.Printf("Server with custom health checks:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Health services: database, redis, external_api\n")
-	fmt.Printf("- Health endpoints provide detailed service status\n")
+	fmt.Printf("- Custom health endpoint: /custom-health\n")
 
-	go func() {
-		ctx := context.Background()
-		logger := logging.ContextLogger(ctx, "health-check-server")
-		logger.Info().Int("port", config.Port).Msg("Starting server with health checks")
-
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("Server failed to start")
-		}
-	}()
-
-	time.Sleep(2 * time.Second)
-
-	// Test health endpoints
-	fmt.Println("\nTesting health endpoints:")
-	testHealthEndpoints(8083)
-
-	srv.Stop()
-	time.Sleep(1 * time.Second)
+	fmt.Println("\nTo start this server, you would call:")
+	fmt.Println("server.StartWithConfig(config)")
 	fmt.Println("✓ Health checks example completed")
 }
 
 func gracefulShutdownExample() {
 	fmt.Println("Demonstrating graceful shutdown with signal handling...")
 
-	config := &server.Config{
+	config := server.Config{
 		Port:            8084,
 		ShutdownTimeout: 10 * time.Second,
-		ShutdownHandlers: []func(){
-			func() {
-				fmt.Println("   Performing cleanup task 1...")
-				time.Sleep(1 * time.Second)
-			},
-			func() {
-				fmt.Println("   Performing cleanup task 2...")
-				time.Sleep(1 * time.Second)
-			},
-			func() {
-				fmt.Println("   Finalizing shutdown...")
-				time.Sleep(500 * time.Millisecond)
-			},
-		},
 		EchoConfigurer: func(e *echo.Echo) {
 			// Add a long-running endpoint for testing graceful shutdown
 			e.GET("/slow", func(c echo.Context) error {
@@ -315,60 +232,14 @@ func gracefulShutdownExample() {
 		},
 	}
 
-	srv := server.New(config)
-
 	fmt.Printf("Server with graceful shutdown:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Shutdown Timeout: %v\n", config.ShutdownTimeout)
-	fmt.Printf("- Shutdown Handlers: %d custom handlers\n", len(config.ShutdownHandlers))
+	fmt.Printf("- Automatic signal handling (SIGINT, SIGTERM)\n")
 
-	// Create context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Start server
-	go func() {
-		logger := logging.ContextLogger(ctx, "graceful-shutdown-server")
-		logger.Info().Int("port", config.Port).Msg("Starting server with graceful shutdown")
-
-		if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("Server failed to start")
-		}
-	}()
-
-	time.Sleep(2 * time.Second)
-
-	fmt.Println("\nServer started. Testing graceful shutdown...")
-	fmt.Println("Send SIGTERM (Ctrl+C) or wait 5 seconds for automatic shutdown demonstration")
-
-	// Start a slow request to demonstrate graceful shutdown
-	go func() {
-		time.Sleep(1 * time.Second)
-		fmt.Println("   Starting slow request to test graceful shutdown...")
-		resp, err := http.Get("http://localhost:8084/slow")
-		if err != nil {
-			fmt.Printf("   Slow request failed: %v\n", err)
-		} else {
-			resp.Body.Close()
-			fmt.Println("   Slow request completed successfully")
-		}
-	}()
-
-	// Wait for signal or timeout
-	select {
-	case sig := <-sigChan:
-		fmt.Printf("   Received signal: %v\n", sig)
-	case <-time.After(5 * time.Second):
-		fmt.Println("   Timeout reached, initiating shutdown...")
-	}
-
-	fmt.Println("   Stopping server gracefully...")
-	srv.Stop()
-
+	fmt.Println("\nTo start this server, you would call:")
+	fmt.Println("server.StartWithConfig(config)")
+	fmt.Println("\nNote: StartWithConfig() automatically handles graceful shutdown")
 	fmt.Println("✓ Graceful shutdown example completed")
 }
 

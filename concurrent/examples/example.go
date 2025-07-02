@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"strconv"
 	"time"
 
 	"github.com/jasoet/pkg/concurrent"

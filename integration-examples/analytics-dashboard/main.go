@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -25,25 +24,25 @@ import (
 
 // AppConfig defines the analytics dashboard configuration
 type AppConfig struct {
-	Environment   string              `yaml:"environment" mapstructure:"environment" validate:"required"`
-	Debug         bool                `yaml:"debug" mapstructure:"debug"`
-	Server        server.Config       `yaml:"server" mapstructure:"server" validate:"required"`
-	Database      db.ConnectionConfig `yaml:"database" mapstructure:"database" validate:"required"`
-	Analytics     AnalyticsConfig     `yaml:"analytics" mapstructure:"analytics"`
-	DataSources   []DataSourceConfig  `yaml:"dataSources" mapstructure:"dataSources"`
+	Environment string              `yaml:"environment" mapstructure:"environment" validate:"required"`
+	Debug       bool                `yaml:"debug" mapstructure:"debug"`
+	Server      server.Config       `yaml:"server" mapstructure:"server" validate:"required"`
+	Database    db.ConnectionConfig `yaml:"database" mapstructure:"database" validate:"required"`
+	Analytics   AnalyticsConfig     `yaml:"analytics" mapstructure:"analytics"`
+	DataSources []DataSourceConfig  `yaml:"dataSources" mapstructure:"dataSources"`
 }
 
 type AnalyticsConfig struct {
-	RetentionDays    int           `yaml:"retentionDays" mapstructure:"retentionDays" validate:"min=1"`
-	ProcessInterval  time.Duration `yaml:"processInterval" mapstructure:"processInterval" validate:"min=1s"`
-	BatchSize        int           `yaml:"batchSize" mapstructure:"batchSize" validate:"min=1"`
-	EnableRealTime   bool          `yaml:"enableRealTime" mapstructure:"enableRealTime"`
+	RetentionDays   int           `yaml:"retentionDays" mapstructure:"retentionDays" validate:"min=1"`
+	ProcessInterval time.Duration `yaml:"processInterval" mapstructure:"processInterval" validate:"min=1s"`
+	BatchSize       int           `yaml:"batchSize" mapstructure:"batchSize" validate:"min=1"`
+	EnableRealTime  bool          `yaml:"enableRealTime" mapstructure:"enableRealTime"`
 }
 
 type DataSourceConfig struct {
-	Name     string `yaml:"name" mapstructure:"name" validate:"required"`
-	Type     string `yaml:"type" mapstructure:"type" validate:"required"`
-	URL      string `yaml:"url" mapstructure:"url"`
+	Name     string        `yaml:"name" mapstructure:"name" validate:"required"`
+	Type     string        `yaml:"type" mapstructure:"type" validate:"required"`
+	URL      string        `yaml:"url" mapstructure:"url"`
 	Interval time.Duration `yaml:"interval" mapstructure:"interval"`
 }
 
@@ -66,46 +65,46 @@ type Event struct {
 }
 
 type DailyMetric struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	Date        time.Time `json:"date" gorm:"not null;uniqueIndex:idx_daily_metric"`
-	MetricName  string    `json:"metricName" gorm:"not null;uniqueIndex:idx_daily_metric"`
-	Value       float64   `json:"value" gorm:"not null"`
-	Dimension   string    `json:"dimension" gorm:"index"`
-	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	Date       time.Time `json:"date" gorm:"not null;uniqueIndex:idx_daily_metric"`
+	MetricName string    `json:"metricName" gorm:"not null;uniqueIndex:idx_daily_metric"`
+	Value      float64   `json:"value" gorm:"not null"`
+	Dimension  string    `json:"dimension" gorm:"index"`
+	CreatedAt  time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt  time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
 type UserSession struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	SessionID   string    `json:"sessionId" gorm:"unique;not null"`
-	UserID      string    `json:"userId" gorm:"index"`
-	StartTime   time.Time `json:"startTime" gorm:"not null;index"`
-	EndTime     *time.Time `json:"endTime" gorm:"index"`
-	PageViews   int       `json:"pageViews" gorm:"default:0"`
-	Duration    int       `json:"duration" gorm:"default:0"` // seconds
-	UserAgent   string    `json:"userAgent"`
-	IPAddress   string    `json:"ipAddress"`
-	Referrer    string    `json:"referrer"`
-	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID        uint       `json:"id" gorm:"primaryKey"`
+	SessionID string     `json:"sessionId" gorm:"unique;not null"`
+	UserID    string     `json:"userId" gorm:"index"`
+	StartTime time.Time  `json:"startTime" gorm:"not null;index"`
+	EndTime   *time.Time `json:"endTime" gorm:"index"`
+	PageViews int        `json:"pageViews" gorm:"default:0"`
+	Duration  int        `json:"duration" gorm:"default:0"` // seconds
+	UserAgent string     `json:"userAgent"`
+	IPAddress string     `json:"ipAddress"`
+	Referrer  string     `json:"referrer"`
+	CreatedAt time.Time  `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time  `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
 // Analytics Response Types
 type DashboardResponse struct {
-	Overview      OverviewMetrics      `json:"overview"`
-	TrafficData   []TrafficPoint       `json:"trafficData"`
-	TopPages      []PageMetric         `json:"topPages"`
-	UserMetrics   UserMetrics          `json:"userMetrics"`
-	RealtimeData  RealtimeData         `json:"realtimeData"`
-	Timestamp     time.Time            `json:"timestamp"`
+	Overview     OverviewMetrics `json:"overview"`
+	TrafficData  []TrafficPoint  `json:"trafficData"`
+	TopPages     []PageMetric    `json:"topPages"`
+	UserMetrics  UserMetrics     `json:"userMetrics"`
+	RealtimeData RealtimeData    `json:"realtimeData"`
+	Timestamp    time.Time       `json:"timestamp"`
 }
 
 type OverviewMetrics struct {
-	TotalUsers      int64   `json:"totalUsers"`
-	TotalPageViews  int64   `json:"totalPageViews"`
-	TotalSessions   int64   `json:"totalSessions"`
-	AvgSessionTime  float64 `json:"avgSessionTime"`
-	BounceRate      float64 `json:"bounceRate"`
+	TotalUsers     int64   `json:"totalUsers"`
+	TotalPageViews int64   `json:"totalPageViews"`
+	TotalSessions  int64   `json:"totalSessions"`
+	AvgSessionTime float64 `json:"avgSessionTime"`
+	BounceRate     float64 `json:"bounceRate"`
 }
 
 type TrafficPoint struct {
@@ -116,23 +115,23 @@ type TrafficPoint struct {
 }
 
 type PageMetric struct {
-	Page      string  `json:"page"`
-	Views     int64   `json:"views"`
-	UniqueUsers int64 `json:"uniqueUsers"`
-	AvgTime   float64 `json:"avgTime"`
+	Page        string  `json:"page"`
+	Views       int64   `json:"views"`
+	UniqueUsers int64   `json:"uniqueUsers"`
+	AvgTime     float64 `json:"avgTime"`
 }
 
 type UserMetrics struct {
-	NewUsers        int64   `json:"newUsers"`
-	ReturningUsers  int64   `json:"returningUsers"`
+	NewUsers           int64   `json:"newUsers"`
+	ReturningUsers     int64   `json:"returningUsers"`
 	AvgSessionsPerUser float64 `json:"avgSessionsPerUser"`
 }
 
 type RealtimeData struct {
-	CurrentUsers    int64     `json:"currentUsers"`
-	PageViewsLast5Min int64   `json:"pageViewsLast5Min"`
-	TopPagesRealtime []PageMetric `json:"topPagesRealtime"`
-	LastUpdated     time.Time `json:"lastUpdated"`
+	CurrentUsers      int64        `json:"currentUsers"`
+	PageViewsLast5Min int64        `json:"pageViewsLast5Min"`
+	TopPagesRealtime  []PageMetric `json:"topPagesRealtime"`
+	LastUpdated       time.Time    `json:"lastUpdated"`
 }
 
 func main() {
@@ -179,28 +178,15 @@ func main() {
 
 	// 6. Setup server with routes
 	appConfig.Server.EchoConfigurer = setupRoutes(services)
-	srv := server.New(&appConfig.Server)
 
-	// 7. Setup graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
-		cancel()
-	}()
-
-	// 8. Start server
+	// 7. Start server (this will handle graceful shutdown automatically)
 	logger.Info().
 		Str("environment", appConfig.Environment).
 		Int("port", appConfig.Server.Port).
 		Bool("realtime", appConfig.Analytics.EnableRealTime).
 		Msg("Starting analytics dashboard")
 
-	if err := srv.Start(ctx); err != nil {
-		logger.Error().Err(err).Msg("Server failed to start")
-	}
+	server.StartWithConfig(appConfig.Server)
 
 	logger.Info().Msg("Analytics dashboard shutdown completed")
 }
@@ -236,7 +222,7 @@ dataSources:
     type: webhook
     url: /api/v1/events
     interval: 0s
-  - name: app_analytics  
+  - name: app_analytics
     type: api
     url: https://api.example.com/analytics
     interval: 5m
@@ -384,7 +370,7 @@ func ingestEventBatchHandler(services *Services) echo.HandlerFunc {
 
 		successCount := 0
 		for _, result := range results {
-			if result.Success {
+			if result {
 				successCount++
 			}
 		}
@@ -619,9 +605,9 @@ func metricsHandler(services *Services) echo.HandlerFunc {
 		services.DB.Model(&UserSession{}).Count(&totalSessions)
 
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"uptime":        time.Since(startTime),
-			"total_events":  totalEvents,
-			"total_sessions": totalSessions,
+			"uptime":          time.Since(startTime),
+			"total_events":    totalEvents,
+			"total_sessions":  totalSessions,
 			"database_status": "healthy",
 		})
 	}
@@ -734,7 +720,7 @@ func getTopPages(db *gorm.DB, startDate, endDate time.Time) ([]PageMetric, error
 	// Mock implementation
 	pages := []string{"/", "/products", "/about", "/contact", "/blog", "/login"}
 	var metrics []PageMetric
-	
+
 	for _, page := range pages {
 		metrics = append(metrics, PageMetric{
 			Page:        page,
@@ -761,7 +747,7 @@ func getRealtimeData(db *gorm.DB) (RealtimeData, error) {
 	if len(pages) > 3 {
 		pages = pages[:3]
 	}
-	
+
 	return RealtimeData{
 		CurrentUsers:      rand.Int63n(500) + 50,
 		PageViewsLast5Min: rand.Int63n(200) + 20,

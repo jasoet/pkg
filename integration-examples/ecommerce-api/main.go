@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/jasoet/pkg/config"
@@ -44,9 +42,9 @@ type PaymentConfig struct {
 }
 
 type UploadConfig struct {
-	MaxFileSize   int64  `yaml:"maxFileSize" mapstructure:"maxFileSize" validate:"min=1"`
-	AllowedTypes  []string `yaml:"allowedTypes" mapstructure:"allowedTypes"`
-	UploadDir     string `yaml:"uploadDir" mapstructure:"uploadDir" validate:"required"`
+	MaxFileSize  int64    `yaml:"maxFileSize" mapstructure:"maxFileSize" validate:"min=1"`
+	AllowedTypes []string `yaml:"allowedTypes" mapstructure:"allowedTypes"`
+	UploadDir    string   `yaml:"uploadDir" mapstructure:"uploadDir" validate:"required"`
 }
 
 // Services contains all application dependencies
@@ -67,7 +65,7 @@ type User struct {
 	Role      string    `json:"role" gorm:"default:customer"`
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
-	
+
 	// Relationships
 	Orders []Order `json:"orders,omitempty" gorm:"foreignKey:UserID"`
 }
@@ -79,7 +77,7 @@ type Category struct {
 	ImageURL    string    `json:"imageUrl"`
 	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
-	
+
 	// Relationships
 	Products []Product `json:"products,omitempty" gorm:"foreignKey:CategoryID"`
 }
@@ -96,22 +94,22 @@ type Product struct {
 	IsActive    bool      `json:"isActive" gorm:"default:true"`
 	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
-	
+
 	// Relationships
 	Category   Category    `json:"category,omitempty" gorm:"foreignKey:CategoryID"`
 	OrderItems []OrderItem `json:"orderItems,omitempty" gorm:"foreignKey:ProductID"`
 }
 
 type Order struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	UserID      uint      `json:"userId" gorm:"not null"`
-	Status      string    `json:"status" gorm:"default:pending"`
-	TotalAmount float64   `json:"totalAmount" gorm:"not null"`
-	PaymentID   string    `json:"paymentId"`
-	ShippingAddress string `json:"shippingAddress" gorm:"not null"`
-	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
-	
+	ID              uint      `json:"id" gorm:"primaryKey"`
+	UserID          uint      `json:"userId" gorm:"not null"`
+	Status          string    `json:"status" gorm:"default:pending"`
+	TotalAmount     float64   `json:"totalAmount" gorm:"not null"`
+	PaymentID       string    `json:"paymentId"`
+	ShippingAddress string    `json:"shippingAddress" gorm:"not null"`
+	CreatedAt       time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt       time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+
 	// Relationships
 	User       User        `json:"user,omitempty" gorm:"foreignKey:UserID"`
 	OrderItems []OrderItem `json:"orderItems,omitempty" gorm:"foreignKey:OrderID"`
@@ -123,7 +121,7 @@ type OrderItem struct {
 	ProductID uint    `json:"productId" gorm:"not null"`
 	Quantity  int     `json:"quantity" gorm:"not null"`
 	Price     float64 `json:"price" gorm:"not null"`
-	
+
 	// Relationships
 	Order   Order   `json:"order,omitempty" gorm:"foreignKey:OrderID"`
 	Product Product `json:"product,omitempty" gorm:"foreignKey:ProductID"`
@@ -169,30 +167,14 @@ func main() {
 
 	// 6. Setup server with routes
 	appConfig.Server.EchoConfigurer = setupRoutes(services)
-	srv := server.New(&appConfig.Server)
 
-	// 7. Setup graceful shutdown
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
-		cancel()
-	}()
-
-	// 8. Start server
+	// 7. Start server (this will handle graceful shutdown automatically)
 	logger.Info().
 		Str("environment", appConfig.Environment).
 		Int("port", appConfig.Server.Port).
 		Msg("Starting e-commerce API server")
 
-	if err := srv.Start(ctx); err != nil {
-		logger.Error().Err(err).Msg("Server failed to start")
-	}
+	server.StartWithConfig(appConfig.Server)
 
 	logger.Info().Msg("E-commerce API server shutdown completed")
 }
