@@ -261,11 +261,19 @@ func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string
 
 	err := handle.Update(ctx, client.ScheduleUpdateOptions{
 		DoUpdate: func(input client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
+			// Get the current schedule from input and modify it
+			schedule := input.Description.Schedule
+
+			// Update the spec
+			schedule.Spec = &spec
+
+			// Update the action if provided
+			if action != nil {
+				schedule.Action = action
+			}
+
 			return &client.ScheduleUpdate{
-				Schedule: &client.Schedule{
-					Spec:   &spec,
-					Action: action,
-				},
+				Schedule: &schedule,
 			}, nil
 		},
 	})

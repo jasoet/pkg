@@ -1,6 +1,6 @@
 name: pkg
 services:
-  
+
   mariadb:
     image: mariadb:latest
     environment:
@@ -17,9 +17,10 @@ services:
       - ./mariadb/backup:/var/lib/mysql/backup
     networks:
       - net
-  
+
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
     user: root
     environment:
       - ACCEPT_EULA=Y

@@ -331,6 +331,9 @@ func TestWorkerConfiguration(t *testing.T) {
 	})
 
 	t.Run("MultipleTaskQueues", func(t *testing.T) {
+		// Note: wm already has 1 worker from previous test
+		initialWorkerCount := len(wm.GetWorkers())
+
 		taskQueues := []string{
 			"queue-orders",
 			"queue-payments",
@@ -343,6 +346,6 @@ func TestWorkerConfiguration(t *testing.T) {
 			require.NotNil(t, w, "Failed to register worker for queue: %s", queue)
 		}
 
-		assert.Len(t, wm.GetWorkers(), len(taskQueues))
+		assert.Len(t, wm.GetWorkers(), initialWorkerCount+len(taskQueues))
 	})
 }
