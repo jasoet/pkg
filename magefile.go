@@ -33,11 +33,29 @@ func IntegrationTest() error {
 	fmt.Println("Waiting for PostgreSQL to initialize...")
 	time.Sleep(2 * time.Second)
 
-	cmd := exec.Command("go", "test", "-count=1", "-tags=integration", "./...")
-	cmd.Env = append(os.Environ(), "AUTOMATION=true")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// Run integration tests but exclude temporal package (which requires separate server)
+	packages := []string{
+		"./compress/...",
+		"./concurrent/...",
+		"./config/...",
+		"./db/...",
+		"./logging/...",
+		"./rest/...",
+		"./server/...",
+		"./ssh/...",
+	}
+
+	for _, pkg := range packages {
+		cmd := exec.Command("go", "test", "-count=1", "-tags=integration", pkg)
+		cmd.Env = append(os.Environ(), "AUTOMATION=true")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // TemporalTest runs temporal integration tests with Temporal server
@@ -52,7 +70,7 @@ func TemporalTest() error {
 	fmt.Println("Waiting for Temporal server to initialize...")
 	time.Sleep(10 * time.Second)
 
-	cmd := exec.Command("go", "test", "-count=1", "-tags=integration", "-timeout=10m", "./temporal/...")
+	cmd := exec.Command("go", "test", "-count=1", "-tags=temporal", "-timeout=10m", "./temporal/...")
 	cmd.Env = append(os.Environ(), "TEMPORAL_INTEGRATION=true")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -65,6 +83,24 @@ func TemporalTest() error {
 	}
 
 	return err
+}
+
+// AllIntegrationTests runs both database and temporal integration tests
+func AllIntegrationTests() error {
+	fmt.Println("Running all integration tests (database + temporal)...")
+
+	// First run database integration tests
+	if err := IntegrationTest(); err != nil {
+		return fmt.Errorf("database integration tests failed: %w", err)
+	}
+
+	// Then run temporal integration tests
+	if err := TemporalTest(); err != nil {
+		return fmt.Errorf("temporal integration tests failed: %w", err)
+	}
+
+	fmt.Println("All integration tests completed successfully")
+	return nil
 }
 
 func Lint() error {
@@ -164,7 +200,7 @@ func Clean() error {
 // Tools installs all development tools
 func Tools() error {
 	fmt.Println("Installing development tools...")
-	
+
 	tools := []string{
 		"github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
 		"github.com/magefile/mage@latest",
@@ -176,7 +212,7 @@ func Tools() error {
 		"github.com/sonatypecommunity/nancy@latest",
 		"github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest",
 	}
-	
+
 	for _, tool := range tools {
 		fmt.Printf("Installing %s...\n", tool)
 		cmd := exec.Command("go", "install", tool)
@@ -186,7 +222,7 @@ func Tools() error {
 			return fmt.Errorf("failed to install %s: %w", tool, err)
 		}
 	}
-	
+
 	fmt.Println("All development tools installed successfully")
 	return nil
 }
@@ -194,12 +230,12 @@ func Tools() error {
 // Security runs security analysis tools
 func Security() error {
 	fmt.Println("Running security analysis...")
-	
+
 	// Ensure gosec is installed
 	if err := ensureToolInstalled("gosec", "github.com/securecodewarrior/gosec/v2/cmd/gosec@latest"); err != nil {
 		return err
 	}
-	
+
 	// Run gosec
 	fmt.Println("Running gosec security scanner...")
 	cmd := exec.Command("gosec", "./...")
@@ -208,26 +244,26 @@ func Security() error {
 	if err := cmd.Run(); err != nil {
 		fmt.Println("Security issues found (this may be expected)")
 	}
-	
+
 	return nil
 }
 
 // Dependencies checks for known vulnerabilities in dependencies
 func Dependencies() error {
 	fmt.Println("Checking dependencies for vulnerabilities...")
-	
+
 	// Ensure nancy is installed
 	if err := ensureToolInstalled("nancy", "github.com/sonatypecommunity/nancy@latest"); err != nil {
 		return err
 	}
-	
+
 	// Generate go.list for nancy
 	cmd := exec.Command("go", "list", "-json", "-deps", "./...")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to generate dependency list: %w", err)
 	}
-	
+
 	// Run nancy
 	cmd = exec.Command("nancy", "sleuth")
 	cmd.Stdin = strings.NewReader(string(output))
@@ -236,14 +272,14 @@ func Dependencies() error {
 	if err := cmd.Run(); err != nil {
 		fmt.Println("Dependency vulnerabilities found (this may be expected)")
 	}
-	
+
 	return nil
 }
 
 // Coverage generates test coverage report
 func Coverage() error {
 	fmt.Println("Generating test coverage report...")
-	
+
 	// Run tests with coverage
 	cmd := exec.Command("go", "test", "-coverprofile=coverage.out", "./...")
 	cmd.Stdout = os.Stdout
@@ -251,7 +287,7 @@ func Coverage() error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("tests failed: %w", err)
 	}
-	
+
 	// Generate HTML coverage report
 	cmd = exec.Command("go", "tool", "cover", "-html=coverage.out", "-o", "coverage.html")
 	cmd.Stdout = os.Stdout
@@ -259,7 +295,7 @@ func Coverage() error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to generate HTML coverage report: %w", err)
 	}
-	
+
 	fmt.Println("Coverage report generated: coverage.html")
 	return nil
 }
@@ -267,12 +303,12 @@ func Coverage() error {
 // Docs generates API documentation (if swagger annotations exist)
 func Docs() error {
 	fmt.Println("Generating API documentation...")
-	
+
 	// Check if swag is available
 	if err := ensureToolInstalled("swag", "github.com/swaggo/swag/cmd/swag@latest"); err != nil {
 		return err
 	}
-	
+
 	// Generate swagger docs
 	cmd := exec.Command("swag", "init", "-g", "main.go", "--output", "docs")
 	cmd.Stdout = os.Stdout
@@ -281,7 +317,7 @@ func Docs() error {
 		fmt.Println("Swagger generation failed (this is expected if no swagger annotations exist)")
 		return nil
 	}
-	
+
 	fmt.Println("API documentation generated in docs/ directory")
 	return nil
 }
@@ -289,7 +325,7 @@ func Docs() error {
 // CheckAll runs all quality checks
 func CheckAll() error {
 	fmt.Println("Running all quality checks...")
-	
+
 	checks := []func() error{
 		Test,
 		Lint,
@@ -297,13 +333,13 @@ func CheckAll() error {
 		Dependencies,
 		Coverage,
 	}
-	
+
 	for _, check := range checks {
 		if err := check(); err != nil {
 			return fmt.Errorf("quality check failed: %w", err)
 		}
 	}
-	
+
 	fmt.Println("All quality checks completed successfully")
 	return nil
 }

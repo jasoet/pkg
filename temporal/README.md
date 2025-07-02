@@ -83,7 +83,7 @@ mage temporal:restart
 
 3. **Run Integration Tests**:
    ```bash
-   go test -tags=integration -timeout=10m ./temporal/...
+   go test -tags=temporal -timeout=10m ./temporal/...
    ```
 
 4. **Clean Up**:
@@ -106,7 +106,7 @@ If you have Temporal running elsewhere:
 
 2. **Run Tests**:
    ```bash
-   go test -tags=integration ./temporal/...
+   go test -tags=temporal ./temporal/...
    ```
 
 ## Test Configuration
@@ -193,10 +193,10 @@ The integration tests use structured logging with different levels:
 
 ```bash
 # Run with verbose output
-go test -tags=integration -v ./temporal/...
+go test -tags=temporal -v ./temporal/...
 
 # Run with debug logging
-DEBUG=true go test -tags=integration ./temporal/...
+DEBUG=true go test -tags=temporal ./temporal/...
 ```
 
 ## Performance Considerations
@@ -226,7 +226,7 @@ The tests are designed to run safely in parallel:
 
 When adding new integration tests:
 
-1. **Use the `//go:build integration` tag**
+1. **Use the `//go:build temporal` tag**
 2. **Create unique identifiers** (workflow IDs, task queues, etc.)
 3. **Include proper cleanup** in test teardown
 4. **Add realistic error scenarios** where appropriate
