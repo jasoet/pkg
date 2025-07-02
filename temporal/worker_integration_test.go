@@ -22,9 +22,9 @@ import (
 type RetryPolicy = temporal.RetryPolicy
 
 // Test workflows and activities for integration tests
-func TestWorkflow(ctx workflow.Context, input string) (string, error) {
+func SampleWorkflow(ctx workflow.Context, input string) (string, error) {
 	logger := workflow.GetLogger(ctx)
-	logger.Info("TestWorkflow started", "input", input)
+	logger.Info("SampleWorkflow started", "input", input)
 
 	// Configure activity options
 	ao := workflow.ActivityOptions{
@@ -34,25 +34,25 @@ func TestWorkflow(ctx workflow.Context, input string) (string, error) {
 
 	// Execute activity
 	var result string
-	err := workflow.ExecuteActivity(ctx, TestActivity, input).Get(ctx, &result)
+	err := workflow.ExecuteActivity(ctx, SampleActivity, input).Get(ctx, &result)
 	if err != nil {
-		logger.Error("TestActivity failed", "error", err)
+		logger.Error("SampleActivity failed", "error", err)
 		return "", err
 	}
 
-	logger.Info("TestWorkflow completed", "result", result)
+	logger.Info("SampleWorkflow completed", "result", result)
 	return result, nil
 }
 
-func TestActivity(ctx context.Context, input string) (string, error) {
+func SampleActivity(ctx context.Context, input string) (string, error) {
 	logger := activity.GetLogger(ctx)
-	logger.Info("TestActivity started", "input", input)
+	logger.Info("SampleActivity started", "input", input)
 
 	// Simulate some work
 	time.Sleep(100 * time.Millisecond)
 
 	result := fmt.Sprintf("Processed: %s", input)
-	logger.Info("TestActivity completed", "result", result)
+	logger.Info("SampleActivity completed", "result", result)
 	return result, nil
 }
 
@@ -149,8 +149,8 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 	t.Run("BasicWorkflowExecution", func(t *testing.T) {
 		// Register worker
 		w := wm.Register(taskQueue, worker.Options{})
-		w.RegisterWorkflow(TestWorkflow)
-		w.RegisterActivity(TestActivity)
+		w.RegisterWorkflow(SampleWorkflow)
+		w.RegisterActivity(SampleActivity)
 
 		// Start worker in background
 		ctx, cancel := context.WithCancel(context.Background())
@@ -165,7 +165,7 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 		time.Sleep(2 * time.Second)
 
 		// Execute workflow
-		client := wm.GetClient()
+		temporalClient := wm.GetClient()
 		options := client.StartWorkflowOptions{
 			ID:        "test-basic-workflow-" + time.Now().Format("20060102-150405-000"),
 			TaskQueue: taskQueue,
@@ -174,7 +174,7 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 		workflowCtx, workflowCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer workflowCancel()
 
-		workflowRun, err := client.ExecuteWorkflow(workflowCtx, options, TestWorkflow, "integration-test")
+		workflowRun, err := temporalClient.ExecuteWorkflow(workflowCtx, options, SampleWorkflow, "integration-test")
 		require.NoError(t, err, "Failed to start workflow")
 
 		// Get result
@@ -201,7 +201,7 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 	t.Run("WorkflowWithFailingActivity", func(t *testing.T) {
 		// Register worker with failing activity
 		w := wm.Register(taskQueue+"-failing", worker.Options{})
-		w.RegisterWorkflow(TestWorkflow)
+		w.RegisterWorkflow(SampleWorkflow)
 		w.RegisterActivity(FailingTestActivity)
 
 		// Start worker in background
@@ -215,15 +215,8 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 		// Give worker time to start
 		time.Sleep(2 * time.Second)
 
-		// Execute workflow with failing activity
-		client := wm.GetClient()
-		options := client.StartWorkflowOptions{
-			ID:        "test-failing-workflow-" + time.Now().Format("20060102-150405-000"),
-			TaskQueue: taskQueue + "-failing",
-		}
-
-		workflowCtx, workflowCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer workflowCancel()
+		// Get client first
+		temporalClient := wm.GetClient()
 
 		// Create a workflow that uses the failing activity
 		failingWorkflow := func(ctx workflow.Context, input string) (string, error) {
@@ -242,7 +235,16 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 
 		w.RegisterWorkflow(failingWorkflow)
 
-		workflowRun, err := client.ExecuteWorkflow(workflowCtx, options, failingWorkflow, "test-input")
+		// Execute workflow with failing activity
+		options := client.StartWorkflowOptions{
+			ID:        "test-failing-workflow-" + time.Now().Format("20060102-150405-000"),
+			TaskQueue: taskQueue + "-failing",
+		}
+
+		workflowCtx, workflowCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer workflowCancel()
+
+		workflowRun, err := temporalClient.ExecuteWorkflow(workflowCtx, options, failingWorkflow, "test-input")
 		require.NoError(t, err, "Failed to start workflow")
 
 		// Expect workflow to fail
