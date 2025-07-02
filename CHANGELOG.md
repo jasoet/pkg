@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/jasoet/pkg/compare/v1.1.2...v1.1.3) (2025-07-02)
+
+### Chores
+
+* streamline examples and middleware, add build tags, and refactor logs ([abc234e](https://github.com/jasoet/pkg/commit/abc234e346e528d7d70bf06ed4e7e27e5c87c587))
+* **tests:** add comprehensive integration and end-to-end tests for Temporal package ([e370655](https://github.com/jasoet/pkg/commit/e37065516d5ddfef630c7e30b63de3a7d8009ba7))
+
 ## [1.1.2](https://github.com/jasoet/pkg/compare/v1.1.1...v1.1.2) (2025-07-02)
 
 ### Chores
