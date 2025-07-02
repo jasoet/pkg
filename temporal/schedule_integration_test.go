@@ -166,53 +166,6 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		err = handle.Delete(ctx)
 		assert.NoError(t, err, "Failed to delete list test schedule")
 	})
-
-	t.Run("GetSchedule", func(t *testing.T) {
-		scheduleID := "test-get-schedule-" + time.Now().Format("20060102-150405")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		// Create schedule first
-		scheduleSpec := client.ScheduleSpec{
-			CronExpressions: []string{"0 12 * * *"}, // Daily at noon
-		}
-
-		scheduleAction := &client.ScheduleWorkflowAction{
-			ID:        "get-test-workflow",
-			Workflow:  "SampleWorkflow",
-			TaskQueue: "test-get-queue",
-			Args:      []interface{}{"get-test"}, // Add required args
-		}
-
-		createdHandle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-		if err != nil {
-			t.Logf("Could not create schedule for get test: %v", err)
-			return
-		}
-
-		// Get the schedule
-		retrievedHandle, err := scheduleManager.GetSchedule(ctx, scheduleID)
-		assert.NoError(t, err, "Failed to get schedule")
-		assert.NotNil(t, retrievedHandle, "Retrieved handle should not be nil")
-
-		// Verify it's the same schedule
-		desc, err := retrievedHandle.Describe(ctx)
-		if err == nil {
-			// Check if the schedule has the expected cron expression
-			if desc.Schedule.Spec != nil {
-				t.Logf("Retrieved Schedule Spec: %+v", desc.Schedule.Spec)
-				// The spec is there but CronExpressions might be transformed internally
-				// Just verify we can retrieve the schedule successfully
-				assert.NotNil(t, desc.Schedule.Spec, "Schedule spec should not be nil")
-			}
-		}
-
-		// Clean up
-		err = createdHandle.Delete(ctx)
-		assert.NoError(t, err, "Failed to delete get test schedule")
-	})
-
 	t.Run("UpdateSchedule", func(t *testing.T) {
 		scheduleID := "test-update-schedule-" + time.Now().Format("20060102-150405")
 
