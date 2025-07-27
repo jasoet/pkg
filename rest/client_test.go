@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -301,16 +302,17 @@ func TestClient_MakeRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("Error case - unsupported method", func(t *testing.T) {
+	t.Run("Error case - invalid URL", func(t *testing.T) {
 		client := NewClient()
 
-		response, err := client.MakeRequest(context.Background(), "INVALID", "/test", "", nil)
+		_, err := client.MakeRequest(context.Background(), "GET", "/test", "", nil)
 
 		if err == nil {
-			t.Error("Expected error for unsupported method, got nil")
+			t.Error("Expected error for invalid URL, got nil")
 		}
-		if response != nil {
-			t.Errorf("Expected nil response for unsupported method, got %v", response)
+		var execErr *ExecutionError
+		if !errors.As(err, &execErr) {
+			t.Error("Expected ExecutionError for invalid URL")
 		}
 	})
 }
@@ -390,38 +392,34 @@ func TestClient_HandleResponse(t *testing.T) {
 	})
 }
 
-func TestIsNotHttpError(t *testing.T) {
+func TestIsServerError(t *testing.T) {
 	t.Run("Valid HTTP status", func(t *testing.T) {
 		response := &resty.Response{}
 		response.Request = &resty.Request{}
 		response.RawResponse = &http.Response{StatusCode: http.StatusOK}
 
-		if IsNotHttpError(response) {
-			t.Error("Expected IsNotHttpError to return false for valid HTTP status")
+		if IsServerError(response) {
+			t.Error("Expected IsServerError to return false for valid HTTP status")
 		}
 	})
 
-	t.Run("Invalid HTTP status - less than 200", func(t *testing.T) {
+	t.Run("Server error status - 500", func(t *testing.T) {
 		response := &resty.Response{}
 		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: 100}
+		response.RawResponse = &http.Response{StatusCode: http.StatusInternalServerError}
 
-		// The current implementation checks (code < 200 && code >= 300) which is always false
-		// So we expect false even for invalid status codes
-		if IsNotHttpError(response) {
-			t.Error("Expected IsNotHttpError to return false for status code < 200 due to implementation")
+		if !IsServerError(response) {
+			t.Error("Expected IsServerError to return true for status code 500")
 		}
 	})
 
-	t.Run("Invalid HTTP status - greater than or equal to 300", func(t *testing.T) {
+	t.Run("Client error status - 400", func(t *testing.T) {
 		response := &resty.Response{}
 		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: 300}
+		response.RawResponse = &http.Response{StatusCode: http.StatusBadRequest}
 
-		// The current implementation checks (code < 200 && code >= 300) which is always false
-		// So we expect false even for invalid status codes
-		if IsNotHttpError(response) {
-			t.Error("Expected IsNotHttpError to return false for status code >= 300 due to implementation")
+		if IsServerError(response) {
+			t.Error("Expected IsServerError to return false for status code 400")
 		}
 	})
 }
