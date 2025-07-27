@@ -83,7 +83,7 @@ func (m *NoOpMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
 // DatabaseLoggingMiddleware logs HTTP requests and responses to a database (placeholder implementation)
 type DatabaseLoggingMiddleware struct{}
 
-// NewDatabaseLoggingMiddleware creates a new DatabaseLoggingMiddleware instance  
+// NewDatabaseLoggingMiddleware creates a new DatabaseLoggingMiddleware instance
 func NewDatabaseLoggingMiddleware() *DatabaseLoggingMiddleware {
 	return &DatabaseLoggingMiddleware{}
 }

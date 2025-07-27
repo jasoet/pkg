@@ -176,7 +176,6 @@ func TestClient_GetRestClient(t *testing.T) {
 	}
 }
 
-
 func TestClient_GetRestConfig(t *testing.T) {
 	client := NewClient()
 	config := client.GetRestConfig()
@@ -197,11 +196,11 @@ func TestClient_GetRestConfig(t *testing.T) {
 
 func TestClient_ThreadSafety(t *testing.T) {
 	client := NewClient()
-	
+
 	// Test concurrent middleware operations
 	t.Run("Concurrent middleware operations", func(t *testing.T) {
 		const numGoroutines = 100
-		
+
 		// Create concurrent functions for adding middlewares
 		funcs := make(map[string]concurrent.Func[bool])
 		for i := 0; i < numGoroutines; i++ {
@@ -213,29 +212,29 @@ func TestClient_ThreadSafety(t *testing.T) {
 				return true, nil
 			}
 		}
-		
+
 		// Execute concurrently using the concurrent package
 		results, err := concurrent.ExecuteConcurrently(context.Background(), funcs)
 		if err != nil {
 			t.Errorf("Concurrent middleware addition failed: %v", err)
 		}
-		
+
 		// Verify all operations completed
 		if len(results) != numGoroutines {
 			t.Errorf("Expected %d results, got %d", numGoroutines, len(results))
 		}
-		
+
 		// Verify all middlewares were added
 		middlewares := client.GetMiddlewares()
 		if len(middlewares) < numGoroutines {
 			t.Errorf("Expected at least %d middlewares, got %d", numGoroutines, len(middlewares))
 		}
 	})
-	
+
 	// Test concurrent config access
 	t.Run("Concurrent config access", func(t *testing.T) {
 		const numGoroutines = 50
-		
+
 		// Create concurrent functions for config access
 		funcs := make(map[string]concurrent.Func[*Config])
 		for i := 0; i < numGoroutines; i++ {
@@ -248,18 +247,18 @@ func TestClient_ThreadSafety(t *testing.T) {
 				return config, nil
 			}
 		}
-		
+
 		// Execute concurrently
 		results, err := concurrent.ExecuteConcurrently(context.Background(), funcs)
 		if err != nil {
 			t.Errorf("Concurrent config access failed: %v", err)
 		}
-		
+
 		// Verify all operations completed
 		if len(results) != numGoroutines {
 			t.Errorf("Expected %d results, got %d", numGoroutines, len(results))
 		}
-		
+
 		// Verify all configs have expected values
 		for key, config := range results {
 			if config.Timeout <= 0 {
@@ -267,7 +266,7 @@ func TestClient_ThreadSafety(t *testing.T) {
 			}
 		}
 	})
-	
+
 	// Test concurrent HTTP requests
 	t.Run("Concurrent HTTP requests", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -275,9 +274,9 @@ func TestClient_ThreadSafety(t *testing.T) {
 			_, _ = w.Write([]byte(`{"status": "ok"}`))
 		}))
 		defer server.Close()
-		
+
 		const numRequests = 20
-		
+
 		// Create concurrent functions for HTTP requests
 		funcs := make(map[string]concurrent.Func[*resty.Response])
 		for i := 0; i < numRequests; i++ {
@@ -286,18 +285,18 @@ func TestClient_ThreadSafety(t *testing.T) {
 				return client.MakeRequest(ctx, "GET", server.URL, "", nil)
 			}
 		}
-		
+
 		// Execute concurrently
 		results, err := concurrent.ExecuteConcurrently(context.Background(), funcs)
 		if err != nil {
 			t.Errorf("Concurrent HTTP requests failed: %v", err)
 		}
-		
+
 		// Verify all requests completed successfully
 		if len(results) != numRequests {
 			t.Errorf("Expected %d results, got %d", numRequests, len(results))
 		}
-		
+
 		for key, response := range results {
 			if response.StatusCode() != 200 {
 				t.Errorf("Request %s failed with status %d", key, response.StatusCode())
@@ -308,38 +307,30 @@ func TestClient_ThreadSafety(t *testing.T) {
 
 func TestClient_MakeRequest(t *testing.T) {
 	t.Run("Success case", func(t *testing.T) {
-		// Create a test server
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check request method
 			if r.Method != "GET" {
 				t.Errorf("Expected method GET, got %s", r.Method)
 			}
 
-			// Check request path
 			if r.URL.Path != "/test" {
 				t.Errorf("Expected path /test, got %s", r.URL.Path)
 			}
 
-			// Check headers
 			if r.Header.Get("Content-Type") != "application/json" {
 				t.Errorf("Expected Content-Type header application/json, got %s", r.Header.Get("Content-Type"))
 			}
 
-			// Return success response
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"result":"success"}`))
 		}))
 		defer server.Close()
 
-		// Create a mock middleware
 		middleware := &mockMiddleware{}
 
-		// Create a client with the mock middleware
 		client := NewClient(WithMiddlewares(middleware))
 		client.restClient.SetBaseURL(server.URL)
 
-		// Make a request
 		ctx := context.Background()
 		method := "GET"
 		url := "/test"
@@ -348,12 +339,10 @@ func TestClient_MakeRequest(t *testing.T) {
 
 		response, err := client.MakeRequest(ctx, method, url, body, headers)
 
-		// Check that there was no error
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}
 
-		// Check that the response is not nil
 		if response == nil {
 			t.Fatal("Expected non-nil response, got nil")
 		}
