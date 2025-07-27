@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Example data structures
 type User struct {
 	ID    int    `json:"id"`
 	Name  string `json:"name"`
@@ -37,7 +36,6 @@ type APIResponse struct {
 	Error  string      `json:"error,omitempty"`
 }
 
-// Custom middleware examples
 type AuthMiddleware struct {
 	token string
 }
