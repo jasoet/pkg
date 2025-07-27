@@ -2,6 +2,38 @@
 
 This directory contains examples demonstrating how to use the `logging` package for structured logging in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/logging/examples/example.go](https://github.com/jasoet/pkg/blob/main/logging/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/logging"
+
+// Initialize logging (MUST be called first, only once)
+logging.Initialize("service-name", true) // true for debug mode
+
+// Get context logger for components
+logger := logging.ContextLogger(ctx, "component-name")
+
+// Log with structured fields
+logger.Info().
+    Str("user_id", "123").
+    Int("status", 200).
+    Dur("duration", 45*time.Millisecond).
+    Msg("Operation completed")
+
+// Log errors with context
+logger.Error().Err(err).Str("operation", "db_query").Msg("Failed")
+```
+
+**Critical notes:**
+- Always call `Initialize()` once at application startup
+- Use `ContextLogger()` for component-specific logging
+- Global `log` is available after initialization
+
 ## Overview
 
 The `logging` package provides utilities for:
@@ -21,7 +53,7 @@ go run example.go
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/logging/examples/example.go) file demonstrates several use cases:
 
 ### 1. Basic Logging Setup
 

@@ -2,6 +2,43 @@
 
 This directory contains examples demonstrating how to use the `db` package for database connection management and migrations in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/db/examples/example.go](https://github.com/jasoet/pkg/blob/main/db/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/db"
+
+// Create database connection
+config := &db.ConnectionConfig{
+    DbType:       db.Postgresql, // or db.Mysql, db.SqlServer
+    Host:         "localhost",
+    Port:         5432,
+    Username:     "user",
+    Password:     "pass",
+    DbName:       "mydb",
+    MaxIdleConns: 10,
+    MaxOpenConns: 100,
+}
+
+// Get GORM database instance
+database, err := config.Pool()
+
+// Run migrations
+err = db.Migrate(database, "file://migrations")
+
+// Check connection
+err = database.Exec("SELECT 1").Error
+```
+
+**Critical notes:**
+- Always use logging.Initialize() before database operations
+- Connection strings are built automatically based on DbType
+- Migrations use golang-migrate library format
+
 ## Overview
 
 The `db` package provides utilities for:
@@ -27,7 +64,7 @@ For testing, you can use the Docker Compose configuration in the repository:
 
 ```bash
 # From the root directory
-mage docker:up
+task docker:up
 ```
 
 This starts PostgreSQL on `localhost:5439` with:
@@ -37,7 +74,7 @@ This starts PostgreSQL on `localhost:5439` with:
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/db/examples/example.go) file demonstrates several use cases:
 
 ### 1. Basic Database Connection
 

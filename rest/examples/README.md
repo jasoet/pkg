@@ -2,6 +2,44 @@
 
 This directory contains examples demonstrating how to use the `rest` package for HTTP client operations in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/rest/examples/example.go](https://github.com/jasoet/pkg/blob/main/rest/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/rest"
+
+// Create client with defaults
+client := rest.NewClient()
+
+// Make requests
+response, err := client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+
+// With custom configuration
+config := &rest.Config{
+    RetryCount:    3,
+    RetryWaitTime: 2 * time.Second,
+    Timeout:       30 * time.Second,
+    BaseURL:       "https://api.example.com",
+}
+client = rest.NewClient(rest.WithRestConfig(*config))
+
+// Add middleware
+client.AddMiddleware(func(client *resty.Client, request *resty.Request) error {
+    request.SetHeader("Authorization", "Bearer token")
+    return nil
+})
+```
+
+**Key features:**
+- Built-in retry logic with exponential backoff
+- Middleware support for auth, logging, etc.
+- Context-aware with proper cancellation
+- Structured error types for better handling
+
 ## Overview
 
 The `rest` package provides utilities for:
@@ -23,7 +61,7 @@ go run example.go
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/rest/examples/example.go) file demonstrates several use cases:
 
 ### 1. Basic HTTP Client
 

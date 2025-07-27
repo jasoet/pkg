@@ -2,6 +2,111 @@
 
 This directory contains examples demonstrating how to use Temporal workflows in Go. These examples show practical usage patterns and best practices for implementing Temporal workflows, activities, workers, and schedulers.
 
+## 📍 Example Code Locations
+
+**Workflow examples:**
+- [Simple workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/simple_workflow.go)
+- [Activity workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/activity_workflow.go)
+- [Error handling workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/error_handling_workflow.go)
+- [Timer workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/timer_workflow.go)
+
+**Other examples:**
+- [Basic activities](https://github.com/jasoet/pkg/blob/main/temporal/examples/activities/basic_activities.go)
+- [Basic worker](https://github.com/jasoet/pkg/blob/main/temporal/examples/worker/basic_worker.go)
+- [Basic scheduler](https://github.com/jasoet/pkg/blob/main/temporal/examples/scheduler/basic_scheduler.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/temporal"
+
+// 1. Define workflow
+func MyWorkflow(ctx workflow.Context, input string) (string, error) {
+    // Workflow logic here
+    ao := workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+    }
+    ctx = workflow.WithActivityOptions(ctx, ao)
+    
+    var result string
+    err := workflow.ExecuteActivity(ctx, MyActivity, input).Get(ctx, &result)
+    return result, err
+}
+
+// 2. Define activities
+func MyActivity(ctx context.Context, input string) (string, error) {
+    // Activity logic here
+    return "processed: " + input, nil
+}
+
+// 3. Create worker
+client, _ := temporal.NewClient(temporal.ClientConfig{
+    HostPort: "localhost:7233",
+})
+worker := temporal.NewWorker(client, "my-task-queue")
+worker.RegisterWorkflow(MyWorkflow)
+worker.RegisterActivity(MyActivity)
+
+// 4. Start worker (in a goroutine)
+go func() {
+    err := worker.Run(context.Background())
+    if err != nil {
+        log.Fatal().Err(err).Msg("Worker failed")
+    
+}()
+
+// 5. Trigger workflow manually
+workflowOptions := client.StartWorkflowOptions{
+    ID:        "my-workflow-id",
+    TaskQueue: "my-task-queue",
+}
+we, err := client.ExecuteWorkflow(context.Background(), workflowOptions, MyWorkflow, "input-data")
+if err != nil {
+    log.Error().Err(err).Msg("Failed to start workflow")
+}
+log.Info().Str("workflow_id", we.GetID()).Str("run_id", we.GetRunID()).Msg("Workflow started")
+
+// Get workflow result
+var result string
+err = we.Get(context.Background(), &result)
+
+// 6. Or create a scheduler for periodic execution
+scheduleManager := temporal.NewScheduleManager(client)
+defer scheduleManager.Close()
+
+scheduleID := "my-schedule-id"
+scheduleOptions := temporal.WorkflowScheduleOptions{
+    WorkflowID: "scheduled-workflow-id",
+    Workflow:   MyWorkflow,
+    TaskQueue:  "my-task-queue",
+    Interval:   1 * time.Hour, // Run every hour
+    Args:       []any{"scheduled-input"},
+}
+
+scheduleHandle, err := scheduleManager.CreateWorkflowSchedule(
+    context.Background(), 
+    scheduleID, 
+    scheduleOptions,
+)
+if err != nil {
+    log.Error().Err(err).Msg("Failed to create schedule")
+}
+log.Info().Str("schedule_id", scheduleID).Msg("Schedule created")
+
+// Delete schedule when done
+err = scheduleHandle.Delete(context.Background())
+```
+
+**Key features:**
+- Durable execution with automatic retries
+- Built-in error handling and compensation
+- Timer and scheduling support
+- Integration with logging package
+- Manual workflow invocation with ExecuteWorkflow
+- Scheduled workflows with cron-like intervals
+- Async execution with result retrieval
+
 ## Directory Structure
 
 ```

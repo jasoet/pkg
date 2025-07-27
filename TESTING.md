@@ -7,12 +7,12 @@ This document explains the testing strategy and commands for this Go utility lib
 ### 1. Unit Tests
 **Purpose**: Test individual functions and components in isolation  
 **Requirements**: No external dependencies  
-**Command**: `mage test`  
+**Command**: `task test`  
 **Coverage**: All packages have unit tests
 
 ```bash
 # Run all unit tests
-mage test
+task test
 
 # Run unit tests for specific package
 go test ./config/...
@@ -22,12 +22,12 @@ go test ./logging/...
 ### 2. Database Integration Tests  
 **Purpose**: Test database connectivity and operations  
 **Requirements**: PostgreSQL, MySQL, MSSQL (via Docker)  
-**Command**: `mage integrationTest`  
+**Command**: `task integration-test`  
 **Build Tag**: `integration`
 
 ```bash
 # Run database integration tests (starts Docker services automatically)
-mage integrationTest
+task integration-test
 
 # Manual execution
 go test -tags=integration ./db/...
@@ -45,12 +45,12 @@ go test -tags=integration ./db/...
 ### 3. Temporal Integration Tests
 **Purpose**: Test Temporal workflow engine integration  
 **Requirements**: Temporal server + PostgreSQL (via Docker)  
-**Command**: `mage temporalTest`  
+**Command**: `task temporal-test`  
 **Build Tag**: `temporal`
 
 ```bash
 # Run Temporal integration tests (starts Temporal server automatically)
-mage temporalTest
+task temporal-test
 
 # Manual execution  
 go test -tags=temporal ./temporal/...
@@ -67,29 +67,53 @@ go test -tags=temporal ./temporal/...
 ### 4. All Integration Tests
 **Purpose**: Run both database and temporal integration tests  
 **Requirements**: All Docker services  
-**Command**: `mage allIntegrationTests`
+**Command**: `task all-integration-tests`
 
 ```bash
 # Run all integration tests sequentially
-mage allIntegrationTests
+task all-integration-tests
+```
+
+## Additional Test Commands
+
+### Quality and Security Testing
+```bash
+task lint          # Run linter (golangci-lint)
+task security      # Run security analysis (gosec)
+task dependencies  # Check for vulnerabilities (nancy)
+task coverage      # Generate test coverage report
+task checkall      # Run all quality checks
+```
+
+### Development Tools
+```bash
+task tools         # Install all development tools
+task clean         # Clean build artifacts
+```
+
+### Coverage Reports
+The coverage task generates detailed HTML reports:
+```bash
+task coverage
+# Opens dist/coverage.html in browser for detailed coverage analysis
 ```
 
 ## Service Management
 
 ### Database Services
 ```bash
-mage docker:up        # Start PostgreSQL, MySQL, MSSQL
-mage docker:down      # Stop database services  
-mage docker:logs      # View database logs
-mage docker:restart   # Restart database services
+task docker:up        # Start PostgreSQL, MySQL, MSSQL
+task docker:down      # Stop database services  
+task docker:logs      # View database logs
+task docker:restart   # Restart database services
 ```
 
 ### Temporal Services  
 ```bash
-mage temporal:up      # Start Temporal server + PostgreSQL
-mage temporal:down    # Stop Temporal services
-mage temporal:logs    # View Temporal logs
-mage temporal:restart # Restart Temporal services
+task temporal:up      # Start Temporal server + PostgreSQL
+task temporal:down    # Stop Temporal services
+task temporal:logs    # View Temporal logs
+task temporal:restart # Restart Temporal services
 ```
 
 ## Test Isolation Strategy
@@ -99,7 +123,6 @@ mage temporal:restart # Restart Temporal services
 - **`integration`**: Database integration tests  
 - **`temporal`**: Temporal integration tests
 - **`example`**: Example code (excluded from normal builds)
-- **`template`**: Template projects (excluded from normal builds)
 
 ### Why Separate Tags?
 
@@ -122,20 +145,23 @@ mage temporal:restart # Restart Temporal services
 
 ## Environment Configuration
 
-### Database Integration Tests
+The test system uses build tags to control which tests run, not environment variables:
+
+- **Unit tests**: No tag required - `go test ./...`
+- **Database integration**: `-tags=integration` 
+- **Temporal integration**: `-tags=temporal`
+
+### Optional Environment Overrides
 ```bash
-# Environment variables
-AUTOMATION=true          # Enable integration test mode
+# Optional database connection overrides (if needed)
 DB_HOST=localhost       # Database host override
 DB_PORT=5439           # Database port override
-```
 
-### Temporal Integration Tests  
-```bash
-# Environment variables
-TEMPORAL_INTEGRATION=true    # Enable temporal test mode
+# Optional Temporal server override (if needed)
 TEMPORAL_ADDRESS=localhost:7233  # Temporal server address
-DEBUG=true                   # Enable debug logging
+
+# Optional debug logging
+DEBUG=true             # Enable debug logging
 ```
 
 ## Example Workflows
@@ -143,31 +169,31 @@ DEBUG=true                   # Enable debug logging
 ### Development Workflow
 ```bash
 # 1. Quick validation during development
-mage test
+task test
 
 # 2. Test database integration before commit
-mage integrationTest
+task integration-test
 
 # 3. Full validation before release
-mage allIntegrationTests
+task all-integration-tests
 ```
 
 ### CI/CD Pipeline
 ```bash
 # Stage 1: Fast feedback
-mage test
-mage lint
+task test
+task lint
 
 # Stage 2: Database integration (parallel)
-mage integrationTest
+task integration-test
 
 # Stage 3: Temporal integration (parallel) 
-mage temporalTest
+task temporal-test
 
 # Stage 4: Quality checks
-mage security
-mage dependencies
-mage coverage
+task security
+task dependencies
+task coverage
 ```
 
 ### Debugging Failed Tests
@@ -178,7 +204,7 @@ mage coverage
 docker ps
 
 # View database logs
-mage docker:logs
+task docker:logs
 
 # Test direct connection
 psql -h localhost -p 5439 -U jasoet -d pkg_db
@@ -190,7 +216,7 @@ psql -h localhost -p 5439 -U jasoet -d pkg_db
 docker ps | grep temporal
 
 # View Temporal logs
-mage temporal:logs
+task temporal:logs
 
 # Check Temporal UI
 open http://localhost:8233
