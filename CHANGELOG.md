@@ -1,3 +1,14 @@
+## [1.3.1](https://github.com/jasoet/pkg/compare/v1.3.0...v1.3.1) (2025-07-27)
+
+### Bug Fixes
+
+* remove broken CI build status badge from README ([8d6b3ce](https://github.com/jasoet/pkg/commit/8d6b3cec4330e4256d01013d4b61fa680a358e49))
+* replace broken CI build status badge with correct workflow reference ([8f3ea7a](https://github.com/jasoet/pkg/commit/8f3ea7a52a3db1224ba0a392358341fcf95697db))
+
+### Continuous Integration
+
+* refactor Claude workflow for enhanced PR review triggers and setup ([17df8bb](https://github.com/jasoet/pkg/commit/17df8bb9e72845928c214610f9c5a2b61e8d7696))
+
 ## [1.3.0](https://github.com/jasoet/pkg/compare/v1.2.2...v1.3.0) (2025-07-27)
 
 ### Features
