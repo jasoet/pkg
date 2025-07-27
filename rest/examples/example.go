@@ -526,7 +526,7 @@ func advancedRestyExample() {
 	fmt.Println("Demonstrating advanced Resty client features:")
 
 	client := rest.NewClient()
-	restyClient := client.GetRestyClient()
+	restyClient := client.GetRestClient()
 
 	// Example 1: Automatic JSON unmarshaling
 	fmt.Println("\nUsing automatic JSON unmarshaling:")
