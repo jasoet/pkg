@@ -68,7 +68,6 @@ func (c *Client) GetRestClient() *resty.Client {
 	return c.restClient
 }
 
-
 func (c *Client) GetRestConfig() *Config {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -103,18 +102,16 @@ func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url st
 		return nil, errors.New("rest client is nil")
 	}
 
-	// Apply BeforeRequest middleware
 	startTime := time.Now()
 	c.mu.RLock()
 	middlewaresCopy := make([]Middleware, len(c.middlewares))
 	copy(middlewaresCopy, c.middlewares)
 	c.mu.RUnlock()
-	
+
 	for _, middleware := range middlewaresCopy {
 		ctx = middleware.BeforeRequest(ctx, method, url, body, headers)
 	}
 
-	// Enable trace for this specific request - use with caution in concurrent scenarios
 	request := c.restClient.R().
 		SetHeaders(headers).
 		SetContext(ctx).
@@ -149,7 +146,6 @@ func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url st
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
 
-	// Create RequestInfo for middleware
 	requestInfo := RequestInfo{
 		Method:    method,
 		URL:       url,
@@ -164,13 +160,11 @@ func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url st
 	if response != nil {
 		requestInfo.StatusCode = response.StatusCode()
 		requestInfo.Response = response.String()
-		// Include TraceInfo since this method explicitly enables tracing
 		if response.Request != nil {
 			requestInfo.TraceInfo = response.Request.TraceInfo()
 		}
 	}
 
-	// Apply AfterRequest middleware
 	for _, middleware := range middlewaresCopy {
 		middleware.AfterRequest(ctx, requestInfo)
 	}
@@ -195,13 +189,12 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 		return nil, errors.New("rest client is nil")
 	}
 
-	// Apply BeforeRequest middleware
 	startTime := time.Now()
 	c.mu.RLock()
 	middlewaresCopy := make([]Middleware, len(c.middlewares))
 	copy(middlewaresCopy, c.middlewares)
 	c.mu.RUnlock()
-	
+
 	for _, middleware := range middlewaresCopy {
 		ctx = middleware.BeforeRequest(ctx, method, url, body, headers)
 	}
@@ -239,7 +232,6 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
 
-	// Create RequestInfo for middleware
 	requestInfo := RequestInfo{
 		Method:    method,
 		URL:       url,
@@ -254,11 +246,8 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 	if response != nil {
 		requestInfo.StatusCode = response.StatusCode()
 		requestInfo.Response = response.String()
-		// Note: TraceInfo is not set to avoid race conditions in concurrent scenarios
-		// If tracing is needed, it should be enabled per-request basis when thread safety is ensured
 	}
 
-	// Apply AfterRequest middleware
 	for _, middleware := range middlewaresCopy {
 		middleware.AfterRequest(ctx, requestInfo)
 	}
