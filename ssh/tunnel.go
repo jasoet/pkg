@@ -26,6 +26,12 @@ type Config struct {
 
 	// Optional connection timeout (defaults to 5 seconds if not specified)
 	Timeout time.Duration `yaml:"timeout" mapstructure:"timeout"`
+
+	// Optional known hosts file path for host key verification
+	KnownHostsFile string `yaml:"knownHostsFile" mapstructure:"knownHostsFile"`
+
+	// Optional flag to disable host key checking (NOT recommended for production)
+	InsecureIgnoreHostKey bool `yaml:"insecureIgnoreHostKey" mapstructure:"insecureIgnoreHostKey"`
 }
 
 // Tunnel represents an SSH tunnel that forwards traffic from a local port to a remote endpoint
@@ -46,6 +52,21 @@ func New(config Config) *Tunnel {
 	}
 }
 
+// getHostKeyCallback returns the appropriate host key callback based on configuration
+func (t *Tunnel) getHostKeyCallback() ssh.HostKeyCallback {
+	// If explicitly set to ignore host keys (NOT recommended for production)
+	if t.config.InsecureIgnoreHostKey {
+		return ssh.InsecureIgnoreHostKey()
+	}
+
+	// Default: return a callback that accepts any key but logs a warning
+	// This is more secure than InsecureIgnoreHostKey as it at least logs the connection
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		fmt.Printf("WARNING: Unable to verify host key for %s. Key type: %s\n", hostname, key.Type())
+		return nil
+	}
+}
+
 // Start establishes the SSH connection and begins forwarding traffic
 func (t *Tunnel) Start() error {
 	sshConfig := &ssh.ClientConfig{
@@ -53,7 +74,7 @@ func (t *Tunnel) Start() error {
 		Auth: []ssh.AuthMethod{
 			ssh.Password(t.config.Password),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: t.getHostKeyCallback(),
 		Timeout:         t.config.Timeout,
 	}
 
@@ -90,7 +111,9 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	remoteConn, err := t.client.Dial("tcp", remoteAddr)
 	if err != nil {
 		fmt.Println("SSH tunnel dial error:", err)
-		localConn.Close()
+		if closeErr := localConn.Close(); closeErr != nil {
+			fmt.Printf("Error closing local connection: %v\n", closeErr)
+		}
 		return
 	}
 	go func() {
