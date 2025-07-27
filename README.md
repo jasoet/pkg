@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://github.com/jasoet/pkg/workflows/CI/badge.svg)](https://github.com/jasoet/pkg/actions)
+[![Build Status](https://github.com/jasoet/pkg/actions/workflows/release.yml/badge.svg)](https://github.com/jasoet/pkg/actions)
 
 A comprehensive collection of production-ready Go utility packages designed to eliminate boilerplate and standardize common patterns across Go applications. These battle-tested components integrate seamlessly to accelerate development while maintaining best practices.
 
