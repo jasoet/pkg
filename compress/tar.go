@@ -139,13 +139,17 @@ func UnTar(src io.Reader, destinationDir string) (written int64, err error) {
 			return totalWritten, fmt.Errorf("tar contained invalid path %s\n", header.Name)
 		}
 
+		// Prevent path traversal attacks
 		target := filepath.Join(destinationDir, header.Name)
+		if !strings.HasPrefix(target, filepath.Clean(destinationDir)+string(os.PathSeparator)) {
+			return totalWritten, fmt.Errorf("invalid file path: %s", header.Name)
+		}
 
 		switch header.Typeflag {
 
 		case tar.TypeDir:
 			if _, err := os.Stat(target); os.IsNotExist(err) {
-				if err := os.MkdirAll(target, 0755); err != nil {
+				if err := os.MkdirAll(target, 0750); err != nil {
 					return totalWritten, err
 				}
 			}
@@ -153,16 +157,25 @@ func UnTar(src io.Reader, destinationDir string) (written int64, err error) {
 			// Ensure parent directory exists
 			parentDir := filepath.Dir(target)
 			if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-				if err := os.MkdirAll(parentDir, 0755); err != nil {
+				if err := os.MkdirAll(parentDir, 0750); err != nil {
 					return totalWritten, err
 				}
 			}
 
-			fileToWrite, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			// Validate file mode to prevent integer overflow
+		fileMode := header.Mode
+		if fileMode > 0777 {
+			fileMode = 0644 // Use safe default
+		}
+		// Explicit conversion to prevent integer overflow
+		safeMode := os.FileMode(fileMode & 0777)
+		fileToWrite, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, safeMode)
 			if err != nil {
 				return totalWritten, err
 			}
-			written, err := io.Copy(fileToWrite, tarReader)
+			// Limit decompression to prevent zip bombs (100MB limit)
+		limitedReader := io.LimitReader(tarReader, 100*1024*1024)
+		written, err := io.Copy(fileToWrite, limitedReader)
 			if err != nil {
 				return totalWritten, err
 			}
