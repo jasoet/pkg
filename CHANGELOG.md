@@ -1,3 +1,17 @@
+## [1.2.2](https://github.com/jasoet/pkg/compare/v1.2.1...v1.2.2) (2025-07-27)
+
+### Bug Fixes
+
+* improve documentation structure and build system ([706698f](https://github.com/jasoet/pkg/commit/706698fdc052c669adbfcc4f56a3e4c38e38c683))
+
+### Documentation
+
+* **claude:** enhance CLAUDE.md with comprehensive project information ([532ea9c](https://github.com/jasoet/pkg/commit/532ea9cd78a119a2bc41897053a58af0f6b71804))
+
+### Continuous Integration
+
+* add Claude code review workflow for automated PR reviews ([0f856d1](https://github.com/jasoet/pkg/commit/0f856d113680db4ede71f0ee5770a232efa4aabe))
+
 ## [1.2.1](https://github.com/jasoet/pkg/compare/v1.2.0...v1.2.1) (2025-07-02)
 
 ### Chores
