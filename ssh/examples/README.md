@@ -2,6 +2,43 @@
 
 This directory contains examples demonstrating how to use the `ssh` package for creating SSH tunnels in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/ssh/examples/example.go](https://github.com/jasoet/pkg/blob/main/ssh/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/ssh"
+
+// Create SSH tunnel configuration
+config := ssh.Config{
+    Host:           "bastion.example.com",
+    Port:           22,
+    User:           "username",
+    Password:       "password",      // OR
+    PrivateKeyPath: "~/.ssh/id_rsa", // Use key-based auth
+    RemoteHost:     "database.internal",
+    RemotePort:     5432,
+    LocalPort:      5433,
+}
+
+// Create and start tunnel
+tunnel := ssh.New(config)
+err := tunnel.Start()
+defer tunnel.Close()
+
+// Now connect to localhost:5433 to reach database.internal:5432
+db, err := sql.Open("postgres", "postgres://user:pass@localhost:5433/dbname")
+```
+
+**Key features:**
+- Password or key-based authentication
+- Automatic retry and reconnection
+- Context-aware lifecycle management
+- Safe concurrent usage
+
 ## Overview
 
 The `ssh` package provides utilities for:
@@ -22,7 +59,7 @@ go run example.go
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/ssh/examples/example.go) file demonstrates several use cases:
 
 ### 1. Basic SSH Tunnel
 

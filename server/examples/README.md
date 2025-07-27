@@ -2,6 +2,44 @@
 
 This directory contains runnable examples demonstrating the features of the `server` package.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/server/examples/example.go](https://github.com/jasoet/pkg/blob/main/server/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/server"
+
+// Option 1: Quick start with defaults
+server.Start() // Starts on port 8080
+
+// Option 2: With custom port
+server.StartWithPort(3000)
+
+// Option 3: Full configuration
+config := &server.Config{
+    Port: 8080,
+    EchoConfigurer: func(e *echo.Echo) {
+        // Add custom routes
+        e.GET("/api/users", getUsersHandler)
+        e.POST("/api/users", createUserHandler)
+    },
+    HealthChecker: func() error {
+        // Custom health check logic
+        return checkDatabaseConnection()
+    },
+}
+server.StartWithConfig(*config)
+```
+
+**Built-in endpoints:**
+- `/health` - Main health check
+- `/health/ready` - Readiness probe
+- `/health/live` - Liveness probe  
+- `/metrics` - Prometheus metrics
+
 ## Overview
 
 The examples in this directory complement the comprehensive documentation in the main server package README. These are practical, runnable demonstrations of:

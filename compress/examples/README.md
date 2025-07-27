@@ -2,6 +2,43 @@
 
 This directory contains examples demonstrating how to use the `compress` package for file compression and archiving in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/compress/examples/example.go](https://github.com/jasoet/pkg/blob/main/compress/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/compress"
+
+// Create tar archive
+err := compress.Tar(sourceDir, tarWriter)
+
+// Create tar.gz archive
+err := compress.TarGz(sourceDir, tarGzWriter)
+
+// Create base64-encoded tar.gz
+base64String, err := compress.TarGzBase64(sourceDir)
+
+// Extract tar archive
+err := compress.Untar(tarReader, destDir)
+
+// Extract tar.gz archive
+err := compress.UntarGz(tarGzReader, destDir)
+
+// Gzip compression
+err := compress.Gzip(sourceReader, destWriter)
+
+// Gzip decompression
+err := compress.Gunzip(gzipReader, destWriter)
+```
+
+**Security features:**
+- Path traversal protection in extraction
+- Automatic permission sanitization
+- Safe handling of symbolic links
+
 ## Overview
 
 The `compress` package provides utilities for:
@@ -26,7 +63,7 @@ This will:
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/compress/examples/example.go) file demonstrates several use cases:
 
 ### 1. Creating a tar archive
 

@@ -2,6 +2,45 @@
 
 This directory contains examples demonstrating how to use the `concurrent` package for parallel execution of functions in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/concurrent/examples/example.go](https://github.com/jasoet/pkg/blob/main/concurrent/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/concurrent"
+
+// Define functions to run concurrently
+funcs := map[string]concurrent.Func[string]{
+    "api1": func(ctx context.Context) (string, error) {
+        // Call API 1
+        return callAPI1(ctx)
+    },
+    "api2": func(ctx context.Context) (string, error) {
+        // Call API 2
+        return callAPI2(ctx)
+    },
+}
+
+// Execute all functions concurrently
+results, err := concurrent.ExecuteConcurrently(ctx, funcs)
+if err != nil {
+    // Handle error (fail-fast: if one fails, all are cancelled)
+}
+
+// Access results by key
+api1Result := results["api1"]
+api2Result := results["api2"]
+```
+
+**Key features:**
+- Type-safe with Go generics
+- Fail-fast: cancels all on first error
+- Context-aware for proper cancellation
+- Returns map of results by key
+
 ## Overview
 
 The `concurrent` package provides utilities for:
@@ -20,7 +59,7 @@ go run example.go
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/concurrent/examples/example.go) file demonstrates several use cases:
 
 ### 1. Basic Concurrent Execution
 
