@@ -10,44 +10,56 @@ This directory contains examples demonstrating how to use the `rest` package for
 
 ```go
 // Basic usage pattern
-import "github.com/jasoet/pkg/rest"
+import (
+    "net/http"
+    "github.com/jasoet/pkg/rest"
+)
 
 // Create client with defaults
 client := rest.NewClient()
 
-// Make requests
-response, err := client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+// Make requests with all HTTP methods supported
+response, err := client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
+response, err = client.MakeRequest(ctx, http.MethodPost, "https://api.example.com/users", jsonBody, headers)
+response, err = client.MakeRequest(ctx, http.MethodPut, "https://api.example.com/users/1", jsonBody, headers)
+response, err = client.MakeRequest(ctx, http.MethodDelete, "https://api.example.com/users/1", "", nil)
+response, err = client.MakeRequest(ctx, http.MethodPatch, "https://api.example.com/users/1", patchBody, headers)
+response, err = client.MakeRequest(ctx, http.MethodHead, "https://api.example.com/users", "", nil)
+response, err = client.MakeRequest(ctx, http.MethodOptions, "https://api.example.com/users", "", nil)
+
+// Custom methods are also supported via fallback
+response, err = client.MakeRequest(ctx, "CUSTOM", "https://api.example.com/special", "", nil)
 
 // With custom configuration
 config := &rest.Config{
     RetryCount:    3,
     RetryWaitTime: 2 * time.Second,
     Timeout:       30 * time.Second,
-    BaseURL:       "https://api.example.com",
 }
 client = rest.NewClient(rest.WithRestConfig(*config))
 
 // Add middleware
-client.AddMiddleware(func(client *resty.Client, request *resty.Request) error {
-    request.SetHeader("Authorization", "Bearer token")
-    return nil
-})
+authMiddleware := rest.NewLoggingMiddleware()
+client = rest.NewClient(rest.WithMiddleware(authMiddleware))
 ```
 
 **Key features:**
-- Built-in retry logic with exponential backoff
-- Middleware support for auth, logging, etc.
-- Context-aware with proper cancellation
-- Structured error types for better handling
+- **Full HTTP method support** - GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS + custom methods
+- **Built-in retry logic** with exponential backoff
+- **Middleware support** for auth, logging, etc.
+- **Context-aware** with proper cancellation
+- **Comprehensive error handling** - separate execution errors from HTTP response errors
+- **Type-safe error categorization** - UnauthorizedError, ServerError, ResourceNotFoundError, etc.
 
 ## Overview
 
 The `rest` package provides utilities for:
-- HTTP client creation with retry and timeout configuration
-- Middleware support for request/response interception
-- Structured error handling with custom error types
-- Built-in logging and tracing capabilities
-- Context-aware request handling
+- **HTTP client creation** with retry and timeout configuration
+- **Full HTTP method support** - all standard methods (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS) + custom methods
+- **Middleware support** for request/response interception
+- **Comprehensive error handling** with distinct error types for execution vs HTTP response errors
+- **Built-in logging and tracing** capabilities
+- **Context-aware request handling** with proper cancellation support
 
 ## Running the Examples
 
@@ -71,11 +83,19 @@ Create a simple HTTP client with default configuration:
 // Create client with default configuration
 client := rest.NewClient()
 
-// Make a GET request
-response, err := client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+// Make requests using HTTP method constants
+response, err := client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
 if err != nil {
     log.Fatal(err)
 }
+
+// Other HTTP methods
+response, err = client.MakeRequest(ctx, http.MethodPost, "https://api.example.com/users", jsonBody, headers)
+response, err = client.MakeRequest(ctx, http.MethodPut, "https://api.example.com/users/1", jsonBody, headers)
+response, err = client.MakeRequest(ctx, http.MethodDelete, "https://api.example.com/users/1", "", nil)
+response, err = client.MakeRequest(ctx, http.MethodPatch, "https://api.example.com/users/1", patchBody, headers)
+response, err = client.MakeRequest(ctx, http.MethodHead, "https://api.example.com/users", "", nil)
+response, err = client.MakeRequest(ctx, http.MethodOptions, "https://api.example.com/users", "", nil)
 ```
 
 ### 2. Client with Custom Configuration
@@ -111,20 +131,42 @@ client := rest.NewClient(
 
 ### 4. Error Handling
 
-Handle different types of HTTP errors:
+Handle different types of HTTP errors with comprehensive error categorization:
 
 ```go
-response, err := client.MakeRequest(ctx, "GET", url, "", headers)
+response, err := client.MakeRequest(ctx, http.MethodGet, url, "", headers)
 if err != nil {
     switch e := err.(type) {
     case *rest.UnauthorizedError:
-        log.Printf("Authentication failed: %s", e.Error())
+        // HTTP 401/403 - Authentication/Authorization errors
+        log.Printf("Auth failed (Status %d): %s", e.StatusCode, e.Error())
+        // Handle token refresh, re-authentication, etc.
+        
+    case *rest.ResourceNotFoundError:
+        // HTTP 404 - Resource not found
+        log.Printf("Resource not found (Status %d): %s", e.StatusCode, e.Error())
+        // Handle missing resources, redirect to creation page, etc.
+        
     case *rest.ServerError:
-        log.Printf("Server error: %s", e.Error())
+        // HTTP 5xx - Server-side errors
+        log.Printf("Server error (Status %d): %s", e.StatusCode, e.Error())
+        // Implement retry logic, circuit breaker, failover, etc.
+        
     case *rest.ResponseError:
-        log.Printf("Response error: %s", e.Error())
+        // HTTP 4xx (except 401/403/404) - Client errors
+        log.Printf("Client error (Status %d): %s", e.StatusCode, e.Error())
+        // Handle validation errors, bad requests, etc.
+        
+    case *rest.ExecutionError:
+        // Network, DNS, timeout, connection errors (not HTTP response errors)
+        log.Printf("Execution failed: %s", e.Error())
+        if e.Unwrap() != nil {
+            log.Printf("Underlying error: %s", e.Unwrap().Error())
+        }
+        // Handle network issues, DNS problems, timeouts, etc.
+        
     default:
-        log.Printf("Request failed: %s", err.Error())
+        log.Printf("Unknown error: %s", err.Error())
     }
 }
 ```
@@ -135,7 +177,7 @@ Work with JSON APIs using built-in JSON support:
 
 ```go
 // GET request with JSON response
-response, err := client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+response, err := client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
 if err == nil {
     var users []User
     json.Unmarshal(response.Body(), &users)
@@ -145,7 +187,18 @@ if err == nil {
 userData := User{Name: "John Doe", Email: "john@example.com"}
 jsonBody, _ := json.Marshal(userData)
 headers := map[string]string{"Content-Type": "application/json"}
-response, err := client.MakeRequest(ctx, "POST", "https://api.example.com/users", string(jsonBody), headers)
+response, err := client.MakeRequest(ctx, http.MethodPost, "https://api.example.com/users", string(jsonBody), headers)
+
+// PUT request for updates
+response, err = client.MakeRequest(ctx, http.MethodPut, "https://api.example.com/users/1", string(jsonBody), headers)
+
+// PATCH request for partial updates
+patchData := map[string]interface{}{"email": "newemail@example.com"}
+patchBody, _ := json.Marshal(patchData)
+response, err = client.MakeRequest(ctx, http.MethodPatch, "https://api.example.com/users/1", string(patchBody), headers)
+
+// DELETE request
+response, err = client.MakeRequest(ctx, http.MethodDelete, "https://api.example.com/users/1", "", nil)
 ```
 
 ### 6. Retry and Circuit Breaker Patterns
@@ -163,7 +216,7 @@ config := &rest.Config{
 client := rest.NewClient(rest.WithRestConfig(*config))
 
 // Requests will automatically retry on transient failures
-response, err := client.MakeRequest(ctx, "GET", unreliableAPI, "", nil)
+response, err := client.MakeRequest(ctx, http.MethodGet, unreliableAPI, "", nil)
 ```
 
 ### 7. Request Tracing and Performance Monitoring
@@ -174,7 +227,7 @@ Monitor request performance with built-in tracing:
 client := rest.NewClient(rest.WithMiddleware(rest.NewLoggingMiddleware()))
 
 // Request will be automatically traced and logged
-response, err := client.MakeRequest(ctx, "GET", url, "", nil)
+response, err := client.MakeRequest(ctx, http.MethodGet, url, "", nil)
 
 // Access trace information
 if response != nil {
@@ -337,45 +390,103 @@ func (m *MetricsMiddleware) AfterRequest(ctx context.Context, info rest.RequestI
 
 ## Error Types and Handling
 
+The REST client provides comprehensive error categorization to help you handle different failure scenarios appropriately.
+
+### Error Categories
+
+#### 1. Execution Errors vs Response Errors
+
+**Execution Errors** (`*rest.ExecutionError`):
+- Network connectivity issues (DNS resolution, connection refused, etc.)
+- Request timeouts before reaching the server
+- Invalid URLs or malformed requests
+- Any error that prevents the HTTP request from being sent or completed
+
+**Response Errors** (HTTP status-based errors):
+- Server successfully received and processed the request but returned an error status
+- Can be categorized by HTTP status code ranges
+
 ### Built-in Error Types
 
-#### UnauthorizedError (401/403)
-```go
-if unauthorizedErr, ok := err.(*rest.UnauthorizedError); ok {
-    fmt.Printf("Status: %d, Message: %s\n", unauthorizedErr.StatusCode, unauthorizedErr.Error())
-    // Handle re-authentication
-}
-```
-
-#### ServerError (5xx)
-```go
-if serverErr, ok := err.(*rest.ServerError); ok {
-    fmt.Printf("Server error: %s\n", serverErr.Error())
-    // Implement retry or failover logic
-}
-```
-
-#### ResponseError (4xx)
-```go
-if responseErr, ok := err.(*rest.ResponseError); ok {
-    fmt.Printf("Client error: %s\n", responseErr.Error())
-    // Handle client-side errors
-}
-```
-
-#### ResourceNotFoundError (404)
-```go
-if notFoundErr, ok := err.(*rest.ResourceNotFoundError); ok {
-    fmt.Printf("Resource not found: %s\n", notFoundErr.Error())
-    // Handle missing resources
-}
-```
-
-#### ExecutionError
+#### ExecutionError - Network/Connection Issues
 ```go
 if execErr, ok := err.(*rest.ExecutionError); ok {
     fmt.Printf("Execution failed: %s\n", execErr.Error())
-    // Handle network or execution failures
+    if execErr.Unwrap() != nil {
+        fmt.Printf("Underlying error: %s\n", execErr.Unwrap().Error())
+    }
+    // Handle network issues, DNS problems, timeouts
+    // Implement connection retry, fallback endpoints, etc.
+}
+```
+
+#### UnauthorizedError - HTTP 401/403
+```go
+if unauthorizedErr, ok := err.(*rest.UnauthorizedError); ok {
+    fmt.Printf("Auth failed (Status %d): %s\n", unauthorizedErr.StatusCode, unauthorizedErr.Error())
+    // Handle re-authentication, token refresh, permission issues
+}
+```
+
+#### ResourceNotFoundError - HTTP 404
+```go
+if notFoundErr, ok := err.(*rest.ResourceNotFoundError); ok {
+    fmt.Printf("Resource not found (Status %d): %s\n", notFoundErr.StatusCode, notFoundErr.Error())
+    // Handle missing resources, redirect to creation, suggest alternatives
+}
+```
+
+#### ServerError - HTTP 5xx
+```go
+if serverErr, ok := err.(*rest.ServerError); ok {
+    fmt.Printf("Server error (Status %d): %s\n", serverErr.StatusCode, serverErr.Error())
+    // Implement retry logic, circuit breaker, failover to backup services
+}
+```
+
+#### ResponseError - Other HTTP 4xx
+```go
+if responseErr, ok := err.(*rest.ResponseError); ok {
+    fmt.Printf("Client error (Status %d): %s\n", responseErr.StatusCode, responseErr.Error())
+    // Handle validation errors, bad requests, rate limiting
+}
+```
+
+### Complete Error Handling Pattern
+
+```go
+response, err := client.MakeRequest(ctx, http.MethodPost, apiURL, jsonBody, headers)
+if err != nil {
+    switch e := err.(type) {
+    case *rest.ExecutionError:
+        // Network/DNS/Connection issues - not HTTP response errors
+        logger.Error().Err(e.Unwrap()).Msg("Network connectivity issue")
+        return retryWithBackoff() // or switch to fallback endpoint
+        
+    case *rest.UnauthorizedError:
+        // HTTP 401/403 - Authentication/Authorization
+        logger.Warn().Int("status", e.StatusCode).Msg("Authentication required")
+        return refreshTokenAndRetry()
+        
+    case *rest.ResourceNotFoundError:
+        // HTTP 404 - Resource doesn't exist
+        logger.Info().Int("status", e.StatusCode).Msg("Resource not found")
+        return createResourceFirst()
+        
+    case *rest.ServerError:
+        // HTTP 5xx - Server-side issues
+        logger.Error().Int("status", e.StatusCode).Msg("Server error")
+        return useCircuitBreaker() // or failover
+        
+    case *rest.ResponseError:
+        // HTTP 4xx (except 401/403/404) - Client errors
+        logger.Warn().Int("status", e.StatusCode).Msg("Request validation failed")
+        return handleValidationErrors()
+        
+    default:
+        logger.Error().Err(err).Msg("Unexpected error type")
+        return err
+    }
 }
 ```
 
@@ -396,7 +507,7 @@ func makeAPICall(ctx context.Context) {
     
     logger.Info().Str("endpoint", "/users").Msg("Making API call")
     
-    response, err := client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+    response, err := client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
     if err != nil {
         logger.Error().Err(err).Msg("API call failed")
         return
@@ -419,10 +530,10 @@ func makeParallelAPICalls(ctx context.Context) {
     
     apiFunctions := map[string]concurrent.Func[*resty.Response]{
         "users": func(ctx context.Context) (*resty.Response, error) {
-            return client.MakeRequest(ctx, "GET", "https://api.example.com/users", "", nil)
+            return client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
         },
         "posts": func(ctx context.Context) (*resty.Response, error) {
-            return client.MakeRequest(ctx, "GET", "https://api.example.com/posts", "", nil)
+            return client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/posts", "", nil)
         },
     }
     
@@ -486,7 +597,7 @@ func makeAPICallWithTimeout(baseCtx context.Context) {
     defer cancel()
     
     client := rest.NewClient()
-    response, err := client.MakeRequest(ctx, "GET", url, "", nil)
+    response, err := client.MakeRequest(ctx, http.MethodGet, url, "", nil)
     // Handle response...
 }
 ```
@@ -523,7 +634,7 @@ func TestAPICall(t *testing.T) {
     }))
     defer server.Close()
     
-    response, err := client.MakeRequest(context.Background(), "GET", server.URL, "", nil)
+    response, err := client.MakeRequest(context.Background(), http.MethodGet, server.URL, "", nil)
     assert.NoError(t, err)
     assert.Equal(t, 200, response.StatusCode())
 }

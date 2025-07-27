@@ -43,8 +43,10 @@ type AuthMiddleware struct {
 }
 
 func (m *AuthMiddleware) BeforeRequest(ctx context.Context, method, url, body string, headers map[string]string) context.Context {
-	headers["Authorization"] = "Bearer " + m.token
-	headers["X-API-Version"] = "v1"
+	if headers != nil {
+		headers["Authorization"] = "Bearer " + m.token
+		headers["X-API-Version"] = "v1"
+	}
 	return ctx
 }
 
@@ -143,7 +145,7 @@ func basicHTTPClientExample() {
 
 	// Make a simple GET request
 	fmt.Printf("\nMaking GET request to mock server...\n")
-	response, err := client.MakeRequest(ctx, "GET", server.URL+"/users", "", nil)
+	response, err := client.MakeRequest(ctx, http.MethodGet, server.URL+"/users", "", nil)
 	if err != nil {
 		fmt.Printf("✗ Request failed: %v\n", err)
 		return
@@ -192,7 +194,7 @@ func customConfigurationExample() {
 		client := rest.NewClient(rest.WithRestConfig(*config))
 
 		start := time.Now()
-		response, err := client.MakeRequest(ctx, "GET", server.URL+"/users", "", nil)
+		response, err := client.MakeRequest(ctx, http.MethodGet, server.URL+"/users", "", nil)
 		duration := time.Since(start)
 
 		if err != nil {
@@ -212,7 +214,7 @@ func middlewareIntegrationExample() {
 	fmt.Println("Testing built-in logging middleware:")
 	loggingClient := rest.NewClient(rest.WithMiddleware(rest.NewLoggingMiddleware()))
 
-	_, err := loggingClient.MakeRequest(ctx, "GET", server.URL+"/users", "", nil)
+	_, err := loggingClient.MakeRequest(ctx, http.MethodGet, server.URL+"/users", "", nil)
 	if err != nil {
 		fmt.Printf("✗ Request with logging middleware failed: %v\n", err)
 	} else {
@@ -224,7 +226,8 @@ func middlewareIntegrationExample() {
 	authMiddleware := &AuthMiddleware{token: "example-jwt-token"}
 	authClient := rest.NewClient(rest.WithMiddleware(authMiddleware))
 
-	_, err = authClient.MakeRequest(ctx, "GET", server.URL+"/protected", "", nil)
+	headers := map[string]string{}
+	_, err = authClient.MakeRequest(ctx, http.MethodGet, server.URL+"/protected", "", headers)
 	if err != nil {
 		fmt.Printf("✗ Request with auth middleware failed: %v\n", err)
 	} else {
@@ -242,7 +245,7 @@ func middlewareIntegrationExample() {
 
 	// Make several requests
 	for i := 1; i <= 3; i++ {
-		_, err := multiClient.MakeRequest(ctx, "GET", server.URL+"/users", "", nil)
+		_, err := multiClient.MakeRequest(ctx, http.MethodGet, server.URL+"/users", "", nil)
 		if err != nil {
 			fmt.Printf("✗ Request %d failed: %v\n", i, err)
 		} else {
@@ -309,7 +312,7 @@ func errorHandlingExample() {
 			url = errorServer.URL + test.path
 		}
 
-		_, err := client.MakeRequest(ctx, "GET", url, "", nil)
+		_, err := client.MakeRequest(ctx, http.MethodGet, url, "", nil)
 		if err != nil {
 			handleAPIError(err)
 		} else {
@@ -354,7 +357,7 @@ func jsonAPIExample() {
 
 	// Example 1: GET request with JSON response
 	fmt.Println("Making GET request for JSON data:")
-	response, err := client.MakeRequest(ctx, "GET", jsonServer.URL+"/users", "", nil)
+	response, err := client.MakeRequest(ctx, http.MethodGet, jsonServer.URL+"/users", "", nil)
 	if err != nil {
 		fmt.Printf("✗ GET request failed: %v\n", err)
 		return
@@ -379,7 +382,7 @@ func jsonAPIExample() {
 		"Content-Type": "application/json",
 	}
 
-	response, err = client.MakeRequest(ctx, "POST", jsonServer.URL+"/users", string(jsonBody), headers)
+	response, err = client.MakeRequest(ctx, http.MethodPost, jsonServer.URL+"/users", string(jsonBody), headers)
 	if err != nil {
 		fmt.Printf("✗ POST request failed: %v\n", err)
 		return
@@ -398,7 +401,7 @@ func jsonAPIExample() {
 	createdUser.Email = "john.doe@newdomain.com"
 	updateBody, _ := json.Marshal(createdUser)
 
-	response, err = client.MakeRequest(ctx, "PUT", fmt.Sprintf("%s/users/%d", jsonServer.URL, createdUser.ID), string(updateBody), headers)
+	response, err = client.MakeRequest(ctx, http.MethodPut, fmt.Sprintf("%s/users/%d", jsonServer.URL, createdUser.ID), string(updateBody), headers)
 	if err != nil {
 		fmt.Printf("✗ PUT request failed: %v\n", err)
 		return
@@ -433,7 +436,7 @@ func retryTimeoutExample() {
 		fmt.Printf("\nTesting %s:\n", endpoint)
 		start := time.Now()
 
-		response, err := client.MakeRequest(ctx, "GET", unreliableServer.URL+endpoint, "", nil)
+		response, err := client.MakeRequest(ctx, http.MethodGet, unreliableServer.URL+endpoint, "", nil)
 		duration := time.Since(start)
 
 		if err != nil {
@@ -449,7 +452,7 @@ func retryTimeoutExample() {
 	defer cancel()
 
 	start := time.Now()
-	_, err := client.MakeRequest(timeoutCtx, "GET", unreliableServer.URL+"/very-slow", "", nil)
+	_, err := client.MakeRequest(timeoutCtx, http.MethodGet, unreliableServer.URL+"/very-slow", "", nil)
 	duration := time.Since(start)
 
 	if err != nil {
@@ -475,7 +478,7 @@ func tracingPerformanceExample() {
 		fmt.Printf("\nTracing request to %s:\n", endpoint)
 
 		start := time.Now()
-		response, err := client.MakeRequest(ctx, "GET", server.URL+endpoint, "", nil)
+		response, err := client.MakeRequest(ctx, http.MethodGet, server.URL+endpoint, "", nil)
 		totalDuration := time.Since(start)
 
 		if err != nil {
@@ -504,7 +507,7 @@ func tracingPerformanceExample() {
 	benchmarkStart := time.Now()
 
 	for i := 0; i < 10; i++ {
-		_, err := client.MakeRequest(ctx, "GET", server.URL+"/users", "", nil)
+		_, err := client.MakeRequest(ctx, http.MethodGet, server.URL+"/users", "", nil)
 		if err != nil {
 			fmt.Printf("✗ Request %d failed: %v\n", i+1, err)
 		}
@@ -655,7 +658,7 @@ func productionPatternsExample() {
 
 	for i := 1; i <= 5; i++ {
 		if circuitBreaker.ShouldAllowRequest() {
-			_, err := client.MakeRequest(ctx, "GET", server.URL+"/flaky", "", nil)
+			_, err := client.MakeRequest(ctx, http.MethodGet, server.URL+"/flaky", "", nil)
 			if err != nil {
 				circuitBreaker.RecordFailure()
 				fmt.Printf("  Request %d failed, circuit breaker state: %s\n", i, circuitBreaker.GetState())
@@ -688,7 +691,7 @@ type UserService struct {
 func (s *UserService) GetUsers(ctx context.Context) ([]User, error) {
 	s.logger.Info().Msg("Fetching users from API")
 
-	response, err := s.client.MakeRequest(ctx, "GET", s.baseURL+"/users", "", nil)
+	response, err := s.client.MakeRequest(ctx, http.MethodGet, s.baseURL+"/users", "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -707,7 +710,7 @@ func (s *UserService) CreateUser(ctx context.Context, user User) (*User, error) 
 	jsonBody, _ := json.Marshal(user)
 	headers := map[string]string{"Content-Type": "application/json"}
 
-	response, err := s.client.MakeRequest(ctx, "POST", s.baseURL+"/users", string(jsonBody), headers)
+	response, err := s.client.MakeRequest(ctx, http.MethodPost, s.baseURL+"/users", string(jsonBody), headers)
 	if err != nil {
 		return nil, err
 	}
@@ -775,13 +778,13 @@ func createEnvironmentClient(env string) *rest.Client {
 
 func makeRequestWithFallback(ctx context.Context, primary, fallback *rest.Client, url string) string {
 	// Try primary first
-	_, err := primary.MakeRequest(ctx, "GET", url, "", nil)
+	_, err := primary.MakeRequest(ctx, http.MethodGet, url, "", nil)
 	if err == nil {
 		return "Primary service responded"
 	}
 
 	// Fallback to secondary
-	_, err = fallback.MakeRequest(ctx, "GET", url, "", nil)
+	_, err = fallback.MakeRequest(ctx, http.MethodGet, url, "", nil)
 	if err == nil {
 		return "Fallback service responded"
 	}
