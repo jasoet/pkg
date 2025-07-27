@@ -3,7 +3,6 @@ package rest
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -97,14 +96,22 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 	var err error
 
 	switch method {
-	case "GET":
+	case http.MethodGet:
 		response, err = request.Get(url)
-	case "POST":
+	case http.MethodPost:
 		response, err = request.Post(url)
-	case "PUT":
+	case http.MethodPut:
 		response, err = request.Put(url)
+	case http.MethodDelete:
+		response, err = request.Delete(url)
+	case http.MethodPatch:
+		response, err = request.Patch(url)
+	case http.MethodHead:
+		response, err = request.Head(url)
+	case http.MethodOptions:
+		response, err = request.Options(url)
 	default:
-		return response, fmt.Errorf("unsupported HTTP method: %s", method)
+		response, err = request.Execute(method, url)
 	}
 
 	endTime := time.Now()
@@ -151,21 +158,33 @@ func (c *Client) HandleResponse(response *resty.Response) error {
 		return NewUnauthorizedError(response.StatusCode(), "Unauthorized access", response.String())
 	}
 
-	if IsNotHttpError(response) {
-		return NewServerError(response.StatusCode(), "server error", response.String())
+	if IsNotFound(response) {
+		return NewResourceNotFoundError(response.StatusCode(), "Resource not found", response.String())
 	}
 
-	if response.IsError() {
-		return NewResponseError(response.StatusCode(), "response error", response.String())
+	if IsServerError(response) {
+		return NewServerError(response.StatusCode(), "Server error", response.String())
+	}
+
+	if IsClientError(response) {
+		return NewResponseError(response.StatusCode(), "Client error", response.String())
 	}
 
 	return nil
 }
 
-func IsNotHttpError(response *resty.Response) bool {
-	return response.StatusCode() < 200 && response.StatusCode() >= 300
+func IsServerError(response *resty.Response) bool {
+	return response.StatusCode() >= 500
 }
 
 func IsUnauthorized(response *resty.Response) bool {
 	return response.StatusCode() == http.StatusUnauthorized || response.StatusCode() == http.StatusForbidden
+}
+
+func IsNotFound(response *resty.Response) bool {
+	return response.StatusCode() == http.StatusNotFound
+}
+
+func IsClientError(response *resty.Response) bool {
+	return response.StatusCode() >= 400 && response.StatusCode() < 500
 }
