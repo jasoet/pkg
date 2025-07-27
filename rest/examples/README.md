@@ -244,7 +244,7 @@ Access the underlying Resty client for advanced features:
 
 ```go
 client := rest.NewClient()
-restyClient := client.GetRestyClient()
+restyClient := client.GetRestClient()
 
 // Use Resty-specific features
 response, err := restyClient.R().
@@ -647,7 +647,7 @@ The underlying Resty client automatically handles connection pooling. For high-t
 
 ```go
 client := rest.NewClient()
-restyClient := client.GetRestyClient()
+restyClient := client.GetRestClient()
 
 // Configure connection pool
 restyClient.GetClient().Transport = &http.Transport{

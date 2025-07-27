@@ -3,16 +3,31 @@ package rest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/jasoet/pkg/concurrent"
 )
 
 // testKey is a custom type for the context key to avoid collisions
 type testKey string
+
+// TestMiddleware is a simple middleware implementation for testing
+type TestMiddleware struct {
+	Name string
+}
+
+func (m *TestMiddleware) BeforeRequest(ctx context.Context, method, url, body string, headers map[string]string) context.Context {
+	return ctx
+}
+
+func (m *TestMiddleware) AfterRequest(ctx context.Context, requestInfo RequestInfo) {
+	// Do nothing for test purposes
+}
 
 // Define a constant for the test key value
 const testKeyValue testKey = "rest.test_key"
@@ -161,18 +176,6 @@ func TestClient_GetRestClient(t *testing.T) {
 	}
 }
 
-func TestClient_GetRestyClient(t *testing.T) {
-	client := NewClient()
-	restyClient := client.GetRestyClient()
-
-	if restyClient == nil {
-		t.Fatal("GetRestyClient() returned nil")
-	}
-
-	if restyClient != client.restClient {
-		t.Error("GetRestyClient() did not return the expected client")
-	}
-}
 
 func TestClient_GetRestConfig(t *testing.T) {
 	client := NewClient()
@@ -182,9 +185,125 @@ func TestClient_GetRestConfig(t *testing.T) {
 		t.Fatal("GetRestConfig() returned nil")
 	}
 
-	if config != client.restConfig {
-		t.Error("GetRestConfig() did not return the expected config")
+	// Since GetRestConfig() now returns a copy for thread safety,
+	// we compare the values instead of pointer equality
+	if config.Timeout != client.restConfig.Timeout ||
+		config.RetryCount != client.restConfig.RetryCount ||
+		config.RetryWaitTime != client.restConfig.RetryWaitTime ||
+		config.RetryMaxWaitTime != client.restConfig.RetryMaxWaitTime {
+		t.Error("GetRestConfig() did not return the expected config values")
 	}
+}
+
+func TestClient_ThreadSafety(t *testing.T) {
+	client := NewClient()
+	
+	// Test concurrent middleware operations
+	t.Run("Concurrent middleware operations", func(t *testing.T) {
+		const numGoroutines = 100
+		
+		// Create concurrent functions for adding middlewares
+		funcs := make(map[string]concurrent.Func[bool])
+		for i := 0; i < numGoroutines; i++ {
+			key := fmt.Sprintf("middleware-%d", i)
+			id := i // capture loop variable
+			funcs[key] = func(ctx context.Context) (bool, error) {
+				middleware := &TestMiddleware{Name: fmt.Sprintf("test-middleware-%d", id)}
+				client.AddMiddleware(middleware)
+				return true, nil
+			}
+		}
+		
+		// Execute concurrently using the concurrent package
+		results, err := concurrent.ExecuteConcurrently(context.Background(), funcs)
+		if err != nil {
+			t.Errorf("Concurrent middleware addition failed: %v", err)
+		}
+		
+		// Verify all operations completed
+		if len(results) != numGoroutines {
+			t.Errorf("Expected %d results, got %d", numGoroutines, len(results))
+		}
+		
+		// Verify all middlewares were added
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) < numGoroutines {
+			t.Errorf("Expected at least %d middlewares, got %d", numGoroutines, len(middlewares))
+		}
+	})
+	
+	// Test concurrent config access
+	t.Run("Concurrent config access", func(t *testing.T) {
+		const numGoroutines = 50
+		
+		// Create concurrent functions for config access
+		funcs := make(map[string]concurrent.Func[*Config])
+		for i := 0; i < numGoroutines; i++ {
+			key := fmt.Sprintf("config-%d", i)
+			funcs[key] = func(ctx context.Context) (*Config, error) {
+				config := client.GetRestConfig()
+				if config == nil {
+					return nil, errors.New("GetRestConfig() returned nil")
+				}
+				return config, nil
+			}
+		}
+		
+		// Execute concurrently
+		results, err := concurrent.ExecuteConcurrently(context.Background(), funcs)
+		if err != nil {
+			t.Errorf("Concurrent config access failed: %v", err)
+		}
+		
+		// Verify all operations completed
+		if len(results) != numGoroutines {
+			t.Errorf("Expected %d results, got %d", numGoroutines, len(results))
+		}
+		
+		// Verify all configs have expected values
+		for key, config := range results {
+			if config.Timeout <= 0 {
+				t.Errorf("Config %s has invalid timeout: %v", key, config.Timeout)
+			}
+		}
+	})
+	
+	// Test concurrent HTTP requests
+	t.Run("Concurrent HTTP requests", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status": "ok"}`))
+		}))
+		defer server.Close()
+		
+		const numRequests = 20
+		
+		// Create concurrent functions for HTTP requests
+		funcs := make(map[string]concurrent.Func[*resty.Response])
+		for i := 0; i < numRequests; i++ {
+			key := fmt.Sprintf("request-%d", i)
+			funcs[key] = func(ctx context.Context) (*resty.Response, error) {
+				return client.MakeRequest(ctx, "GET", server.URL, "", nil)
+			}
+		}
+		
+		// Execute concurrently
+		results, err := concurrent.ExecuteConcurrently(context.Background(), funcs)
+		if err != nil {
+			t.Errorf("Concurrent HTTP requests failed: %v", err)
+		}
+		
+		// Verify all requests completed successfully
+		if len(results) != numRequests {
+			t.Errorf("Expected %d results, got %d", numRequests, len(results))
+		}
+		
+		for key, response := range results {
+			if response.StatusCode() != 200 {
+				t.Errorf("Request %s failed with status %d", key, response.StatusCode())
+			}
+		}
+	})
 }
 
 func TestClient_MakeRequest(t *testing.T) {
