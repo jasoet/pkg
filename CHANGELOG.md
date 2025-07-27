@@ -1,3 +1,10 @@
+## [1.3.3](https://github.com/jasoet/pkg/compare/v1.3.2...v1.3.3) (2025-07-27)
+
+### Bug Fixes
+
+* **rest:** clean up code formatting and remove unused dependencies ([d948547](https://github.com/jasoet/pkg/commit/d9485476dfc3fa7e7a4195c052eb2c17c52577d1))
+* **rest:** resolve thread safety issues and enable race detection ([3340a63](https://github.com/jasoet/pkg/commit/3340a63b950ddfb14e6052a556dcd24bcf5538d8))
+
 ## [1.3.2](https://github.com/jasoet/pkg/compare/v1.3.1...v1.3.2) (2025-07-27)
 
 ### Bug Fixes
