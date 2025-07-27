@@ -1,48 +1,48 @@
-name: Claude Code Reviews
+name: Claude PR Assistant
 
 on:
-  pull_request:
-    types: [opened, synchronize]
   issue_comment:
     types: [created]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'Pull Request number'
-        required: true
-        type: number
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  claude-review:
+  claude-code-action:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Run Claude Code Review
-        uses: anthropics/claude-code-action@v1
+      - name: Run Claude PR Action
+        uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          model: 'claude-3-5-sonnet-20241022'
-          max_comment_length: 2000
-          review_prompt: |
-            Review this Go utility library PR for:
-            - Code quality and Go best practices
-            - Integration with existing packages (logging, config, db, server, temporal)
-            - Error handling and context usage
-            - Test coverage for new functionality
-            - Documentation updates if needed
-            - Security implications
-            
-            This is a reusable infrastructure library, so ensure:
-            - APIs are intuitive and well-documented
-            - New features integrate well with existing patterns
-            - Breaking changes are clearly noted
+          # Or use OAuth token instead:
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          timeout_minutes: "60"
+          # mode: tag  # Default: responds to @claude mentions
+          # Optional: Restrict network access to specific domains only
+          # experimental_allowed_domains: |
+          #   .anthropic.com
+          #   .github.com
+          #   api.github.com
+          #   .githubusercontent.com
+          #   bun.sh
+          #   registry.npmjs.org
+          #   .blob.core.windows.net
