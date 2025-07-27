@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/jasoet/pkg/compare/v1.2.2...v1.3.0) (2025-07-27)
+
+### Features
+
+* **security:** add comprehensive security enhancements to compress and ssh packages ([2f01a6a](https://github.com/jasoet/pkg/commit/2f01a6ab03e0b3b33be8ba7b427ecc26242c28cb))
+
 ## [1.2.2](https://github.com/jasoet/pkg/compare/v1.2.1...v1.2.2) (2025-07-27)
 
 ### Bug Fixes
