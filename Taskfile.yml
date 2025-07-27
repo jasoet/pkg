@@ -12,9 +12,9 @@ tasks:
       - task --list
 
   test:
-    desc: Run unit tests
+    desc: Run unit tests with race condition detection
     cmds:
-      - go test -count=1 ./...
+      - go test -race -count=1 ./...
 
   integration-test:
     desc: Run database integration tests
@@ -24,7 +24,7 @@ tasks:
       - echo "Waiting for PostgreSQL to initialize..."
       - sleep 2
       - |
-        go test -count=1 -tags=integration \
+        go test -race -count=1 -tags=integration \
           ./compress/... \
           ./concurrent/... \
           ./config/... \
@@ -43,7 +43,7 @@ tasks:
     cmds:
       - echo "Waiting for Temporal server to initialize..."
       - sleep 10
-      - go test -count=1 -tags=temporal -timeout=10m ./temporal/...
+      - go test -race -count=1 -tags=temporal -timeout=10m ./temporal/...
     defer:
       - task: temporal:down
 
@@ -100,7 +100,7 @@ tasks:
     silent: true
     cmds:
       - mkdir -p dist
-      - go test -coverprofile=dist/coverage.out ./...
+      - go test -race -coverprofile=dist/coverage.out ./...
       - go tool cover -html=dist/coverage.out -o dist/coverage.html
       - 'echo "Coverage report generated: dist/coverage.html"'
 
