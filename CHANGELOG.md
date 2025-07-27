@@ -1,3 +1,9 @@
+## [1.3.2](https://github.com/jasoet/pkg/compare/v1.3.1...v1.3.2) (2025-07-27)
+
+### Bug Fixes
+
+* **rest:** resolve HTTP method support and error handling bugs ([05f4b14](https://github.com/jasoet/pkg/commit/05f4b149687a71c8047238c34123e99a1ad49024))
+
 ## [1.3.1](https://github.com/jasoet/pkg/compare/v1.3.0...v1.3.1) (2025-07-27)
 
 ### Bug Fixes
