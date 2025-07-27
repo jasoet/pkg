@@ -2,6 +2,32 @@
 
 This directory contains examples demonstrating how to use the `config` package for configuration management in Go applications.
 
+## 📍 Example Code Location
+
+**Full example implementation:** [/config/examples/example.go](https://github.com/jasoet/pkg/blob/main/config/examples/example.go)
+
+## 🚀 Quick Reference for LLMs/Coding Agents
+
+```go
+// Basic usage pattern
+import "github.com/jasoet/pkg/config"
+
+// Load config from YAML string
+config, err := config.LoadString[YourConfigType](yamlString)
+
+// With custom ENV prefix (default is "ENV")
+config, err := config.LoadString[YourConfigType](yamlString, "MYAPP")
+
+// With custom configuration function
+config, err := config.LoadStringWithConfig[YourConfigType](yamlString, func(v *viper.Viper) {
+    // Custom configuration logic
+})
+```
+
+**Critical naming convention:** YAML fields use CamelCase, environment variables preserve the casing:
+- YAML: `checkInterval` → ENV: `PREFIX_CHECKINTERVAL` (NOT `PREFIX_CHECK_INTERVAL`)
+- Nested: `database.connectionTimeout` → ENV: `PREFIX_DATABASE_CONNECTIONTIMEOUT`
+
 ## Overview
 
 The `config` package provides flexible configuration loading from YAML strings with support for:
@@ -9,6 +35,59 @@ The `config` package provides flexible configuration loading from YAML strings w
 - Custom environment variable prefixes
 - Custom configuration functions
 - Nested environment variable processing
+
+## Important: CamelCase Convention for YAML and Environment Variables
+
+This package uses CamelCase convention for YAML field names to maintain consistency with environment variable naming. This is crucial to understand for proper configuration:
+
+### YAML Field Naming
+
+When defining your configuration struct, use CamelCase in your YAML tags:
+
+```go
+type Config struct {
+    Targets       []string      `yaml:"targets"`
+    CheckInterval time.Duration `yaml:"checkInterval"`  // CamelCase in YAML
+    Timeout       time.Duration `yaml:"timeout"`
+    ListenPort    int           `yaml:"listenPort"`     // CamelCase in YAML
+    InstanceID    string        `yaml:"instanceId"`      // CamelCase in YAML
+    Retries       int           `yaml:"retries"`
+    LogLevel      string        `yaml:"logLevel"`        // CamelCase in YAML
+}
+```
+
+### Environment Variable Naming
+
+**Important**: CamelCase YAML fields are NOT converted to snake_case for environment variables. Instead, they are converted to UPPERCASE while preserving the casing structure:
+
+- `checkInterval` → `PREFIX_CHECKINTERVAL` (NOT `PREFIX_CHECK_INTERVAL`)
+- `listenPort` → `PREFIX_LISTENPORT` (NOT `PREFIX_LISTEN_PORT`)
+- `instanceId` → `PREFIX_INSTANCEID` (NOT `PREFIX_INSTANCE_ID`)
+
+### Nested Structures
+
+For nested structures, underscores are used to separate the nested levels:
+
+```go
+type TestConfig struct {
+    Name    string `yaml:"name"`
+    Version string `yaml:"version"`
+    Nested  struct {
+        Value int `yaml:"value"`
+        SubNested struct {
+            DeepValue string `yaml:"deepValue"`
+        } `yaml:"subNested"`
+    } `yaml:"nested"`
+}
+```
+
+Environment variable mapping:
+- `nested.value` → `PREFIX_NESTED_VALUE`
+- `nested.subNested.deepValue` → `PREFIX_NESTED_SUBNESTED_DEEPVALUE`
+
+### Rationale
+
+This convention ensures consistent environment variable naming across all configuration levels, avoiding ambiguity when dealing with nested structures or fields that already contain underscores.
 
 ## Running the Examples
 
@@ -20,7 +99,7 @@ go run example.go
 
 ## Example Descriptions
 
-The example.go file demonstrates several use cases:
+The [example.go](https://github.com/jasoet/pkg/blob/main/config/examples/example.go) file demonstrates several use cases:
 
 ### 1. Basic Configuration Loading
 

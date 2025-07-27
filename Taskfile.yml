@@ -1,0 +1,182 @@
+version: '3'
+
+vars:
+  PACKAGES:
+    sh: go list ./... | grep -v /vendor/
+
+tasks:
+  default:
+    desc: Run tests
+    cmds:
+      - task: test
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test -count=1 ./...
+
+  integration-test:
+    desc: Run database integration tests
+    deps: [docker:up]
+    silent: true
+    cmds:
+      - echo "Waiting for PostgreSQL to initialize..."
+      - sleep 2
+      - |
+        go test -count=1 -tags=integration \
+          ./compress/... \
+          ./concurrent/... \
+          ./config/... \
+          ./db/... \
+          ./logging/... \
+          ./rest/... \
+          ./server/... \
+          ./ssh/...
+    defer:
+      - task: docker:down
+
+  temporal-test:
+    desc: Run Temporal integration tests
+    deps: [temporal:up]
+    silent: true
+    cmds:
+      - echo "Waiting for Temporal server to initialize..."
+      - sleep 10
+      - go test -count=1 -tags=temporal -timeout=10m ./temporal/...
+    defer:
+      - task: temporal:down
+
+  all-integration-tests:
+    desc: Run all integration tests (database + temporal)
+    cmds:
+      - task: integration-test
+      - task: temporal-test
+
+  lint:
+    desc: Run linter
+    cmds:
+      - task: ensure-tool
+        vars: {TOOL: golangci-lint, PACKAGE: github.com/golangci/golangci-lint/cmd/golangci-lint@latest}
+      - golangci-lint run ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf dist
+
+  tools:
+    desc: Install all development tools
+    silent: true
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install gotest.tools/gotestsum@latest
+      - go install github.com/swaggo/swag/cmd/swag@latest
+      - go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - go install github.com/golang/mock/mockgen@latest
+      - go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+      - go install github.com/sonatypecommunity/nancy@latest
+      - go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
+      - echo "All development tools installed successfully"
+
+  security:
+    desc: Run security analysis with gosec
+    silent: true
+    cmds:
+      - task: ensure-tool
+        vars: {TOOL: gosec, PACKAGE: github.com/securecodewarrior/gosec/v2/cmd/gosec@latest}
+      - gosec ./... || echo "Security issues found (this may be expected)"
+
+  dependencies:
+    desc: Check dependencies for known vulnerabilities
+    silent: true
+    cmds:
+      - task: ensure-tool
+        vars: {TOOL: nancy, PACKAGE: github.com/sonatypecommunity/nancy@latest}
+      - go list -json -deps ./... | nancy sleuth || echo "Dependency vulnerabilities found (this may be expected)"
+
+  coverage:
+    desc: Generate test coverage report
+    silent: true
+    cmds:
+      - mkdir -p dist
+      - go test -coverprofile=dist/coverage.out ./...
+      - go tool cover -html=dist/coverage.out -o dist/coverage.html
+      - 'echo "Coverage report generated: dist/coverage.html"'
+
+  docs:
+    desc: Generate API documentation (if swagger annotations exist)
+    silent: true
+    cmds:
+      - task: ensure-tool
+        vars: {TOOL: swag, PACKAGE: github.com/swaggo/swag/cmd/swag@latest}
+      - swag init -g main.go --output docs || echo "Swagger generation failed (this is expected if no swagger annotations exist)"
+
+  checkall:
+    desc: Run all quality checks (test, lint, security, dependencies, coverage)
+    cmds:
+      - task: test
+      - task: lint
+      - task: security
+      - task: dependencies
+      - task: coverage
+
+  # Docker namespace tasks
+  docker:up:
+    desc: Start Docker Compose services
+    dir: scripts/compose
+    cmds:
+      - docker compose up -d
+
+  docker:down:
+    desc: Stop Docker Compose services and remove volumes
+    dir: scripts/compose
+    cmds:
+      - docker compose down -v
+
+  docker:logs:
+    desc: Show Docker Compose logs
+    dir: scripts/compose
+    cmds:
+      - docker compose logs -f
+
+  docker:restart:
+    desc: Restart Docker Compose services
+    cmds:
+      - task: docker:down
+      - task: docker:up
+
+  # Temporal namespace tasks
+  temporal:up:
+    desc: Start Temporal services
+    dir: scripts/compose
+    cmds:
+      - docker compose -f temporal-compose.yml up -d
+
+  temporal:down:
+    desc: Stop Temporal services and remove volumes
+    dir: scripts/compose
+    cmds:
+      - docker compose -f temporal-compose.yml down -v
+
+  temporal:logs:
+    desc: Show Temporal logs
+    dir: scripts/compose
+    cmds:
+      - docker compose -f temporal-compose.yml logs -f
+
+  temporal:restart:
+    desc: Restart Temporal services
+    cmds:
+      - task: temporal:down
+      - task: temporal:up
+
+  # Internal helper tasks
+  ensure-tool:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        if ! command -v {{.TOOL}} &> /dev/null; then
+          echo "Installing {{.TOOL}}..."
+          go install {{.PACKAGE}}
+        fi
