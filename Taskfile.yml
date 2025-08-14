@@ -17,11 +17,27 @@ tasks:
       - go test -race -count=1 ./...
 
   integration-test:
-    desc: Run database integration tests
+    desc: Run database integration tests (using testcontainers)
+    silent: true
+    cmds:
+      - echo "Running integration tests with testcontainers..."
+      - |
+        go test -race -count=1 -tags=integration \
+          ./compress/... \
+          ./concurrent/... \
+          ./config/... \
+          ./db/... \
+          ./logging/... \
+          ./rest/... \
+          ./server/... \
+          ./ssh/...
+
+  integration-test-compose:
+    desc: Run database integration tests with Docker Compose (legacy)
     deps: [docker:up]
     silent: true
     cmds:
-      - echo "Waiting for PostgreSQL to initialize..."
+      - echo "Waiting for Docker Compose services to initialize..."
       - sleep 2
       - |
         go test -race -count=1 -tags=integration \
