@@ -11,30 +11,56 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 //go:embed migrations_test
-var migrationFs embed.FS
+var testMigrationFs embed.FS
 
-const (
-	dbHost     = "localhost" // Host machine address
-	dbPort     = 5439        // Host port mapped to container
-	dbUser     = "jasoet"    // From POSTGRES_USER
-	dbPassword = "localhost" // From POSTGRES_PASSWORD
-	dbName     = "pkg_db"    // From POSTGRES_DB
-	dbTimeout  = 10 * time.Second
-)
+func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
+	ctx := context.Background()
 
-func TestPostgresMigrationsDownAndDrop(t *testing.T) {
-	// Create a connection config using values from docker-compose.yml
+	// Start PostgreSQL container
+	postgresContainer, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("testuser"),
+		postgres.WithPassword("testpass"),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("Failed to start PostgreSQL container: %v", err)
+	}
+	defer func() {
+		if err := postgresContainer.Terminate(ctx); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
+
+	// Get connection details
+	host, err := postgresContainer.Host(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get host: %v", err)
+	}
+
+	port, err := postgresContainer.MappedPort(ctx, "5432")
+	if err != nil {
+		t.Fatalf("Failed to get port: %v", err)
+	}
+
+	// Create connection config
 	config := &ConnectionConfig{
 		DbType:       Postgresql,
-		Host:         dbHost,
-		Port:         dbPort,
-		Username:     dbUser,
-		Password:     dbPassword,
-		DbName:       dbName,
-		Timeout:      dbTimeout,
+		Host:         host,
+		Port:         port.Int(),
+		Username:     "testuser",
+		Password:     "testpass",
+		DbName:       "testdb",
+		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
 	}
@@ -46,33 +72,30 @@ func TestPostgresMigrationsDownAndDrop(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create a test context
-	ctx := context.Background()
-
 	// Run migrations UP
-	err = RunPostgresMigrations(ctx, db, migrationFs, "migrations_test")
+	err = RunPostgresMigrations(ctx, db, testMigrationFs, "migrations_test")
 	if err != nil {
 		t.Fatalf("Failed to run migrations UP: %v", err)
 	}
 
 	// Verify migrations were applied
-	if err := verifyMigrations(db); err != nil {
+	if err := verifyTestMigrations(db); err != nil {
 		t.Fatalf("Migration verification failed after UP: %v", err)
 	}
 
 	// Run migrations DOWN
-	err = RunPostgresMigrationsDown(ctx, db, migrationFs, "migrations_test")
+	err = RunPostgresMigrationsDown(ctx, db, testMigrationFs, "migrations_test")
 	if err != nil {
 		t.Fatalf("Failed to run migrations DOWN: %v", err)
 	}
 
 	// Verify tables were dropped
-	if err := verifyTablesDropped(db); err != nil {
+	if err := verifyTestTablesDropped(db); err != nil {
 		t.Fatalf("Migration DOWN verification failed: %v", err)
 	}
 }
 
-func verifyMigrations(db *sql.DB) error {
+func verifyTestMigrations(db *sql.DB) error {
 	// Check if schema_migrations table exists
 	var exists bool
 	err := db.QueryRow(`
@@ -143,7 +166,7 @@ func verifyMigrations(db *sql.DB) error {
 	return nil
 }
 
-func verifyTablesDropped(db *sql.DB) error {
+func verifyTestTablesDropped(db *sql.DB) error {
 	// Check if schema_migrations table still exists
 	var exists bool
 	err := db.QueryRow(`
