@@ -3,34 +3,22 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/mssql"
+	"github.com/testcontainers/testcontainers-go/modules/mysql"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/gorm"
 )
-
-// MariaDB connection constants
-const (
-	mariaDBHost     = "localhost"
-	mariaDBPort     = 3309
-	mariaDBUser     = "jasoet"
-	mariaDBPassword = "localhost"
-	mariaDBName     = "pkg_db"
-)
-
-// SQL Server connection constants
-const (
-	sqlServerHost     = "localhost"
-	sqlServerPort     = 1439
-	sqlServerUser     = "sa"
-	sqlServerPassword = "Localhost12$"
-	sqlServerName     = "msdb"
-)
-
-// Using constants defined in migration_integration_test.go
 
 // Define test models that match the schema in default.sql
 type Product struct {
@@ -62,27 +50,129 @@ type Customer struct {
 	RegistrationDate time.Time `gorm:"not null;default:CURRENT_TIMESTAMP"`
 }
 
-func TestPostgresPoolConnection(t *testing.T) {
-	// Create a connection config using values from docker-compose.yml
+func setupPostgresContainer(t *testing.T) (*postgres.PostgresContainer, *ConnectionConfig) {
+	ctx := context.Background()
+
+	postgresContainer, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("testuser"),
+		postgres.WithPassword("testpass"),
+		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
+		),
+	)
+	require.NoError(t, err, "Failed to start PostgreSQL container")
+
+	host, err := postgresContainer.Host(ctx)
+	require.NoError(t, err, "Failed to get host")
+
+	port, err := postgresContainer.MappedPort(ctx, "5432")
+	require.NoError(t, err, "Failed to get port")
+
 	config := &ConnectionConfig{
 		DbType:       Postgresql,
-		Host:         dbHost,
-		Port:         dbPort,
-		Username:     dbUser,
-		Password:     dbPassword,
-		DbName:       dbName,
-		Timeout:      dbTimeout,
+		Host:         host,
+		Port:         port.Int(),
+		Username:     "testuser",
+		Password:     "testpass",
+		DbName:       "testdb",
+		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
 	}
 
+	return postgresContainer, config
+}
+
+func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig) {
+	ctx := context.Background()
+
+	mysqlContainer, err := mysql.Run(ctx,
+		"mysql:8.0",
+		mysql.WithDatabase("testdb"),
+		mysql.WithUsername("testuser"),
+		mysql.WithPassword("testpass"),
+		mysql.WithScripts(filepath.Join("..", "scripts", "compose", "mariadb", "backup", "default.sql")),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("3306/tcp").WithStartupTimeout(60*time.Second),
+		),
+	)
+	require.NoError(t, err, "Failed to start MySQL container")
+
+	host, err := mysqlContainer.Host(ctx)
+	require.NoError(t, err, "Failed to get host")
+
+	port, err := mysqlContainer.MappedPort(ctx, "3306")
+	require.NoError(t, err, "Failed to get port")
+
+	config := &ConnectionConfig{
+		DbType:       Mysql,
+		Host:         host,
+		Port:         port.Int(),
+		Username:     "testuser",
+		Password:     "testpass",
+		DbName:       "testdb",
+		Timeout:      10 * time.Second,
+		MaxIdleConns: 5,
+		MaxOpenConns: 10,
+	}
+
+	return mysqlContainer, config
+}
+
+func setupMSSQLContainer(t *testing.T) (*mssql.MSSQLServerContainer, *ConnectionConfig) {
+	ctx := context.Background()
+
+	mssqlContainer, err := mssql.Run(ctx,
+		"mcr.microsoft.com/mssql/server:2022-latest",
+		mssql.WithAcceptEULA(),
+		mssql.WithPassword("StrongPass123!"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("SQL Server is now ready for client connections").
+				WithStartupTimeout(90*time.Second),
+		),
+	)
+	require.NoError(t, err, "Failed to start MSSQL container")
+
+	// Wait a bit more for SQL Server to be fully ready
+	time.Sleep(5 * time.Second)
+
+	host, err := mssqlContainer.Host(ctx)
+	require.NoError(t, err, "Failed to get host")
+
+	port, err := mssqlContainer.MappedPort(ctx, "1433")
+	require.NoError(t, err, "Failed to get port")
+
+	config := &ConnectionConfig{
+		DbType:       MSSQL,
+		Host:         host,
+		Port:         port.Int(),
+		Username:     "sa",
+		Password:     "StrongPass123!",
+		DbName:       "master",
+		Timeout:      10 * time.Second,
+		MaxIdleConns: 5,
+		MaxOpenConns: 10,
+	}
+
+	return mssqlContainer, config
+}
+
+func TestPostgresPoolWithTestcontainers(t *testing.T) {
+	container, config := setupPostgresContainer(t)
+	defer func() {
+		if err := container.Terminate(context.Background()); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
+
 	// Test the DSN generation
 	dsn := config.Dsn()
-	assert.Contains(t, dsn, "user=jasoet")
-	assert.Contains(t, dsn, "password=localhost")
-	assert.Contains(t, dsn, "host=localhost")
-	assert.Contains(t, dsn, "port=5439")
-	assert.Contains(t, dsn, "dbname=pkg_db")
+	assert.Contains(t, dsn, "user=testuser")
+	assert.Contains(t, dsn, "password=testpass")
+	assert.Contains(t, dsn, "dbname=testdb")
 	assert.Contains(t, dsn, "sslmode=disable")
 
 	// Test connection to the database using Pool()
@@ -127,32 +217,24 @@ func TestPostgresPoolConnection(t *testing.T) {
 
 	// Verify the connection pool is working by checking stats
 	stats := sqlDB2.Stats()
-	// We can't directly check MaxIdleConns and MaxOpenConns as they're not exposed in Stats
-	// But we can verify the pool is working by checking other stats
 	assert.GreaterOrEqual(t, stats.MaxOpenConnections, 1, "Should allow connections")
 
-	// We can also verify the connection is still working
+	// Verify the connection is still working
 	err = sqlDB2.Ping()
 	require.NoError(t, err, "Connection pool should be working")
 }
 
-func TestMariaDBPoolConnection(t *testing.T) {
-	// Create a connection config using values from docker-compose.yml
-	config := &ConnectionConfig{
-		DbType:       Mysql,
-		Host:         mariaDBHost,
-		Port:         mariaDBPort,
-		Username:     mariaDBUser,
-		Password:     mariaDBPassword,
-		DbName:       mariaDBName,
-		Timeout:      dbTimeout,
-		MaxIdleConns: 5,
-		MaxOpenConns: 10,
-	}
+func TestMySQLPoolWithTestcontainers(t *testing.T) {
+	container, config := setupMySQLContainer(t)
+	defer func() {
+		if err := container.Terminate(context.Background()); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
 
 	// Test the DSN generation
 	dsn := config.Dsn()
-	assert.Contains(t, dsn, "jasoet:localhost@tcp(localhost:3309)/pkg_db")
+	assert.Contains(t, dsn, fmt.Sprintf("testuser:testpass@tcp(%s:%d)/testdb", config.Host, config.Port))
 	assert.Contains(t, dsn, "parseTime=true")
 
 	// Test connection to the database using Pool()
@@ -199,29 +281,23 @@ func TestMariaDBPoolConnection(t *testing.T) {
 	stats := sqlDB2.Stats()
 	assert.GreaterOrEqual(t, stats.MaxOpenConnections, 1, "Should allow connections")
 
-	// We can also verify the connection is still working
+	// Verify the connection is still working
 	err = sqlDB2.Ping()
 	require.NoError(t, err, "Connection pool should be working")
 }
 
-func TestSQLServerPoolConnection(t *testing.T) {
-	// Create a connection config using values from docker-compose.yml
-	config := &ConnectionConfig{
-		DbType:       MSSQL,
-		Host:         sqlServerHost,
-		Port:         sqlServerPort,
-		Username:     sqlServerUser,
-		Password:     sqlServerPassword,
-		DbName:       sqlServerName,
-		Timeout:      dbTimeout,
-		MaxIdleConns: 5,
-		MaxOpenConns: 10,
-	}
+func TestMSSQLPoolWithTestcontainers(t *testing.T) {
+	container, config := setupMSSQLContainer(t)
+	defer func() {
+		if err := container.Terminate(context.Background()); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
 
 	// Test the DSN generation
 	dsn := config.Dsn()
-	assert.Contains(t, dsn, "sqlserver://sa:Localhost12$@localhost:1439")
-	assert.Contains(t, dsn, "database=msdb")
+	assert.Contains(t, dsn, fmt.Sprintf("sqlserver://sa:StrongPass123!@%s:%d", config.Host, config.Port))
+	assert.Contains(t, dsn, "database=master")
 	assert.Contains(t, dsn, "encrypt=disable")
 
 	// Test connection to the database using Pool()
@@ -254,24 +330,18 @@ func TestSQLServerPoolConnection(t *testing.T) {
 	stats := sqlDB2.Stats()
 	assert.GreaterOrEqual(t, stats.MaxOpenConnections, 1, "Should allow connections")
 
-	// We can also verify the connection is still working
+	// Verify the connection is still working
 	err = sqlDB2.Ping()
 	require.NoError(t, err, "Connection pool should be working")
 }
 
-func TestPostgresPoolTransactions(t *testing.T) {
-	// Create a connection config
-	config := &ConnectionConfig{
-		DbType:       Postgresql,
-		Host:         dbHost,
-		Port:         dbPort,
-		Username:     dbUser,
-		Password:     dbPassword,
-		DbName:       dbName,
-		Timeout:      dbTimeout,
-		MaxIdleConns: 5,
-		MaxOpenConns: 10,
-	}
+func TestPostgresPoolTransactionsWithTestcontainers(t *testing.T) {
+	container, config := setupPostgresContainer(t)
+	defer func() {
+		if err := container.Terminate(context.Background()); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
 
 	// Connect to the database
 	db, err := config.Pool()
@@ -281,7 +351,7 @@ func TestPostgresPoolTransactions(t *testing.T) {
 	err = db.Transaction(func(tx *gorm.DB) error {
 		// Create a new test product with valid UUID format
 		testProduct := Product{
-			ID:            "11111111-abcd-1234-abcd-111111111111", // Valid UUID format
+			ID:            "11111111-abcd-1234-abcd-111111111111",
 			Name:          "Test Product",
 			Description:   "Product for testing transactions",
 			Category:      "Test",
@@ -320,7 +390,7 @@ func TestPostgresPoolTransactions(t *testing.T) {
 	err = db.Transaction(func(tx *gorm.DB) error {
 		// Create another test product with valid UUID format
 		testProduct2 := Product{
-			ID:            "22222222-abcd-1234-abcd-222222222222", // Valid UUID format
+			ID:            "22222222-abcd-1234-abcd-222222222222",
 			Name:          "Test Product Rollback",
 			Description:   "Product for testing transaction rollback",
 			Category:      "Test",
