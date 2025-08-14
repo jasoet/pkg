@@ -1,3 +1,9 @@
+## [1.3.4](https://github.com/jasoet/pkg/compare/v1.3.3...v1.3.4) (2025-08-14)
+
+### Tests
+
+* **db:** migrate integration tests to use testcontainers ([1921201](https://github.com/jasoet/pkg/commit/1921201924336782a28d82821d39bb13a78c2bee))
+
 ## [1.3.3](https://github.com/jasoet/pkg/compare/v1.3.2...v1.3.3) (2025-07-27)
 
 ### Bug Fixes
