@@ -1,3 +1,9 @@
+## [1.3.5](https://github.com/jasoet/pkg/compare/v1.3.4...v1.3.5) (2025-08-14)
+
+### Chores
+
+* **task:** update integration-test to use testcontainers by default ([b65b9ed](https://github.com/jasoet/pkg/commit/b65b9edac970f48c1ba292c130fd1c1f9a552bf7))
+
 ## [1.3.4](https://github.com/jasoet/pkg/compare/v1.3.3...v1.3.4) (2025-08-14)
 
 ### Tests
