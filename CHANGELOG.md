@@ -1,3 +1,14 @@
+## [1.3.6](https://github.com/jasoet/pkg/compare/v1.3.5...v1.3.6) (2025-09-29)
+
+### Documentation
+
+* consolidate AI instructions in README.md and remove redundant CLAUDE.md ([0714732](https://github.com/jasoet/pkg/commit/0714732a7733bb04c1707dcc55239ff6640ed773))
+* update roadmap to reflect actual development plans ([fa90ec8](https://github.com/jasoet/pkg/commit/fa90ec8cdbb101f8ddd9281c8c0ae161a528fefe))
+
+### Chores
+
+* optimize imports and align formatting across the codebase ([928d5f9](https://github.com/jasoet/pkg/commit/928d5f91d2b5e5367b8aa6c9ce35bc21719c3ed5))
+
 ## [1.3.5](https://github.com/jasoet/pkg/compare/v1.3.4...v1.3.5) (2025-08-14)
 
 ### Chores
