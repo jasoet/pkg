@@ -123,6 +123,34 @@ PostgreSQL is available for testing:
 - **Password**: localhost
 - **Database**: pkg_db
 
+## 🤖 AI Agent Instructions
+
+**Repository Type**: Go utility library providing production-ready infrastructure components
+
+**Critical Setup**: Run `task docker:up` for PostgreSQL services (localhost:5439, user: jasoet, password: localhost, database: pkg_db)
+
+**Architecture**: Multi-package library (not an application)
+- 8 core packages: config, logging, db, server, rest, concurrent, temporal, ssh, compress
+- Each package has comprehensive examples with `go run -tags=example ./package/examples`
+- Integration-ready design where packages work seamlessly together
+
+**Key Development Patterns**:
+- **Configuration**: Type-safe YAML with environment variable overrides (config package)
+- **Database**: Multi-database support (PostgreSQL, MySQL, MSSQL) with GORM and migrations (db package)
+- **HTTP Server**: Echo framework with built-in health checks, metrics, graceful shutdown (server package)
+- **HTTP Client**: Resilient REST client with retries and middleware (rest package)
+- **Logging**: Zerolog structured logging with context-aware patterns (logging package)
+- **Concurrency**: Type-safe concurrent execution with Go 1.23+ generics (concurrent package)
+- **Workflows**: Temporal integration for distributed workflows (temporal package)
+
+**Testing Strategy**:
+- Unit tests: `task test`
+- Integration tests: `task integration-test` (uses testcontainers for databases)
+- Temporal tests: `task temporal-test` (starts Temporal server)
+- All integration tests: `task all-integration-tests`
+
+**Library Usage Focus**: When helping developers, emphasize zero-configuration startup, type safety, and production-grade features (health endpoints, metrics, observability)
+
 ## 🤝 Contributing
 
 We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
