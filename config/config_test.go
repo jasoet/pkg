@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
+
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestConfig is a sample configuration struct for testing

@@ -2,9 +2,10 @@ package temporal
 
 import (
 	"context"
+	"time"
+
 	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/client"
-	"time"
 )
 
 type WorkflowScheduleOptions struct {

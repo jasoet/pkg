@@ -163,19 +163,19 @@ func UnTar(src io.Reader, destinationDir string) (written int64, err error) {
 			}
 
 			// Validate file mode to prevent integer overflow
-		fileMode := header.Mode
-		if fileMode > 0777 {
-			fileMode = 0644 // Use safe default
-		}
-		// Explicit conversion to prevent integer overflow
-		safeMode := os.FileMode(fileMode & 0777)
-		fileToWrite, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, safeMode)
+			fileMode := header.Mode
+			if fileMode > 0777 {
+				fileMode = 0644 // Use safe default
+			}
+			// Explicit conversion to prevent integer overflow
+			safeMode := os.FileMode(fileMode & 0777)
+			fileToWrite, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, safeMode)
 			if err != nil {
 				return totalWritten, err
 			}
 			// Limit decompression to prevent zip bombs (100MB limit)
-		limitedReader := io.LimitReader(tarReader, 100*1024*1024)
-		written, err := io.Copy(fileToWrite, limitedReader)
+			limitedReader := io.LimitReader(tarReader, 100*1024*1024)
+			written, err := io.Copy(fileToWrite, limitedReader)
 			if err != nil {
 				return totalWritten, err
 			}

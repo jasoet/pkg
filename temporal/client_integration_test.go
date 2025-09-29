@@ -4,9 +4,10 @@ package temporal
 
 import (
 	"context"
-	"go.temporal.io/api/enums/v1"
 	"testing"
 	"time"
+
+	"go.temporal.io/api/enums/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

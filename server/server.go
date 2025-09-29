@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/labstack/echo-contrib/echoprometheus"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog/log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/labstack/echo-contrib/echoprometheus"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog/log"
 )
 
 type Operation func(e *echo.Echo)

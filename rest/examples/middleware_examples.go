@@ -4,8 +4,9 @@ package main
 
 import (
 	"context"
-	"github.com/jasoet/pkg/rest"
 	"time"
+
+	"github.com/jasoet/pkg/rest"
 
 	"github.com/rs/zerolog/log"
 )
