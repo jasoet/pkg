@@ -1,8 +1,6 @@
 package server
 
 import (
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewHttpServer(t *testing.T) {
@@ -224,7 +225,7 @@ func TestIntegration(t *testing.T) {
 		if addr == "" {
 			t.Fatal("Server listener not ready")
 		}
-		
+
 		assert.True(t, operationCalled.Load(), "Operation should be called after server start")
 
 		// Make a request to the server

@@ -34,7 +34,7 @@ tasks:
 
   integration-test-compose:
     desc: Run database integration tests with Docker Compose (legacy)
-    deps: [docker:up]
+    deps: [ docker:up ]
     silent: true
     cmds:
       - echo "Waiting for Docker Compose services to initialize..."
@@ -54,7 +54,7 @@ tasks:
 
   temporal-test:
     desc: Run Temporal integration tests
-    deps: [temporal:up]
+    deps: [ temporal:up ]
     silent: true
     cmds:
       - echo "Waiting for Temporal server to initialize..."
@@ -73,7 +73,7 @@ tasks:
     desc: Run linter
     cmds:
       - task: ensure-tool
-        vars: {TOOL: golangci-lint, PACKAGE: github.com/golangci/golangci-lint/cmd/golangci-lint@latest}
+        vars: { TOOL: golangci-lint, PACKAGE: github.com/golangci/golangci-lint/cmd/golangci-lint@latest }
       - golangci-lint run ./...
 
   clean:
@@ -100,7 +100,7 @@ tasks:
     silent: true
     cmds:
       - task: ensure-tool
-        vars: {TOOL: gosec, PACKAGE: github.com/securecodewarrior/gosec/v2/cmd/gosec@latest}
+        vars: { TOOL: gosec, PACKAGE: github.com/securecodewarrior/gosec/v2/cmd/gosec@latest }
       - gosec ./... || echo "Security issues found (this may be expected)"
 
   dependencies:
@@ -125,7 +125,7 @@ tasks:
     silent: true
     cmds:
       - task: ensure-tool
-        vars: {TOOL: swag, PACKAGE: github.com/swaggo/swag/cmd/swag@latest}
+        vars: { TOOL: swag, PACKAGE: github.com/swaggo/swag/cmd/swag@latest }
       - swag init -g main.go --output docs || echo "Swagger generation failed (this is expected if no swagger annotations exist)"
 
   checkall:

@@ -2,10 +2,11 @@ package logging
 
 import (
 	"context"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"os"
 	"testing"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func TestInitialize(t *testing.T) {
