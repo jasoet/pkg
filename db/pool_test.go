@@ -1,9 +1,10 @@
 package db
 
 import (
-	"github.com/go-playground/validator/v10"
 	"testing"
 	"time"
+
+	"github.com/go-playground/validator/v10"
 )
 
 func TestDatabaseConfigValidation(t *testing.T) {

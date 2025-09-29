@@ -1,13 +1,14 @@
 package temporal
 
 import (
+	"time"
+
 	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/uber-go/tally/v4"
 	"github.com/uber-go/tally/v4/prometheus"
 	"go.temporal.io/sdk/client"
 	sdktally "go.temporal.io/sdk/contrib/tally"
-	"time"
 )
 
 func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, error) {

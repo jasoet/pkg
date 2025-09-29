@@ -168,7 +168,7 @@ func multipleTunnelsExample() {
 	for i, service := range services {
 		fmt.Printf("- %s: localhost:%d\n", service, []int{5433, 6380, 8081}[i])
 	}
-	
+
 	fmt.Printf("Created %d tunnel instances\n", len(tunnels))
 
 	// In a real scenario, you would start all tunnels:

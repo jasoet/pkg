@@ -3,6 +3,7 @@ package temporal
 import (
 	"context"
 	"fmt"
+
 	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
