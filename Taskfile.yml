@@ -12,9 +12,13 @@ tasks:
       - task --list
 
   test:
-    desc: Run unit tests with race condition detection
+    desc: Run unit tests with race condition detection and coverage
     cmds:
-      - go test -race -count=1 ./...
+      - mkdir -p output
+      - go test -race -count=1 -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples
+      - go tool cover -html=output/coverage.out -o output/coverage.html
+      - 'echo "✓ Tests completed with race detection"'
+      - 'echo "✓ Coverage report: output/coverage.html"'
 
   integration-test:
     desc: Run database integration tests (using testcontainers)
@@ -112,13 +116,15 @@ tasks:
       - echo "Dependencies verified successfully (nancy temporarily disabled due to access issues)"
 
   coverage:
-    desc: Generate test coverage report
+    desc: Generate test coverage report (without race detection for faster execution)
     silent: true
     cmds:
-      - mkdir -p dist
-      - go test -race -coverprofile=dist/coverage.out ./...
-      - go tool cover -html=dist/coverage.out -o dist/coverage.html
-      - 'echo "Coverage report generated: dist/coverage.html"'
+      - mkdir -p output
+      - go test -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples
+      - go tool cover -html=output/coverage.out -o output/coverage.html
+      - go tool cover -func=output/coverage.out
+      - 'echo ""'
+      - 'echo "✓ Coverage report generated: output/coverage.html"'
 
   docs:
     desc: Generate API documentation (if swagger annotations exist)

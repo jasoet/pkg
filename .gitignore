@@ -196,6 +196,7 @@ GitHub.sublime-settings
 bin/
 _output/
 dist/
+output/
 
 .idea
 tests/db_sample/simrs.sql
@@ -206,6 +207,7 @@ sim_output
 *.db
 *.db-shm
 *.db-wal
+*.log
 
 aof/
 
