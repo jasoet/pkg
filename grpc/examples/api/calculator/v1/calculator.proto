@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package calculator.v1;
+
+option go_package = "github.com/jasoet/pkg/grpc/examples/gen/calculator/v1";
+
+// Calculator service provides basic arithmetic operations
+service CalculatorService {
+  // Add two numbers
+  rpc Add(AddRequest) returns (AddResponse);
+
+  // Subtract two numbers
+  rpc Subtract(SubtractRequest) returns (SubtractResponse);
+
+  // Multiply two numbers
+  rpc Multiply(MultiplyRequest) returns (MultiplyResponse);
+
+  // Divide two numbers
+  rpc Divide(DivideRequest) returns (DivideResponse);
+
+  // Calculate factorial (server streaming example)
+  rpc Factorial(FactorialRequest) returns (stream FactorialResponse);
+
+  // Sum a stream of numbers (client streaming example)
+  rpc Sum(stream SumRequest) returns (SumResponse);
+
+  // Calculate running average (bidirectional streaming example)
+  rpc RunningAverage(stream RunningAverageRequest) returns (stream RunningAverageResponse);
+}
+
+// Request and response messages for Add operation
+message AddRequest {
+  double a = 1;
+  double b = 2;
+}
+
+message AddResponse {
+  double result = 1;
+}
+
+// Request and response messages for Subtract operation
+message SubtractRequest {
+  double a = 1;
+  double b = 2;
+}
+
+message SubtractResponse {
+  double result = 1;
+}
+
+// Request and response messages for Multiply operation
+message MultiplyRequest {
+  double a = 1;
+  double b = 2;
+}
+
+message MultiplyResponse {
+  double result = 1;
+}
+
+// Request and response messages for Divide operation
+message DivideRequest {
+  double a = 1;
+  double b = 2;
+}
+
+message DivideResponse {
+  double result = 1;
+}
+
+// Request and response messages for Factorial operation (server streaming)
+message FactorialRequest {
+  int32 number = 1;
+}
+
+message FactorialResponse {
+  int32 step = 1;
+  int64 result = 2;
+}
+
+// Request and response messages for Sum operation (client streaming)
+message SumRequest {
+  double number = 1;
+}
+
+message SumResponse {
+  double total = 1;
+}
+
+// Request and response messages for RunningAverage operation (bidirectional streaming)
+message RunningAverageRequest {
+  double number = 1;
+}
+
+message RunningAverageResponse {
+  double average = 1;
+  int32 count = 2;
+}
