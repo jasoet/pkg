@@ -14,6 +14,7 @@ A comprehensive collection of production-ready Go utility packages designed to e
 | **[logging](./logging/)** | Structured logging with zerolog | Context-aware, performance optimized |
 | **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations |
 | **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
+| **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, observability, dual protocol |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, middleware support |
 | **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation |
 | **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring |
@@ -42,7 +43,7 @@ This library provides production-ready infrastructure components. Each package h
 
 ## 📚 Packages Overview
 
-This library provides 8 core packages, each with comprehensive examples and documentation:
+This library provides 9 core packages, each with comprehensive examples and documentation:
 
 | Package | Description | Key Features | Examples & Documentation |
 |---------|-------------|--------------|--------------------------|
@@ -50,6 +51,7 @@ This library provides 8 core packages, each with comprehensive examples and docu
 | **[logging](./logging/)** | Structured logging with zerolog | Context-aware, performance optimized | [📖 Examples & Guide](logging/examples/README.md) |
 | **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations | [📖 Examples & Guide](db/examples/README.md) |
 | **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown | [📖 Examples & Guide](server/examples/README.md) |
+| **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, observability, dual protocol | [📖 Examples & Guide](grpc/examples/README.md) |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, middleware support | [📖 Examples & Guide](rest/examples/README.md) |
 | **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation | [📖 Examples & Guide](concurrent/examples/README.md) |
 | **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring | [📖 Examples & Guide](temporal/examples/README.md) |
@@ -130,7 +132,7 @@ PostgreSQL is available for testing:
 **Critical Setup**: Run `task docker:up` for PostgreSQL services (localhost:5439, user: jasoet, password: localhost, database: pkg_db)
 
 **Architecture**: Multi-package library (not an application)
-- 8 core packages: config, logging, db, server, rest, concurrent, temporal, ssh, compress
+- 9 core packages: config, logging, db, server, rest, concurrent, temporal, ssh, compress, **grpc**
 - Each package has comprehensive examples with `go run -tags=example ./package/examples`
 - Integration-ready design where packages work seamlessly together
 
@@ -138,18 +140,21 @@ PostgreSQL is available for testing:
 - **Configuration**: Type-safe YAML with environment variable overrides (config package)
 - **Database**: Multi-database support (PostgreSQL, MySQL, MSSQL) with GORM and migrations (db package)
 - **HTTP Server**: Echo framework with built-in health checks, metrics, graceful shutdown (server package)
+- **gRPC Server**: Production-ready gRPC server with Echo gateway integration, H2C mode, observability (grpc package)
 - **HTTP Client**: Resilient REST client with retries and middleware (rest package)
 - **Logging**: Zerolog structured logging with context-aware patterns (logging package)
 - **Concurrency**: Type-safe concurrent execution with Go 1.23+ generics (concurrent package)
 - **Workflows**: Temporal integration for distributed workflows (temporal package)
 
 **Testing Strategy**:
-- Unit tests: `task test`
+- Unit tests: `task test` (with race detection and coverage in output/ directory)
 - Integration tests: `task integration-test` (uses testcontainers for databases)
 - Temporal tests: `task temporal-test` (starts Temporal server)
 - All integration tests: `task all-integration-tests`
+- Coverage reports: `task coverage` (generates output/coverage.html)
+- **Always use assert library** (`github.com/stretchr/testify/assert`) for all test assertions
 
-**Library Usage Focus**: When helping developers, emphasize zero-configuration startup, type safety, and production-grade features (health endpoints, metrics, observability)
+**Library Usage Focus**: When helping developers, emphasize zero-configuration startup, type safety, and production-grade features (health endpoints, metrics, observability, graceful shutdown)
 
 ## 🤝 Contributing
 
@@ -216,8 +221,8 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 - [x] **Build Automation**: Task-based development workflow
 - [x] **CI/CD Pipeline**: Automated testing and releases
 - [x] **Comprehensive Documentation**: Examples and guides
+- [x] **gRPC & Protobuf Support**: Production-ready gRPC server with Echo gateway integration
 - [ ] **Distributed Tracing**: OpenTelemetry integration
-- [ ] **gRPC & Protobuf Support**: Explore and implement reusable gRPC utilities
 
 ## 📄 License
 
