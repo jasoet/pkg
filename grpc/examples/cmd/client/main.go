@@ -25,7 +25,7 @@ func main() {
 	log.Printf("Connecting to calculator server at %s", serverAddr)
 
 	// Connect to the server
-	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}

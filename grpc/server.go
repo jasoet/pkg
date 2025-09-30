@@ -26,7 +26,7 @@ import (
 
 // Server represents the gRPC server and gateway
 type Server struct {
-	config         Config
+	config         *config
 	grpcServer     *grpc.Server
 	echo           *echo.Echo
 	httpServer     *http.Server // Used only for H2C mode
@@ -38,14 +38,15 @@ type Server struct {
 	mu             sync.RWMutex
 }
 
-// New creates a new server instance with the given configuration
-func New(config Config) (*Server, error) {
-	if err := config.Validate(); err != nil {
+// New creates a new server instance with the given options
+func New(opts ...Option) (*Server, error) {
+	cfg, err := newConfig(opts...)
+	if err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	server := &Server{
-		config:         config,
+		config:         cfg,
 		healthManager:  NewHealthManager(),
 		metricsManager: NewMetricsManager("grpc_server"),
 	}
@@ -66,11 +67,11 @@ func (s *Server) setupGRPCServer() {
 	var opts []grpc.ServerOption
 
 	// Add connection timeout options
-	if s.config.MaxConnectionIdle > 0 {
+	if s.config.maxConnectionIdle > 0 {
 		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle:     s.config.MaxConnectionIdle,
-			MaxConnectionAge:      s.config.MaxConnectionAge,
-			MaxConnectionAgeGrace: s.config.MaxConnectionAgeGrace,
+			MaxConnectionIdle:     s.config.maxConnectionIdle,
+			MaxConnectionAge:      s.config.maxConnectionAge,
+			MaxConnectionAgeGrace: s.config.maxConnectionAgeGrace,
 		}))
 	}
 
@@ -78,18 +79,18 @@ func (s *Server) setupGRPCServer() {
 	s.grpcServer = grpc.NewServer(opts...)
 
 	// Enable reflection if configured
-	if s.config.EnableReflection {
+	if s.config.enableReflection {
 		reflection.Register(s.grpcServer)
 	}
 
 	// Apply custom gRPC configuration
-	if s.config.GRPCConfigurer != nil {
-		s.config.GRPCConfigurer(s.grpcServer)
+	if s.config.grpcConfigurer != nil {
+		s.config.grpcConfigurer(s.grpcServer)
 	}
 
 	// Register services
-	if s.config.ServiceRegistrar != nil {
-		s.config.ServiceRegistrar(s.grpcServer)
+	if s.config.serviceRegistrar != nil {
+		s.config.serviceRegistrar(s.grpcServer)
 	}
 }
 
@@ -102,47 +103,47 @@ func (s *Server) setupEchoServer() error {
 	e.HidePort = true
 
 	// Add built-in middleware
-	if s.config.EnableLogging {
+	if s.config.enableLogging {
 		e.Use(middleware.Logger())
 	}
 	e.Use(middleware.Recover())
 
 	// Add metrics middleware
-	if s.config.EnableMetrics {
+	if s.config.enableMetrics {
 		e.Use(s.metricsManager.EchoMetricsMiddleware())
-		s.metricsManager.RegisterEchoMetrics(e, s.config.MetricsPath)
+		s.metricsManager.RegisterEchoMetrics(e, s.config.metricsPath)
 	}
 
 	// Add health checks
-	if s.config.EnableHealthCheck {
-		s.healthManager.RegisterEchoHealthChecks(e, s.config.HealthPath)
+	if s.config.enableHealthCheck {
+		s.healthManager.RegisterEchoHealthChecks(e, s.config.healthPath)
 	}
 
 	// Add optional CORS middleware
-	if s.config.EnableCORS {
+	if s.config.enableCORS {
 		e.Use(middleware.CORS())
 	}
 
 	// Add optional rate limiting middleware
-	if s.config.EnableRateLimit {
-		e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(s.config.RateLimit))))
+	if s.config.enableRateLimit {
+		e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(s.config.rateLimit))))
 	}
 
 	// Add custom middleware
-	for _, mw := range s.config.Middleware {
+	for _, mw := range s.config.middleware {
 		e.Use(mw)
 	}
 
 	// Setup gateway integration if service registrar is provided
-	if s.config.ServiceRegistrar != nil {
+	if s.config.serviceRegistrar != nil {
 		if err := s.setupGatewayIntegration(e); err != nil {
 			return fmt.Errorf("failed to setup gateway integration: %w", err)
 		}
 	}
 
 	// Apply custom Echo configuration
-	if s.config.EchoConfigurer != nil {
-		s.config.EchoConfigurer(e)
+	if s.config.echoConfigurer != nil {
+		s.config.echoConfigurer(e)
 	}
 
 	// Store Echo instance
@@ -157,7 +158,7 @@ func (s *Server) setupGatewayIntegration(e *echo.Echo) error {
 	gatewayMux := CreateGatewayMux()
 
 	// Mount gateway on Echo at the configured base path
-	MountGatewayOnEcho(e, gatewayMux, s.config.GatewayBasePath)
+	MountGatewayOnEcho(e, gatewayMux, s.config.gatewayBasePath)
 
 	// Store gateway mux for service registration
 	s.gatewayMux = gatewayMux
@@ -180,32 +181,32 @@ func (s *Server) Start() error {
 	}
 
 	// Start metrics uptime tracking
-	if s.config.EnableMetrics {
+	if s.config.enableMetrics {
 		go s.trackUptime()
 	}
 
-	switch s.config.Mode {
+	switch s.config.mode {
 	case SeparateMode:
 		return s.startSeparateMode()
 	case H2CMode:
 		return s.startH2CMode()
 	default:
-		return fmt.Errorf("unsupported server mode: %s", s.config.Mode)
+		return fmt.Errorf("unsupported server mode: %s", s.config.mode)
 	}
 }
 
 // startSeparateMode starts gRPC and HTTP servers on separate ports
 func (s *Server) startSeparateMode() error {
 	// Start gRPC server
-	grpcListener, err := net.Listen("tcp", s.config.GetGRPCAddress())
+	grpcListener, err := net.Listen("tcp", s.config.getGRPCAddress())
 	if err != nil {
-		return fmt.Errorf("failed to listen on gRPC port %s: %w", s.config.GRPCPort, err)
+		return fmt.Errorf("failed to listen on gRPC port %s: %w", s.config.grpcPort, err)
 	}
 
 	// Start gRPC server in goroutine
 	go func() {
-		log.Printf("gRPC server starting on port %s", s.config.GRPCPort)
-		if s.config.EnableReflection {
+		log.Printf("gRPC server starting on port %s", s.config.grpcPort)
+		if s.config.enableReflection {
 			log.Printf("gRPC reflection enabled")
 		}
 		if err := s.grpcServer.Serve(grpcListener); err != nil {
@@ -214,18 +215,18 @@ func (s *Server) startSeparateMode() error {
 	}()
 
 	// Start Echo HTTP server
-	log.Printf("Echo HTTP server starting on port %s", s.config.HTTPPort)
-	if s.config.EnableHealthCheck {
-		log.Printf("Health checks available at http://localhost:%s%s", s.config.HTTPPort, s.config.HealthPath)
+	log.Printf("Echo HTTP server starting on port %s", s.config.httpPort)
+	if s.config.enableHealthCheck {
+		log.Printf("Health checks available at http://localhost:%s%s", s.config.httpPort, s.config.healthPath)
 	}
-	if s.config.EnableMetrics {
-		log.Printf("Metrics available at http://localhost:%s%s", s.config.HTTPPort, s.config.MetricsPath)
+	if s.config.enableMetrics {
+		log.Printf("Metrics available at http://localhost:%s%s", s.config.httpPort, s.config.metricsPath)
 	}
-	if s.config.ServiceRegistrar != nil {
-		log.Printf("gRPC Gateway available at http://localhost:%s%s", s.config.HTTPPort, s.config.GatewayBasePath)
+	if s.config.serviceRegistrar != nil {
+		log.Printf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath)
 	}
 
-	return s.echo.Start(s.config.GetHTTPAddress())
+	return s.echo.Start(s.config.getHTTPAddress())
 }
 
 // startH2CMode starts a mixed gRPC/HTTP server on a single port
@@ -241,26 +242,26 @@ func (s *Server) startH2CMode() error {
 
 	// Create HTTP server with H2C support
 	s.httpServer = &http.Server{
-		Addr:         s.config.GetGRPCAddress(),
+		Addr:         s.config.getGRPCAddress(),
 		Handler:      h2c.NewHandler(mixedHandler, &http2.Server{}),
-		ReadTimeout:  s.config.ReadTimeout,
-		WriteTimeout: s.config.WriteTimeout,
-		IdleTimeout:  s.config.IdleTimeout,
+		ReadTimeout:  s.config.readTimeout,
+		WriteTimeout: s.config.writeTimeout,
+		IdleTimeout:  s.config.idleTimeout,
 	}
 
-	log.Printf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.GRPCPort)
-	log.Printf("gRPC endpoints available on port %s", s.config.GRPCPort)
-	if s.config.EnableReflection {
+	log.Printf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.grpcPort)
+	log.Printf("gRPC endpoints available on port %s", s.config.grpcPort)
+	if s.config.enableReflection {
 		log.Printf("gRPC reflection enabled")
 	}
-	if s.config.EnableHealthCheck {
-		log.Printf("Health checks available at http://localhost:%s%s", s.config.GRPCPort, s.config.HealthPath)
+	if s.config.enableHealthCheck {
+		log.Printf("Health checks available at http://localhost:%s%s", s.config.grpcPort, s.config.healthPath)
 	}
-	if s.config.EnableMetrics {
-		log.Printf("Metrics available at http://localhost:%s%s", s.config.GRPCPort, s.config.MetricsPath)
+	if s.config.enableMetrics {
+		log.Printf("Metrics available at http://localhost:%s%s", s.config.grpcPort, s.config.metricsPath)
 	}
-	if s.config.ServiceRegistrar != nil {
-		log.Printf("gRPC Gateway available at http://localhost:%s%s", s.config.GRPCPort, s.config.GatewayBasePath)
+	if s.config.serviceRegistrar != nil {
+		log.Printf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath)
 	}
 
 	return s.httpServer.ListenAndServe()
@@ -280,24 +281,24 @@ func (s *Server) Stop() error {
 		log.Println("Stopping server gracefully...")
 
 		// Create shutdown context with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), s.config.shutdownTimeout)
 		defer cancel()
 
 		// Run custom shutdown handler
-		if s.config.Shutdown != nil {
-			if err := s.config.Shutdown(); err != nil {
+		if s.config.shutdown != nil {
+			if err := s.config.shutdown(); err != nil {
 				log.Printf("Custom shutdown handler error: %v", err)
 			}
 		}
 
 		// Stop HTTP/Echo server based on mode
-		if s.config.Mode == H2CMode && s.httpServer != nil {
+		if s.config.mode == H2CMode && s.httpServer != nil {
 			// H2C mode uses httpServer
 			if err := s.httpServer.Shutdown(ctx); err != nil {
 				log.Printf("HTTP server shutdown error: %v", err)
 				stopErr = err
 			}
-		} else if s.config.Mode == SeparateMode && s.echo != nil {
+		} else if s.config.mode == SeparateMode && s.echo != nil {
 			// Separate mode uses Echo
 			if err := s.echo.Shutdown(ctx); err != nil {
 				log.Printf("Echo server shutdown error: %v", err)
@@ -367,9 +368,15 @@ func (s *Server) trackUptime() {
 	}
 }
 
-// StartWithConfig creates and starts a server with the given configuration
-func StartWithConfig(config Config) error {
-	server, err := New(config)
+// Start creates and starts a server with the given options
+func Start(port string, serviceRegistrar func(*grpc.Server), opts ...Option) error {
+	// Prepend required options
+	allOpts := append([]Option{
+		WithGRPCPort(port),
+		WithServiceRegistrar(serviceRegistrar),
+	}, opts...)
+
+	server, err := New(allOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
@@ -389,32 +396,42 @@ func StartWithConfig(config Config) error {
 	return server.Start()
 }
 
-// Start creates and starts a server with default configuration and custom service registrar
-func Start(port string, serviceRegistrar func(*grpc.Server)) error {
-	config := DefaultConfig()
-	config.GRPCPort = port
-	config.ServiceRegistrar = serviceRegistrar
-
-	return StartWithConfig(config)
-}
-
 // StartH2C creates and starts a server in H2C mode with custom service registrar
-func StartH2C(port string, serviceRegistrar func(*grpc.Server)) error {
-	config := DefaultConfig()
-	config.GRPCPort = port
-	config.Mode = H2CMode
-	config.ServiceRegistrar = serviceRegistrar
+func StartH2C(port string, serviceRegistrar func(*grpc.Server), opts ...Option) error {
+	// Prepend required options
+	allOpts := append([]Option{
+		WithH2CMode(),
+		WithGRPCPort(port),
+		WithServiceRegistrar(serviceRegistrar),
+	}, opts...)
 
-	return StartWithConfig(config)
+	return Start(port, serviceRegistrar, allOpts...)
 }
 
 // StartSeparate creates and starts a server in separate mode with custom service registrar
-func StartSeparate(grpcPort, httpPort string, serviceRegistrar func(*grpc.Server)) error {
-	config := DefaultConfig()
-	config.GRPCPort = grpcPort
-	config.HTTPPort = httpPort
-	config.Mode = SeparateMode
-	config.ServiceRegistrar = serviceRegistrar
+func StartSeparate(grpcPort, httpPort string, serviceRegistrar func(*grpc.Server), opts ...Option) error {
+	// Prepend required options
+	allOpts := append([]Option{
+		WithSeparateMode(grpcPort, httpPort),
+		WithServiceRegistrar(serviceRegistrar),
+	}, opts...)
 
-	return StartWithConfig(config)
+	server, err := New(allOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		log.Printf("Received signal: %v", sig)
+		if err := server.Stop(); err != nil {
+			log.Printf("Error stopping server: %v", err)
+		}
+	}()
+
+	return server.Start()
 }

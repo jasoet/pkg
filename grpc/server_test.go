@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 )
@@ -32,190 +33,111 @@ type mockResponse struct {
 }
 
 func TestNewServer(t *testing.T) {
-	config := Config{
-		GRPCPort: "8080",
-		Mode:     H2CMode,
-	}
-	config.SetDefaults()
+	server, err := New(
+		WithGRPCPort("8080"),
+		WithH2CMode(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, server)
 
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-
-	if server == nil {
-		t.Fatal("Expected server to be created")
-	}
-
-	if server.config.GRPCPort != "8080" {
-		t.Errorf("Expected gRPC port to be 8080, got %s", server.config.GRPCPort)
-	}
-
-	if server.healthManager == nil {
-		t.Error("Expected health manager to be initialized")
-	}
-
-	if server.metricsManager == nil {
-		t.Error("Expected metrics manager to be initialized")
-	}
-
-	if server.grpcServer == nil {
-		t.Error("Expected gRPC server to be initialized")
-	}
+	assert.Equal(t, "8080", server.config.grpcPort)
+	assert.NotNil(t, server.healthManager)
+	assert.NotNil(t, server.metricsManager)
+	assert.NotNil(t, server.grpcServer)
 }
 
 func TestNewServerWithInvalidConfig(t *testing.T) {
-	config := Config{
-		// Missing required GRPCPort
-		Mode: H2CMode,
-	}
-
-	server, err := New(config)
-	if err == nil {
-		t.Error("Expected error for invalid config")
-	}
-
-	if server != nil {
-		t.Error("Expected server to be nil for invalid config")
-	}
+	server, err := New(
+		WithGRPCPort(""), // Empty port
+	)
+	assert.Error(t, err)
+	assert.Nil(t, server)
 }
 
 func TestServerGetters(t *testing.T) {
-	config := DefaultConfig()
-	config.GRPCPort = "8080"
-
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(WithGRPCPort("8080"))
+	require.NoError(t, err)
 
 	// Test health manager getter
 	hm := server.GetHealthManager()
-	if hm == nil {
-		t.Error("Expected health manager to be returned")
-	}
+	assert.NotNil(t, hm)
 
 	// Test metrics manager getter
 	mm := server.GetMetricsManager()
-	if mm == nil {
-		t.Error("Expected metrics manager to be returned")
-	}
+	assert.NotNil(t, mm)
 
 	// Test gRPC server getter
 	grpcSrv := server.GetGRPCServer()
-	if grpcSrv == nil {
-		t.Error("Expected gRPC server to be returned")
-	}
+	assert.NotNil(t, grpcSrv)
 
 	// Test running status
-	if server.IsRunning() {
-		t.Error("Expected server to not be running initially")
-	}
+	assert.False(t, server.IsRunning())
 }
 
 func TestServerSetupGRPCServer(t *testing.T) {
-	config := Config{
-		GRPCPort:              "8080",
-		Mode:                  H2CMode,
-		EnableReflection:      true,
-		MaxConnectionIdle:     5 * time.Minute,
-		MaxConnectionAge:      10 * time.Minute,
-		MaxConnectionAgeGrace: 1 * time.Minute,
-	}
-	config.SetDefaults()
-
 	// Test with custom configurer
 	configurerCalled := false
-	config.GRPCConfigurer = func(s *grpc.Server) {
-		configurerCalled = true
-	}
-
-	// Test with service registrar
 	registrarCalled := false
-	config.ServiceRegistrar = func(s *grpc.Server) {
-		registrarCalled = true
-	}
 
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(
+		WithGRPCPort("8080"),
+		WithH2CMode(),
+		WithReflection(),
+		WithConnectionTimeouts(5*time.Minute, 10*time.Minute, 1*time.Minute),
+		WithGRPCConfigurer(func(s *grpc.Server) {
+			configurerCalled = true
+		}),
+		WithServiceRegistrar(func(s *grpc.Server) {
+			registrarCalled = true
+		}),
+	)
+	require.NoError(t, err)
 
-	if !configurerCalled {
-		t.Error("Expected gRPC configurer to be called")
-	}
+	assert.True(t, configurerCalled, "Expected gRPC configurer to be called")
+	assert.True(t, registrarCalled, "Expected service registrar to be called")
 
-	if !registrarCalled {
-		t.Error("Expected service registrar to be called")
-	}
-
-	// Verify reflection is registered (this is harder to test directly)
 	grpcSrv := server.GetGRPCServer()
-	if grpcSrv == nil {
-		t.Error("Expected gRPC server to be configured")
-	}
+	assert.NotNil(t, grpcSrv)
 }
 
 func TestServerSetupEchoServer(t *testing.T) {
-	config := Config{
-		GRPCPort:          "9090",
-		HTTPPort:          "9091",
-		Mode:              SeparateMode,
-		EnableHealthCheck: true,
-		EnableMetrics:     true,
-		HealthPath:        "/health",
-		MetricsPath:       "/metrics",
-	}
-	config.SetDefaults()
-
-	// Test with custom Echo configurer
 	configurerCalled := false
-	config.EchoConfigurer = func(e *echo.Echo) {
-		configurerCalled = true
-		e.GET("/test", func(c echo.Context) error {
-			return c.String(http.StatusOK, "test")
-		})
-	}
 
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(
+		WithSeparateMode("9090", "9091"),
+		WithHealthCheck(),
+		WithMetrics(),
+		WithHealthPath("/health"),
+		WithMetricsPath("/metrics"),
+		WithEchoConfigurer(func(e *echo.Echo) {
+			configurerCalled = true
+			e.GET("/test", func(c echo.Context) error {
+				return c.String(http.StatusOK, "test")
+			})
+		}),
+	)
+	require.NoError(t, err)
 
 	// Setup Echo server
 	err = server.setupEchoServer()
-	if err != nil {
-		t.Fatalf("Failed to setup Echo server: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !configurerCalled {
-		t.Error("Expected Echo configurer to be called")
-	}
-
-	if server.echo == nil {
-		t.Error("Expected Echo server to be configured")
-	}
+	assert.True(t, configurerCalled, "Expected Echo configurer to be called")
+	assert.NotNil(t, server.echo)
 }
 
 func TestServerStartStop(t *testing.T) {
 	// Use a random available port
 	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Failed to get available port: %v", err)
-	}
+	require.NoError(t, err)
 	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 
-	config := Config{
-		GRPCPort: port,
-		Mode:     H2CMode,
-	}
-	config.SetDefaults()
-
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(
+		WithGRPCPort(port),
+		WithH2CMode(),
+	)
+	require.NoError(t, err)
 
 	// Start server in goroutine
 	var wg sync.WaitGroup
@@ -228,35 +150,22 @@ func TestServerStartStop(t *testing.T) {
 
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
-
-	if !server.IsRunning() {
-		t.Error("Expected server to be running")
-	}
+	assert.True(t, server.IsRunning())
 
 	// Stop server
 	stopErr := server.Stop()
-	if stopErr != nil {
-		t.Errorf("Failed to stop server: %v", stopErr)
-	}
+	assert.NoError(t, stopErr)
 
 	// Wait for start goroutine to complete
 	wg.Wait()
 
-	if !server.IsRunning() {
-		// Server should be stopped
-	} else {
-		t.Error("Expected server to be stopped")
-	}
+	// Server should be stopped
+	assert.False(t, server.IsRunning())
 }
 
 func TestServerDoubleStart(t *testing.T) {
-	config := DefaultConfig()
-	config.GRPCPort = "0" // Use any available port
-
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(WithGRPCPort("0")) // Use any available port
+	require.NoError(t, err)
 
 	// Start server in goroutine
 	go func() {
@@ -268,9 +177,7 @@ func TestServerDoubleStart(t *testing.T) {
 
 	// Try to start again
 	err = server.Start()
-	if err == nil {
-		t.Error("Expected error when starting server twice")
-	}
+	assert.Error(t, err, "Expected error when starting server twice")
 
 	// Cleanup
 	server.Stop()
@@ -279,9 +186,7 @@ func TestServerDoubleStart(t *testing.T) {
 func TestStartFunction(t *testing.T) {
 	// Get available port
 	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Failed to get available port: %v", err)
-	}
+	require.NoError(t, err)
 	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 
@@ -299,20 +204,12 @@ func TestStartFunction(t *testing.T) {
 	// Wait a bit
 	time.Sleep(100 * time.Millisecond)
 
-	if atomic.LoadInt32(&serviceRegistrarCalled) == 0 {
-		t.Error("Expected service registrar to be called")
-	}
-
-	// Note: We don't have a direct way to stop the server started by Start()
-	// In a real test environment, you might use a test framework that can
-	// handle process cleanup
+	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
 }
 
 func TestStartH2CFunction(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Failed to get available port: %v", err)
-	}
+	require.NoError(t, err)
 	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 
@@ -328,24 +225,18 @@ func TestStartH2CFunction(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	if atomic.LoadInt32(&serviceRegistrarCalled) == 0 {
-		t.Error("Expected service registrar to be called")
-	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
 }
 
 func TestStartSeparateFunction(t *testing.T) {
 	// Get two available ports
 	listener1, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Failed to get available port: %v", err)
-	}
+	require.NoError(t, err)
 	grpcPort := fmt.Sprintf("%d", listener1.Addr().(*net.TCPAddr).Port)
 	listener1.Close()
 
 	listener2, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Failed to get available port: %v", err)
-	}
+	require.NoError(t, err)
 	httpPort := fmt.Sprintf("%d", listener2.Addr().(*net.TCPAddr).Port)
 	listener2.Close()
 
@@ -361,25 +252,45 @@ func TestStartSeparateFunction(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	if atomic.LoadInt32(&serviceRegistrarCalled) == 0 {
-		t.Error("Expected service registrar to be called")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
+}
+
+func TestStartWithOptions(t *testing.T) {
+	listener, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
+	listener.Close()
+
+	var serviceRegistrarCalled int32
+	serviceRegistrar := func(s *grpc.Server) {
+		atomic.StoreInt32(&serviceRegistrarCalled, 1)
 	}
+
+	// Test Start with additional options
+	go func() {
+		Start(port, serviceRegistrar,
+			WithCORS(),
+			WithRateLimit(200.0),
+			WithoutReflection(),
+		)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
 }
 
 func TestServerWithCustomShutdown(t *testing.T) {
-	config := DefaultConfig()
-	config.GRPCPort = "0"
-
 	shutdownCalled := false
-	config.Shutdown = func() error {
-		shutdownCalled = true
-		return nil
-	}
 
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(
+		WithGRPCPort("0"),
+		WithShutdownHandler(func() error {
+			shutdownCalled = true
+			return nil
+		}),
+	)
+	require.NoError(t, err)
 
 	// Start and immediately stop
 	go func() {
@@ -389,69 +300,47 @@ func TestServerWithCustomShutdown(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	err = server.Stop()
-	if err != nil {
-		t.Errorf("Failed to stop server: %v", err)
-	}
-
-	if !shutdownCalled {
-		t.Error("Expected custom shutdown handler to be called")
-	}
+	assert.NoError(t, err)
+	assert.True(t, shutdownCalled, "Expected custom shutdown handler to be called")
 }
 
 func TestServerModeValidation(t *testing.T) {
 	tests := []struct {
 		name      string
-		mode      ServerMode
-		grpcPort  string
-		httpPort  string
+		options   []Option
 		expectErr bool
 	}{
 		{
-			name:      "valid H2C mode",
-			mode:      H2CMode,
-			grpcPort:  "8080",
-			httpPort:  "",
+			name: "valid H2C mode",
+			options: []Option{
+				WithH2CMode(),
+				WithGRPCPort("8080"),
+			},
 			expectErr: false,
 		},
 		{
-			name:      "valid separate mode",
-			mode:      SeparateMode,
-			grpcPort:  "9090",
-			httpPort:  "9091",
+			name: "valid separate mode",
+			options: []Option{
+				WithSeparateMode("9090", "9091"),
+			},
 			expectErr: false,
 		},
 		{
-			name:      "separate mode missing HTTP port",
-			mode:      SeparateMode,
-			grpcPort:  "9090",
-			httpPort:  "",
+			name: "separate mode missing HTTP port",
+			options: []Option{
+				WithSeparateMode("9090", ""),
+			},
 			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := Config{
-				Mode:     tt.mode,
-				GRPCPort: tt.grpcPort,
-				HTTPPort: tt.httpPort,
-			}
-
-			err := config.Validate()
-			if tt.expectErr && err == nil {
-				t.Error("Expected error for invalid configuration")
-			}
-			if !tt.expectErr && err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-
-			// Only proceed to create server if validation passed
-			if err == nil {
-				config.SetDefaults()
-				_, err := New(config)
-				if err != nil {
-					t.Errorf("Unexpected error creating server: %v", err)
-				}
+			_, err := New(tt.options...)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -463,25 +352,17 @@ func TestServerIntegration(t *testing.T) {
 	bufferSize := 1024 * 1024
 	lis := bufconn.Listen(bufferSize)
 
-	config := Config{
-		GRPCPort:          "8080",
-		Mode:              H2CMode,
-		EnableMetrics:     true,
-		EnableHealthCheck: true,
-		EnableReflection:  true,
-	}
-	config.SetDefaults()
-
-	// Add a simple service registrar
-	config.ServiceRegistrar = func(s *grpc.Server) {
-		// No need to register reflection here since EnableReflection is true
-		// The server will handle reflection registration automatically
-	}
-
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(
+		WithGRPCPort("8080"),
+		WithH2CMode(),
+		WithMetrics(),
+		WithHealthCheck(),
+		WithReflection(),
+		WithServiceRegistrar(func(s *grpc.Server) {
+			// Service registrar called
+		}),
+	)
+	require.NoError(t, err)
 
 	// Start server with buffer listener
 	go func() {
@@ -497,9 +378,7 @@ func TestServerIntegration(t *testing.T) {
 		}),
 		grpc.WithInsecure(),
 	)
-	if err != nil {
-		t.Fatalf("Failed to dial bufnet: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	// Test that connection is not in shutdown state immediately
@@ -511,14 +390,11 @@ func TestServerIntegration(t *testing.T) {
 }
 
 func TestServerTrackUptime(t *testing.T) {
-	config := DefaultConfig()
-	config.GRPCPort = "8080"
-	config.EnableMetrics = true
-
-	server, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server, err := New(
+		WithGRPCPort("8080"),
+		WithMetrics(),
+	)
+	require.NoError(t, err)
 
 	// Test uptime tracking
 	go server.trackUptime()
@@ -529,9 +405,7 @@ func TestServerTrackUptime(t *testing.T) {
 	// Get metrics to verify uptime is being tracked
 	mm := server.GetMetricsManager()
 	metricFamilies, err := mm.GetRegistry().Gather()
-	if err != nil {
-		t.Fatalf("Failed to gather metrics: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Look for uptime metric
 	found := false
@@ -542,7 +416,79 @@ func TestServerTrackUptime(t *testing.T) {
 		}
 	}
 
-	if !found {
-		t.Error("Expected uptime metric to be present")
+	assert.True(t, found, "Expected uptime metric to be present")
+}
+
+func TestServerWithMiddleware(t *testing.T) {
+	mw1 := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return next(c)
+		}
 	}
+
+	mw2 := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return next(c)
+		}
+	}
+
+	server, err := New(
+		WithGRPCPort("8080"),
+		WithMiddleware(mw1, mw2),
+	)
+	require.NoError(t, err)
+
+	// Setup Echo server to trigger middleware attachment
+	err = server.setupEchoServer()
+	require.NoError(t, err)
+
+	assert.NotNil(t, server.echo)
+	assert.Len(t, server.config.middleware, 2)
+}
+
+func TestServerWithAllOptions(t *testing.T) {
+	server, err := New(
+		WithSeparateMode("9090", "9091"),
+		WithShutdownTimeout(45*time.Second),
+		WithReadTimeout(15*time.Second),
+		WithWriteTimeout(20*time.Second),
+		WithIdleTimeout(90*time.Second),
+		WithConnectionTimeouts(20*time.Minute, 40*time.Minute, 10*time.Second),
+		WithMetrics(),
+		WithHealthCheck(),
+		WithLogging(),
+		WithReflection(),
+		WithCORS(),
+		WithRateLimit(250.0),
+		WithMetricsPath("/custom-metrics"),
+		WithHealthPath("/custom-health"),
+		WithGatewayBasePath("/api/v2"),
+		WithTLS("cert.pem", "key.pem"),
+	)
+	require.NoError(t, err)
+
+	// Verify configuration
+	assert.Equal(t, SeparateMode, server.config.mode)
+	assert.Equal(t, "9090", server.config.grpcPort)
+	assert.Equal(t, "9091", server.config.httpPort)
+	assert.Equal(t, 45*time.Second, server.config.shutdownTimeout)
+	assert.Equal(t, 15*time.Second, server.config.readTimeout)
+	assert.Equal(t, 20*time.Second, server.config.writeTimeout)
+	assert.Equal(t, 90*time.Second, server.config.idleTimeout)
+	assert.Equal(t, 20*time.Minute, server.config.maxConnectionIdle)
+	assert.Equal(t, 40*time.Minute, server.config.maxConnectionAge)
+	assert.Equal(t, 10*time.Second, server.config.maxConnectionAgeGrace)
+	assert.True(t, server.config.enableMetrics)
+	assert.True(t, server.config.enableHealthCheck)
+	assert.True(t, server.config.enableLogging)
+	assert.True(t, server.config.enableReflection)
+	assert.True(t, server.config.enableCORS)
+	assert.True(t, server.config.enableRateLimit)
+	assert.Equal(t, 250.0, server.config.rateLimit)
+	assert.Equal(t, "/custom-metrics", server.config.metricsPath)
+	assert.Equal(t, "/custom-health", server.config.healthPath)
+	assert.Equal(t, "/api/v2", server.config.gatewayBasePath)
+	assert.True(t, server.config.enableTLS)
+	assert.Equal(t, "cert.pem", server.config.certFile)
+	assert.Equal(t, "key.pem", server.config.keyFile)
 }
