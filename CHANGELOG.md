@@ -1,3 +1,13 @@
+## [1.4.0](https://github.com/jasoet/pkg/compare/v1.3.6...v1.4.0) (2025-09-30)
+
+### Features
+
+* **grpc:** officially publish production-ready gRPC server package with Echo integration ([dea186e](https://github.com/jasoet/pkg/commit/dea186e104d1bfb5ead6847989ad4fcea8656a88))
+
+### Documentation
+
+* update README with grpc package and enhanced testing instructions ([34b984b](https://github.com/jasoet/pkg/commit/34b984bd0765f16294f5e247e2caacb7d5877d1e))
+
 ## [1.3.6](https://github.com/jasoet/pkg/compare/v1.3.5...v1.3.6) (2025-09-29)
 
 ### Documentation
