@@ -18,202 +18,406 @@ const (
 	H2CMode ServerMode = "h2c"
 )
 
-// Config represents the configuration for the gRPC server and gateway
-type Config struct {
+// Option is a functional option for configuring the server
+type Option func(*config)
+
+// config represents the internal configuration for the gRPC server and gateway
+type config struct {
 	// Server Configuration
-	GRPCPort string     // Port for gRPC server
-	HTTPPort string     // Port for HTTP gateway (only used in SeparateMode)
-	Mode     ServerMode // Server operation mode
+	grpcPort string     // Port for gRPC server
+	httpPort string     // Port for HTTP gateway (only used in SeparateMode)
+	mode     ServerMode // Server operation mode
 
 	// Timeouts and Limits
-	ShutdownTimeout       time.Duration // Maximum time to wait for graceful shutdown
-	ReadTimeout           time.Duration // HTTP server read timeout
-	WriteTimeout          time.Duration // HTTP server write timeout
-	IdleTimeout           time.Duration // HTTP server idle timeout
-	MaxConnectionIdle     time.Duration // gRPC server max connection idle time
-	MaxConnectionAge      time.Duration // gRPC server max connection age
-	MaxConnectionAgeGrace time.Duration // gRPC server max connection age grace
+	shutdownTimeout       time.Duration // Maximum time to wait for graceful shutdown
+	readTimeout           time.Duration // HTTP server read timeout
+	writeTimeout          time.Duration // HTTP server write timeout
+	idleTimeout           time.Duration // HTTP server idle timeout
+	maxConnectionIdle     time.Duration // gRPC server max connection idle time
+	maxConnectionAge      time.Duration // gRPC server max connection age
+	maxConnectionAgeGrace time.Duration // gRPC server max connection age grace
 
 	// Production Features
-	EnableMetrics     bool   // Enable Prometheus metrics endpoint
-	MetricsPath       string // Path for metrics endpoint
-	EnableHealthCheck bool   // Enable health check endpoints
-	HealthPath        string // Base path for health check endpoints
-	EnableLogging     bool   // Enable request/response logging
-	EnableReflection  bool   // Enable gRPC server reflection
+	enableMetrics     bool   // Enable Prometheus metrics endpoint
+	metricsPath       string // Path for metrics endpoint
+	enableHealthCheck bool   // Enable health check endpoints
+	healthPath        string // Base path for health check endpoints
+	enableLogging     bool   // Enable request/response logging
+	enableReflection  bool   // Enable gRPC server reflection
 
 	// Customization Hooks
-	GRPCConfigurer   func(*grpc.Server) // Configure gRPC server
-	EchoConfigurer   func(*echo.Echo)   // Configure Echo HTTP server
-	ServiceRegistrar func(*grpc.Server) // Register gRPC services
-	Shutdown         func() error       // Custom shutdown handler
+	grpcConfigurer   func(*grpc.Server) // Configure gRPC server
+	echoConfigurer   func(*echo.Echo)   // Configure Echo HTTP server
+	serviceRegistrar func(*grpc.Server) // Register gRPC services
+	shutdown         func() error       // Custom shutdown handler
 
 	// Gateway Configuration
-	GatewayBasePath string // Base path for gRPC gateway routes (default: "/api/v1")
+	gatewayBasePath string // Base path for gRPC gateway routes (default: "/api/v1")
 
 	// Echo-specific Features
-	EnableCORS      bool                  // Enable CORS middleware
-	EnableRateLimit bool                  // Enable rate limiting middleware
-	RateLimit       float64               // Requests per second for rate limiting
-	Middleware      []echo.MiddlewareFunc // Custom Echo middleware
+	enableCORS      bool                  // Enable CORS middleware
+	enableRateLimit bool                  // Enable rate limiting middleware
+	rateLimit       float64               // Requests per second for rate limiting
+	middleware      []echo.MiddlewareFunc // Custom Echo middleware
 
 	// TLS Configuration (for future use)
-	EnableTLS bool   // Enable TLS
-	CertFile  string // Path to certificate file
-	KeyFile   string // Path to private key file
+	enableTLS bool   // Enable TLS
+	certFile  string // Path to certificate file
+	keyFile   string // Path to private key file
 }
 
-// DefaultConfig returns a configuration with sensible defaults
-func DefaultConfig() Config {
-	return Config{
+// newConfig creates a new config with defaults and applies the provided options
+func newConfig(opts ...Option) (*config, error) {
+	// Start with sensible defaults
+	cfg := &config{
 		// Server Configuration
-		GRPCPort: "8080",
-		HTTPPort: "8081",
-		Mode:     H2CMode, // Default to H2C for simpler development
+		grpcPort: "8080",
+		httpPort: "8081",
+		mode:     H2CMode, // Default to H2C for simpler development
 
 		// Timeouts and Limits
-		ShutdownTimeout:       30 * time.Second,
-		ReadTimeout:           5 * time.Second,
-		WriteTimeout:          10 * time.Second,
-		IdleTimeout:           60 * time.Second,
-		MaxConnectionIdle:     15 * time.Minute,
-		MaxConnectionAge:      30 * time.Minute,
-		MaxConnectionAgeGrace: 5 * time.Second,
+		shutdownTimeout:       30 * time.Second,
+		readTimeout:           5 * time.Second,
+		writeTimeout:          10 * time.Second,
+		idleTimeout:           60 * time.Second,
+		maxConnectionIdle:     15 * time.Minute,
+		maxConnectionAge:      30 * time.Minute,
+		maxConnectionAgeGrace: 5 * time.Second,
 
 		// Production Features
-		EnableMetrics:     true,
-		MetricsPath:       "/metrics",
-		EnableHealthCheck: true,
-		HealthPath:        "/health",
-		EnableLogging:     true,
-		EnableReflection:  true,
+		enableMetrics:     true,
+		metricsPath:       "/metrics",
+		enableHealthCheck: true,
+		healthPath:        "/health",
+		enableLogging:     true,
+		enableReflection:  true,
 
 		// Gateway Configuration
-		GatewayBasePath: "/api/v1",
+		gatewayBasePath: "/api/v1",
 
 		// Echo-specific Features
-		EnableCORS:      false, // Disabled by default, enable as needed
-		EnableRateLimit: false, // Disabled by default, enable as needed
-		RateLimit:       100.0, // 100 requests per second default
-		Middleware:      []echo.MiddlewareFunc{},
+		enableCORS:      false, // Disabled by default, enable as needed
+		enableRateLimit: false, // Disabled by default, enable as needed
+		rateLimit:       100.0, // 100 requests per second default
+		middleware:      []echo.MiddlewareFunc{},
 
 		// TLS Configuration
-		EnableTLS: false,
+		enableTLS: false,
 	}
+
+	// Apply all options
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	// Validate configuration
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
-// SetDefaults sets default values for the configuration
-func (c *Config) SetDefaults() {
-	defaultConfig := DefaultConfig()
-
-	if c.GRPCPort == "" {
-		c.GRPCPort = defaultConfig.GRPCPort
-	}
-	if c.HTTPPort == "" && c.Mode == SeparateMode {
-		c.HTTPPort = defaultConfig.HTTPPort
-	}
-	if c.Mode == "" {
-		c.Mode = defaultConfig.Mode
-	}
-	if c.ShutdownTimeout == 0 {
-		c.ShutdownTimeout = defaultConfig.ShutdownTimeout
-	}
-	if c.ReadTimeout == 0 {
-		c.ReadTimeout = defaultConfig.ReadTimeout
-	}
-	if c.WriteTimeout == 0 {
-		c.WriteTimeout = defaultConfig.WriteTimeout
-	}
-	if c.IdleTimeout == 0 {
-		c.IdleTimeout = defaultConfig.IdleTimeout
-	}
-	if c.MaxConnectionIdle == 0 {
-		c.MaxConnectionIdle = defaultConfig.MaxConnectionIdle
-	}
-	if c.MaxConnectionAge == 0 {
-		c.MaxConnectionAge = defaultConfig.MaxConnectionAge
-	}
-	if c.MaxConnectionAgeGrace == 0 {
-		c.MaxConnectionAgeGrace = defaultConfig.MaxConnectionAgeGrace
-	}
-	if c.MetricsPath == "" {
-		c.MetricsPath = defaultConfig.MetricsPath
-	}
-	if c.HealthPath == "" {
-		c.HealthPath = defaultConfig.HealthPath
-	}
-	if c.GatewayBasePath == "" {
-		c.GatewayBasePath = defaultConfig.GatewayBasePath
-	}
-	if c.RateLimit == 0 {
-		c.RateLimit = defaultConfig.RateLimit
-	}
-	if c.Middleware == nil {
-		c.Middleware = []echo.MiddlewareFunc{}
+// validate ensures the configuration is valid
+func (c *config) validate() error {
+	if c.grpcPort == "" {
+		return fmt.Errorf("gRPC port cannot be empty")
 	}
 
-	// Set boolean defaults only if not explicitly set
-	// Note: This is a simplification - in practice you might want to use pointers
-	// to distinguish between false and unset
-	if !c.EnableMetrics && !c.EnableHealthCheck && !c.EnableLogging {
-		c.EnableMetrics = defaultConfig.EnableMetrics
-		c.EnableHealthCheck = defaultConfig.EnableHealthCheck
-		c.EnableLogging = defaultConfig.EnableLogging
-	}
-}
-
-// Validate ensures the configuration is valid
-func (c *Config) Validate() error {
-	if c.GRPCPort == "" {
-		return fmt.Errorf("GRPCPort cannot be empty")
+	if c.mode == SeparateMode && c.httpPort == "" {
+		return fmt.Errorf("HTTP port cannot be empty when using SeparateMode")
 	}
 
-	if c.Mode == SeparateMode && c.HTTPPort == "" {
-		return fmt.Errorf("HTTPPort cannot be empty when using SeparateMode")
+	if c.mode != H2CMode && c.mode != SeparateMode {
+		return fmt.Errorf("invalid server mode: %s", c.mode)
 	}
 
-	if c.Mode != H2CMode && c.Mode != SeparateMode {
-		return fmt.Errorf("invalid server mode: %s", c.Mode)
+	if c.shutdownTimeout < 0 {
+		return fmt.Errorf("shutdown timeout cannot be negative")
 	}
 
-	if c.ShutdownTimeout < 0 {
-		return fmt.Errorf("ShutdownTimeout cannot be negative")
+	if c.readTimeout < 0 {
+		return fmt.Errorf("read timeout cannot be negative")
 	}
 
-	if c.ReadTimeout < 0 {
-		return fmt.Errorf("ReadTimeout cannot be negative")
+	if c.writeTimeout < 0 {
+		return fmt.Errorf("write timeout cannot be negative")
 	}
 
-	if c.WriteTimeout < 0 {
-		return fmt.Errorf("WriteTimeout cannot be negative")
-	}
-
-	if c.IdleTimeout < 0 {
-		return fmt.Errorf("IdleTimeout cannot be negative")
+	if c.idleTimeout < 0 {
+		return fmt.Errorf("idle timeout cannot be negative")
 	}
 
 	return nil
 }
 
-// GetGRPCAddress returns the full address for the gRPC server
-func (c *Config) GetGRPCAddress() string {
-	return ":" + c.GRPCPort
+// getGRPCAddress returns the full address for the gRPC server
+func (c *config) getGRPCAddress() string {
+	return ":" + c.grpcPort
 }
 
-// GetHTTPAddress returns the full address for the HTTP server
-func (c *Config) GetHTTPAddress() string {
-	if c.Mode == H2CMode {
-		return c.GetGRPCAddress() // Use same port for H2C
+// getHTTPAddress returns the full address for the HTTP server
+func (c *config) getHTTPAddress() string {
+	if c.mode == H2CMode {
+		return c.getGRPCAddress() // Use same port for H2C
 	}
-	return ":" + c.HTTPPort
+	return ":" + c.httpPort
 }
 
-// IsH2CMode returns true if server is running in H2C mode
-func (c *Config) IsH2CMode() bool {
-	return c.Mode == H2CMode
+// isH2CMode returns true if server is running in H2C mode
+func (c *config) isH2CMode() bool {
+	return c.mode == H2CMode
 }
 
-// IsSeparateMode returns true if server is running in separate mode
-func (c *Config) IsSeparateMode() bool {
-	return c.Mode == SeparateMode
+// isSeparateMode returns true if server is running in separate mode
+func (c *config) isSeparateMode() bool {
+	return c.mode == SeparateMode
+}
+
+// ============================================================================
+// Server Mode & Port Options
+// ============================================================================
+
+// WithH2CMode sets the server to H2C mode (gRPC and HTTP on same port)
+func WithH2CMode() Option {
+	return func(c *config) {
+		c.mode = H2CMode
+	}
+}
+
+// WithSeparateMode sets the server to separate mode with different ports for gRPC and HTTP
+func WithSeparateMode(grpcPort, httpPort string) Option {
+	return func(c *config) {
+		c.mode = SeparateMode
+		c.grpcPort = grpcPort
+		c.httpPort = httpPort
+	}
+}
+
+// WithGRPCPort sets the gRPC server port
+func WithGRPCPort(port string) Option {
+	return func(c *config) {
+		c.grpcPort = port
+	}
+}
+
+// WithHTTPPort sets the HTTP gateway port (only used in SeparateMode)
+func WithHTTPPort(port string) Option {
+	return func(c *config) {
+		c.httpPort = port
+	}
+}
+
+// ============================================================================
+// Timeout Options
+// ============================================================================
+
+// WithShutdownTimeout sets the graceful shutdown timeout
+func WithShutdownTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.shutdownTimeout = d
+	}
+}
+
+// WithReadTimeout sets the HTTP server read timeout
+func WithReadTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.readTimeout = d
+	}
+}
+
+// WithWriteTimeout sets the HTTP server write timeout
+func WithWriteTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.writeTimeout = d
+	}
+}
+
+// WithIdleTimeout sets the HTTP server idle timeout
+func WithIdleTimeout(d time.Duration) Option {
+	return func(c *config) {
+		c.idleTimeout = d
+	}
+}
+
+// WithConnectionTimeouts sets all gRPC connection timeout values
+func WithConnectionTimeouts(idle, age, grace time.Duration) Option {
+	return func(c *config) {
+		c.maxConnectionIdle = idle
+		c.maxConnectionAge = age
+		c.maxConnectionAgeGrace = grace
+	}
+}
+
+// WithMaxConnectionIdle sets the maximum connection idle time for gRPC
+func WithMaxConnectionIdle(d time.Duration) Option {
+	return func(c *config) {
+		c.maxConnectionIdle = d
+	}
+}
+
+// WithMaxConnectionAge sets the maximum connection age for gRPC
+func WithMaxConnectionAge(d time.Duration) Option {
+	return func(c *config) {
+		c.maxConnectionAge = d
+	}
+}
+
+// WithMaxConnectionAgeGrace sets the connection age grace period for gRPC
+func WithMaxConnectionAgeGrace(d time.Duration) Option {
+	return func(c *config) {
+		c.maxConnectionAgeGrace = d
+	}
+}
+
+// ============================================================================
+// Feature Toggle Options
+// ============================================================================
+
+// WithMetrics enables Prometheus metrics endpoint
+func WithMetrics() Option {
+	return func(c *config) {
+		c.enableMetrics = true
+	}
+}
+
+// WithoutMetrics disables Prometheus metrics endpoint
+func WithoutMetrics() Option {
+	return func(c *config) {
+		c.enableMetrics = false
+	}
+}
+
+// WithHealthCheck enables health check endpoints
+func WithHealthCheck() Option {
+	return func(c *config) {
+		c.enableHealthCheck = true
+	}
+}
+
+// WithoutHealthCheck disables health check endpoints
+func WithoutHealthCheck() Option {
+	return func(c *config) {
+		c.enableHealthCheck = false
+	}
+}
+
+// WithLogging enables request/response logging
+func WithLogging() Option {
+	return func(c *config) {
+		c.enableLogging = true
+	}
+}
+
+// WithoutLogging disables request/response logging
+func WithoutLogging() Option {
+	return func(c *config) {
+		c.enableLogging = false
+	}
+}
+
+// WithReflection enables gRPC server reflection
+func WithReflection() Option {
+	return func(c *config) {
+		c.enableReflection = true
+	}
+}
+
+// WithoutReflection disables gRPC server reflection
+func WithoutReflection() Option {
+	return func(c *config) {
+		c.enableReflection = false
+	}
+}
+
+// WithCORS enables CORS middleware
+func WithCORS() Option {
+	return func(c *config) {
+		c.enableCORS = true
+	}
+}
+
+// WithRateLimit enables rate limiting with the specified requests per second
+func WithRateLimit(rps float64) Option {
+	return func(c *config) {
+		c.enableRateLimit = true
+		c.rateLimit = rps
+	}
+}
+
+// WithTLS enables TLS with the specified certificate and key files
+func WithTLS(certFile, keyFile string) Option {
+	return func(c *config) {
+		c.enableTLS = true
+		c.certFile = certFile
+		c.keyFile = keyFile
+	}
+}
+
+// ============================================================================
+// Path Configuration Options
+// ============================================================================
+
+// WithMetricsPath sets the metrics endpoint path
+func WithMetricsPath(path string) Option {
+	return func(c *config) {
+		c.metricsPath = path
+	}
+}
+
+// WithHealthPath sets the health check base path
+func WithHealthPath(path string) Option {
+	return func(c *config) {
+		c.healthPath = path
+	}
+}
+
+// WithGatewayBasePath sets the base path for gRPC gateway routes
+func WithGatewayBasePath(path string) Option {
+	return func(c *config) {
+		c.gatewayBasePath = path
+	}
+}
+
+// ============================================================================
+// Hook/Callback Options
+// ============================================================================
+
+// WithServiceRegistrar sets the function to register gRPC services
+func WithServiceRegistrar(fn func(*grpc.Server)) Option {
+	return func(c *config) {
+		c.serviceRegistrar = fn
+	}
+}
+
+// WithGRPCConfigurer sets the function to configure the gRPC server
+func WithGRPCConfigurer(fn func(*grpc.Server)) Option {
+	return func(c *config) {
+		c.grpcConfigurer = fn
+	}
+}
+
+// WithEchoConfigurer sets the function to configure the Echo HTTP server
+func WithEchoConfigurer(fn func(*echo.Echo)) Option {
+	return func(c *config) {
+		c.echoConfigurer = fn
+	}
+}
+
+// WithShutdownHandler sets a custom shutdown handler
+func WithShutdownHandler(fn func() error) Option {
+	return func(c *config) {
+		c.shutdown = fn
+	}
+}
+
+// ============================================================================
+// Middleware Options
+// ============================================================================
+
+// WithMiddleware adds custom Echo middleware
+func WithMiddleware(mw ...echo.MiddlewareFunc) Option {
+	return func(c *config) {
+		c.middleware = append(c.middleware, mw...)
+	}
 }
