@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/jasoet/pkg/compare/v1.4.1...v1.5.0) (2025-10-01)
+
+### Features
+
+* upgrade to Go 1.25.1 and update all dependencies with code quality improvements ([64f27f6](https://github.com/jasoet/pkg/commit/64f27f66daecdaca62a5952bab443f50cea2cab7))
+
 ## [1.4.1](https://github.com/jasoet/pkg/compare/v1.4.0...v1.4.1) (2025-10-01)
 
 ### Code Refactoring
