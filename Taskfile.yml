@@ -1,9 +1,5 @@
 version: '3'
 
-vars:
-  PACKAGES:
-    sh: go list ./... | grep -v /vendor/
-
 tasks:
   default:
     desc: List all available tasks
@@ -12,194 +8,119 @@ tasks:
       - task --list
 
   test:
-    desc: Run unit tests with race condition detection and coverage
+    desc: Run unit tests with coverage
+    silent: true
     cmds:
       - mkdir -p output
       - go test -race -count=1 -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples
       - go tool cover -html=output/coverage.out -o output/coverage.html
-      - 'echo "✓ Tests completed with race detection"'
-      - 'echo "✓ Coverage report: output/coverage.html"'
+      - 'echo "✓ Coverage: output/coverage.html"'
 
-  integration-test:
-    desc: Run database integration tests (using testcontainers)
+  test:integration:
+    desc: Run integration tests (testcontainers)
     silent: true
     cmds:
-      - echo "Running integration tests with testcontainers..."
-      - |
-        go test -race -count=1 -tags=integration \
-          ./compress/... \
-          ./concurrent/... \
-          ./config/... \
-          ./db/... \
-          ./logging/... \
-          ./rest/... \
-          ./server/... \
-          ./ssh/...
+      - mkdir -p output
+      - go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration ./...
+      - go tool cover -html=output/coverage-integration.out -o output/coverage-integration.html
+      - 'echo "✓ Integration coverage: output/coverage-integration.html"'
 
-  integration-test-compose:
-    desc: Run database integration tests with Docker Compose (legacy)
-    deps: [ docker:up ]
+  test:temporal:
+    desc: Run Temporal tests (requires Temporal server running)
     silent: true
     cmds:
-      - echo "Waiting for Docker Compose services to initialize..."
-      - sleep 2
-      - |
-        go test -race -count=1 -tags=integration \
-          ./compress/... \
-          ./concurrent/... \
-          ./config/... \
-          ./db/... \
-          ./logging/... \
-          ./rest/... \
-          ./server/... \
-          ./ssh/...
-    defer:
-      - task: docker:down
+      - mkdir -p output
+      - go test -race -count=1 -coverprofile=output/coverage-temporal.out -covermode=atomic -tags=temporal -timeout=10m ./temporal/...
+      - go tool cover -html=output/coverage-temporal.out -o output/coverage-temporal.html
+      - 'echo "✓ Temporal coverage: output/coverage-temporal.html"'
 
-  temporal-test:
-    desc: Run Temporal integration tests
-    deps: [ temporal:up ]
+  test:all:
+    desc: Run all tests (unit + integration + temporal)
     silent: true
     cmds:
-      - echo "Waiting for Temporal server to initialize..."
-      - sleep 10
-      - go test -race -count=1 -tags=temporal -timeout=10m ./temporal/...
-    defer:
-      - task: temporal:down
-
-  all-integration-tests:
-    desc: Run all integration tests (database + temporal)
-    cmds:
-      - task: integration-test
-      - task: temporal-test
+      - task: test
+      - task: test:integration
+      - task: test:temporal
 
   lint:
-    desc: Run linter
+    desc: Run golangci-lint
+    silent: true
     cmds:
       - task: ensure-tool
         vars: { TOOL: golangci-lint, PACKAGE: github.com/golangci/golangci-lint/cmd/golangci-lint@latest }
       - golangci-lint run ./...
 
-  clean:
-    desc: Clean build artifacts
-    cmds:
-      - rm -rf dist
-
-  tools:
-    desc: Install all development tools
+  check:
+    desc: Run all checks (test + lint)
     silent: true
-    cmds:
-      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - go install gotest.tools/gotestsum@latest
-      - go install github.com/swaggo/swag/cmd/swag@latest
-      - go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-      - go install github.com/golang/mock/mockgen@latest
-      - go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-      - go install github.com/sonatypecommunity/nancy@latest
-      - go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
-      - echo "All development tools installed successfully"
-
-  security:
-    desc: Run security analysis with gosec
-    silent: true
-    cmds:
-      - task: ensure-tool
-        vars: { TOOL: gosec, PACKAGE: github.com/securecodewarrior/gosec/v2/cmd/gosec@latest }
-      - gosec ./... || echo "Security issues found (this may be expected)"
-
-  dependencies:
-    desc: Check dependencies for known vulnerabilities
-    silent: true
-    cmds:
-      - echo "Checking dependencies for vulnerabilities..."
-      - go mod verify
-      - echo "Dependencies verified successfully (nancy temporarily disabled due to access issues)"
-
-  coverage:
-    desc: Generate test coverage report (without race detection for faster execution)
-    silent: true
-    cmds:
-      - mkdir -p output
-      - go test -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples
-      - go tool cover -html=output/coverage.out -o output/coverage.html
-      - go tool cover -func=output/coverage.out
-      - 'echo ""'
-      - 'echo "✓ Coverage report generated: output/coverage.html"'
-
-  docs:
-    desc: Generate API documentation (if swagger annotations exist)
-    silent: true
-    cmds:
-      - task: ensure-tool
-        vars: { TOOL: swag, PACKAGE: github.com/swaggo/swag/cmd/swag@latest }
-      - swag init -g main.go --output docs || echo "Swagger generation failed (this is expected if no swagger annotations exist)"
-
-  checkall:
-    desc: Run all quality checks (test, lint, security, dependencies, coverage)
     cmds:
       - task: test
       - task: lint
-      - task: security
-      - task: dependencies
-      - task: coverage
 
-  # Docker namespace tasks
-  docker:up:
-    desc: Start Docker Compose services
-    dir: scripts/compose
+  temporal:start:
+    desc: Start Temporal dev server in background
     cmds:
-      - docker compose up -d
+      - mkdir -p .temporal
+      - |
+        if pgrep -f "temporal server start-dev" > /dev/null; then
+          echo "✓ Temporal server already running"
+        else
+          echo "Starting Temporal server in background..."
+          nohup temporal server start-dev --db-filename .temporal/temporal.db > .temporal/temporal.log 2>&1 &
+          sleep 2
+          echo "✓ Temporal server started"
+          echo "  UI: http://localhost:8233"
+          echo "  gRPC: localhost:7233"
+          echo "  Logs: .temporal/temporal.log"
+        fi
 
-  docker:down:
-    desc: Stop Docker Compose services and remove volumes
-    dir: scripts/compose
-    cmds:
-      - docker compose down -v
-
-  docker:logs:
-    desc: Show Docker Compose logs
-    dir: scripts/compose
-    cmds:
-      - docker compose logs -f
-
-  docker:restart:
-    desc: Restart Docker Compose services
-    cmds:
-      - task: docker:down
-      - task: docker:up
-
-  # Temporal namespace tasks
-  temporal:up:
-    desc: Start Temporal services
-    dir: scripts/compose
-    cmds:
-      - docker compose -f temporal-compose.yml up -d
-
-  temporal:down:
-    desc: Stop Temporal services and remove volumes
-    dir: scripts/compose
-    cmds:
-      - docker compose -f temporal-compose.yml down -v
-
-  temporal:logs:
-    desc: Show Temporal logs
-    dir: scripts/compose
-    cmds:
-      - docker compose -f temporal-compose.yml logs -f
-
-  temporal:restart:
-    desc: Restart Temporal services
-    cmds:
-      - task: temporal:down
-      - task: temporal:up
-
-  # Internal helper tasks
-  ensure-tool:
-    internal: true
-    silent: true
+  temporal:stop:
+    desc: Stop Temporal dev server
     cmds:
       - |
-        if ! command -v {{.TOOL}} &> /dev/null; then
-          echo "Installing {{.TOOL}}..."
-          go install {{.PACKAGE}}
+        if pgrep -f "temporal server start-dev" > /dev/null; then
+          pkill -f "temporal server start-dev"
+          echo "✓ Temporal server stopped"
+        else
+          echo "✓ Temporal server not running"
         fi
+
+  temporal:status:
+    desc: Check Temporal server status
+    cmds:
+      - |
+        if pgrep -f "temporal server start-dev" > /dev/null; then
+          echo "✅ Temporal server is running"
+          echo "   UI: http://localhost:8233"
+          echo "   gRPC: localhost:7233"
+          echo "   Logs: .temporal/temporal.log"
+        else
+          echo "❌ Temporal server not running"
+          echo "   Start with: task temporal:start"
+        fi
+
+  temporal:logs:
+    desc: Show Temporal server logs (tail -f)
+    cmds:
+      - |
+        if [ -f .temporal/temporal.log ]; then
+          tail -f .temporal/temporal.log
+        else
+          echo "❌ Log file not found (.temporal/temporal.log)"
+          echo "   Start Temporal first: task temporal:start"
+        fi
+
+  # Utilities
+  tools:
+    desc: Install development tools
+    silent: true
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+      - echo "✓ Tools installed"
+
+  clean:
+    desc: Clean build artifacts
+    silent: true
+    cmds:
+      - rm -rf dist output

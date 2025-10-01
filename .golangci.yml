@@ -1,0 +1,252 @@
+# GoPKI golangci-lint configuration
+# Optimized for cryptographic library with focus on security and performance
+
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  # Security-focused settings
+  gosec:
+    # Security rules for crypto libraries
+    severity: "medium"
+    confidence: "medium"
+    excludes:
+      - G501  # Allow MD5 for non-security purposes (like checksums)
+    includes:
+      - G101  # Look for hardcoded credentials
+      - G102  # Bind to all interfaces
+      - G103  # Audit the use of unsafe block
+      - G104  # Audit errors not checked
+      - G106  # Audit the use of ssh.InsecureIgnoreHostKey
+      - G107  # Url provided to HTTP request as taint input
+      - G108  # Profiling endpoint automatically exposed
+      - G109  # Potential Integer overflow made by strconv.Atoi result conversion
+      - G110  # Potential DoS vulnerability via decompression bomb
+
+  # Code quality settings
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment  # Struct field alignment can be relaxed for clarity
+      - shadow         # Enable predeclared linter separately
+
+  gocyclo:
+    min-complexity: 20  # Allow higher complexity for crypto operations and generics
+
+  gofmt:
+    simplify: true
+
+  goimports:
+    local-prefixes: github.com/jasoet/gopki
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+    ignore-tests: true
+
+  misspell:
+    locale: US
+    ignore-words:
+      - keypair
+      - keypairs
+
+  lll:
+    line-length: 190  # Accommodate complex generic crypto function signatures with validation
+
+  unused:
+    check-exported: false  # Public API may have unused exported functions
+
+  staticcheck:
+    checks: ["all"]
+
+  errcheck:
+    check-type-assertions: false  # Disable for generic type assertions (safe by design)
+    check-blank: true
+    exclude-functions:
+      - io/ioutil.ReadFile
+      - io.Copy(*bytes.Buffer)
+      - io.Copy(os.Stdout)
+
+  # Performance settings
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+  # Style settings
+  revive:
+    rules:
+      - name: var-naming
+        severity: warning
+        disabled: false
+        arguments:
+          - ["ID", "URL", "HTTP", "JSON", "API", "PKI", "CA", "RSA", "ECDSA", "Ed25519", "X509", "PEM", "DER", "PKCS", "CMS", "OID"] # Allow crypto acronyms
+      - name: exported
+        severity: warning
+        disabled: false
+        arguments:
+          - "checkPrivateReceivers"
+          - "sayRepetitiveInsteadOfStutters"
+
+linters:
+  enable:
+    # Code quality
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+    - predeclared
+
+    # Security (critical for crypto library)
+    - gosec
+
+    # Performance
+    - prealloc
+    - unconvert
+
+    # Style and maintainability
+    - gofmt
+    - goimports
+    - misspell
+    - lll
+    - goconst
+    - gocyclo
+    - revive
+
+    # Bug prevention
+    - bodyclose
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+
+    # Additional useful linters
+    - asciicheck
+    - gofumpt
+    - whitespace
+
+  disable:
+    # Disabled linters with reasons
+    - dupl         # Crypto code may have similar patterns legitimately
+    - funlen       # Crypto functions can be long due to security checks
+    - gocognit     # Cognitive complexity can be high in crypto code
+    - nestif       # Deep nesting acceptable for security validations
+    - cyclop       # Duplicate of gocyclo
+    - exhaustive   # Not all enum cases need handling in crypto contexts
+    - forbidigo    # May conflict with necessary crypto operations
+    - forcetypeassert # Type assertions are sometimes necessary in crypto
+    - godot        # Comment formatting can be relaxed
+    - godox        # Allow TODOs in development
+    - gomoddirectives # Module directives are project-specific
+    - gomodguard   # Module restrictions not needed
+    - importas     # Import aliasing flexibility needed
+    - maintidx     # Maintainability index can be relaxed for crypto
+    - nlreturn     # Newline returns formatting is subjective
+    - paralleltest # Crypto tests may need sequential execution
+    - testpackage  # Tests can be in same package for access to internals
+    - wrapcheck    # Error wrapping patterns can vary
+    - wsl          # Whitespace linting too opinionated for this codebase
+
+issues:
+  exclude-dirs:
+    - vendor
+    - examples  # Examples may have API mismatches during development
+
+  exclude-files:
+    - ".*\\.pb\\.go$"  # Exclude generated protobuf files
+
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec        # Security checks can be relaxed in tests
+        - goconst      # Test constants can be repeated
+        - lll          # Test lines can be longer
+        - dupl         # Test code duplication is acceptable
+        - errcheck     # Test code can ignore errors intentionally with _
+        - gocyclo      # Test functions can have high complexity
+        - unconvert    # Type conversions may be explicit for test clarity
+        - govet        # unusedwrite acceptable in tests (struct initialization for error cases)
+        - staticcheck  # Possible nil dereference acceptable after nil check in tests
+        - gosimple     # Explicit fmt.Sprintf acceptable for consistency in table tests
+
+    # Exclude specific issues
+    - text: "weak cryptographic primitive"
+      linters:
+        - gosec
+      # Allow weak crypto in examples or specific documented cases
+
+    # Allow long functions in signer/verifier (complex crypto operations)
+    - path: (signer|verifier)\.go
+      linters:
+        - funlen
+        - gocyclo
+
+    # Allow complexity in format implementations
+    - path: formats/.*\.go
+      linters:
+        - gocyclo
+        - goconst
+
+    # Exclude predeclared warnings for min function (compatibility with pre-Go 1.21)
+    - text: "function min has same name as predeclared identifier"
+      linters:
+        - predeclared
+
+    # Relax linting for compatibility test code
+    - path: compatibility/.*
+      linters:
+        - goconst      # Repeated strings acceptable in compatibility tests
+        - gocyclo      # Complex test functions acceptable
+        - unconvert    # Type conversions may be explicit for clarity
+        - gofumpt      # Formatting can be relaxed
+        - lll          # Long lines acceptable for OpenSSL command construction
+
+    # Relax linting for internal packages (implementation details)
+    - path: internal/.*
+      linters:
+        - gocyclo      # Internal crypto implementations can be complex
+        - lll          # Long function signatures acceptable
+        - ineffassign  # Intermediate assignments may be for debugging
+        - staticcheck  # SA4006 unused values acceptable for debugging in internal code
+
+    # Relax style linters for implementation packages
+    - path: (encryption|pkcs12)/.*
+      linters:
+        - goconst      # Algorithm names as literals acceptable for clarity
+        - prealloc     # Pre-allocation hints optional for readability
+        - errcheck     # Intentional error ignoring with _ acceptable in helpers
+        - ineffassign  # Ed25519 error assignment pattern acceptable
+        - govet        # nilness check for generic types acceptable (SA4023)
+        - staticcheck  # SA4023 generic type comparisons acceptable
+
+    # Exclude for signing package patterns
+    - path: signing/.*\.go
+      linters:
+        - ineffassign  # Ed25519 sign pattern reassigns err intentionally
+        - staticcheck  # SA4006 err value never used acceptable for Ed25519 pattern
+        - lll          # Long error messages in signing functions acceptable
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+
+severity:
+  default-severity: error
+  case-sensitive: false
+  rules:
+    - linters:
+        - revive
+      severity: warning
+    - linters:
+        - gosec
+      severity: error  # Security issues are always errors

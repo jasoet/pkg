@@ -214,5 +214,6 @@ aof/
 .env.prod
 .secret
 temporal.db
+.temporal/
 
 .claude/
