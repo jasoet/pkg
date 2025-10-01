@@ -40,7 +40,17 @@ type Config struct {
 // The default LoggerProvider uses stdout exporter for easy debugging.
 // Use With* methods to add TracerProvider and MeterProvider.
 //
-// Example:
+// For production use with better formatting and automatic log-span correlation,
+// use logging.NewLoggerProvider() instead:
+//
+//	import "github.com/jasoet/pkg/logging"
+//	cfg := &otel.Config{
+//	    ServiceName:    "my-service",
+//	    LoggerProvider: logging.NewLoggerProvider("my-service", false),
+//	}
+//	cfg.WithTracerProvider(tp).WithMeterProvider(mp)
+//
+// Example with default stdout logger:
 //
 //	cfg := otel.NewConfig("my-service").
 //	    WithTracerProvider(tp).
