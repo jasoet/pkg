@@ -17,21 +17,6 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// Mock gRPC service for testing
-type mockService struct{}
-
-func (s *mockService) TestMethod(ctx context.Context, req *mockRequest) (*mockResponse, error) {
-	return &mockResponse{Message: "test response"}, nil
-}
-
-type mockRequest struct {
-	Data string
-}
-
-type mockResponse struct {
-	Message string
-}
-
 func TestNewServer(t *testing.T) {
 	server, err := New(
 		WithGRPCPort("8080"),

@@ -28,7 +28,7 @@ func main() {
 
 	// Create output directory if it doesn't exist
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		err = os.MkdirAll(outputDir, 0755)
+		err = os.MkdirAll(outputDir, 0o755)
 		check(err)
 	}
 
@@ -64,7 +64,7 @@ func main() {
 	fmt.Println("Example 4: Extracting a tar archive")
 	extractTarDir := filepath.Join(outputDir, "extracted_tar")
 	if _, err := os.Stat(extractTarDir); os.IsNotExist(err) {
-		err = os.MkdirAll(extractTarDir, 0755)
+		err = os.MkdirAll(extractTarDir, 0o755)
 		check(err)
 	}
 
@@ -80,7 +80,7 @@ func main() {
 	fmt.Println("Example 5: Extracting a tar.gz archive")
 	extractTarGzDir := filepath.Join(outputDir, "extracted_tar_gz")
 	if _, err := os.Stat(extractTarGzDir); os.IsNotExist(err) {
-		err = os.MkdirAll(extractTarGzDir, 0755)
+		err = os.MkdirAll(extractTarGzDir, 0o755)
 		check(err)
 	}
 
@@ -96,7 +96,7 @@ func main() {
 	fmt.Println("Example 6: Extracting a base64-encoded tar.gz archive")
 	extractBase64Dir := filepath.Join(outputDir, "extracted_base64")
 	if _, err := os.Stat(extractBase64Dir); os.IsNotExist(err) {
-		err = os.MkdirAll(extractBase64Dir, 0755)
+		err = os.MkdirAll(extractBase64Dir, 0o755)
 		check(err)
 	}
 
@@ -141,7 +141,7 @@ func main() {
 
 	extractInvalidDir := filepath.Join(outputDir, "extracted_invalid")
 	if _, err := os.Stat(extractInvalidDir); os.IsNotExist(err) {
-		err = os.MkdirAll(extractInvalidDir, 0755)
+		err = os.MkdirAll(extractInvalidDir, 0o755)
 		check(err)
 	}
 

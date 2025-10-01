@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -370,28 +369,4 @@ func TestMetricsWithZeroSizes(t *testing.T) {
 	if len(metricFamilies) == 0 {
 		t.Error("Expected some metrics to be present")
 	}
-}
-
-// Helper function to get metric value
-func getMetricValue(metricFamilies []*dto.MetricFamily, name string) *float64 {
-	for _, mf := range metricFamilies {
-		if mf.GetName() == name {
-			if len(mf.GetMetric()) > 0 {
-				metric := mf.GetMetric()[0]
-				if metric.GetCounter() != nil {
-					value := metric.GetCounter().GetValue()
-					return &value
-				}
-				if metric.GetGauge() != nil {
-					value := metric.GetGauge().GetValue()
-					return &value
-				}
-				if metric.GetHistogram() != nil {
-					value := float64(metric.GetHistogram().GetSampleCount())
-					return &value
-				}
-			}
-		}
-	}
-	return nil
 }

@@ -278,7 +278,6 @@ func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string
 			}, nil
 		},
 	})
-
 	if err != nil {
 		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to update schedule")
 		return err

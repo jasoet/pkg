@@ -11,8 +11,10 @@ import (
 
 // Example middleware implementations for demonstration purposes
 
-type NoOpMiddleware struct{}
-type DatabaseLoggingMiddleware struct{}
+type (
+	NoOpMiddleware            struct{}
+	DatabaseLoggingMiddleware struct{}
+)
 
 func NewNoOpMiddleware() *NoOpMiddleware {
 	return &NoOpMiddleware{}
