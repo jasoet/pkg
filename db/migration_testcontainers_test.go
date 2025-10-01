@@ -66,7 +66,7 @@ func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
 	}
 
 	// Connect to the database
-	db, err := config.SqlDB()
+	db, err := config.SQLDB()
 	if err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -105,7 +105,6 @@ func verifyTestMigrations(db *sql.DB) error {
 			tablename = 'schema_migrations'
 		)
 	`).Scan(&exists)
-
 	if err != nil {
 		return fmt.Errorf("failed to check if schema_migrations table exists: %w", err)
 	}
@@ -135,7 +134,6 @@ func verifyTestMigrations(db *sql.DB) error {
 				tablename = $1
 			)
 		`, table).Scan(&exists)
-
 		if err != nil {
 			return fmt.Errorf("failed to check if %s table exists: %w", table, err)
 		}
@@ -154,7 +152,6 @@ func verifyTestMigrations(db *sql.DB) error {
 			indexname = 'idx_posts_user_id'
 		)
 	`).Scan(&exists)
-
 	if err != nil {
 		return fmt.Errorf("failed to check if idx_posts_user_id index exists: %w", err)
 	}
@@ -176,7 +173,6 @@ func verifyTestTablesDropped(db *sql.DB) error {
 			tablename = 'schema_migrations'
 		)
 	`).Scan(&exists)
-
 	if err != nil {
 		return fmt.Errorf("failed to check if schema_migrations table exists: %w", err)
 	}
@@ -195,7 +191,6 @@ func verifyTestTablesDropped(db *sql.DB) error {
 				tablename = $1
 			)
 		`, table).Scan(&exists)
-
 		if err != nil {
 			return fmt.Errorf("failed to check if %s table exists: %w", table, err)
 		}
@@ -214,7 +209,6 @@ func verifyTestTablesDropped(db *sql.DB) error {
 			indexname = 'idx_posts_user_id'
 		)
 	`).Scan(&exists)
-
 	if err != nil {
 		return fmt.Errorf("failed to check if idx_posts_user_id index exists: %w", err)
 	}

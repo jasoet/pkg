@@ -164,9 +164,9 @@ func TestPostgresPoolWithTestcontainers(t *testing.T) {
 	require.NoError(t, err, "Failed to retrieve product")
 	assert.Equal(t, "Wireless Headphones", product.Name, "Product name should match")
 
-	// Test connection to the database using SqlDB()
-	sqlDB, err := config.SqlDB()
-	require.NoError(t, err, "Failed to connect to database using SqlDB()")
+	// Test connection to the database using SQLDB()
+	sqlDB, err := config.SQLDB()
+	require.NoError(t, err, "Failed to connect to database using SQLDB()")
 	require.NotNil(t, sqlDB, "SQL database connection should not be nil")
 	defer sqlDB.Close()
 
@@ -226,9 +226,9 @@ func TestMySQLPoolWithTestcontainers(t *testing.T) {
 	require.NoError(t, err, "Failed to retrieve product")
 	assert.Equal(t, "Wireless Headphones", product.Name, "Product name should match")
 
-	// Test connection to the database using SqlDB()
-	sqlDB, err := config.SqlDB()
-	require.NoError(t, err, "Failed to connect to database using SqlDB()")
+	// Test connection to the database using SQLDB()
+	sqlDB, err := config.SQLDB()
+	require.NoError(t, err, "Failed to connect to database using SQLDB()")
 	require.NotNil(t, sqlDB, "SQL database connection should not be nil")
 	defer sqlDB.Close()
 
@@ -283,9 +283,9 @@ func TestMSSQLPoolWithTestcontainers(t *testing.T) {
 	require.NoError(t, err, "Failed to execute simple query")
 	assert.Equal(t, 1, result, "Query result should be 1")
 
-	// Test connection to the database using SqlDB()
-	sqlDB, err := config.SqlDB()
-	require.NoError(t, err, "Failed to connect to database using SqlDB()")
+	// Test connection to the database using SQLDB()
+	sqlDB, err := config.SQLDB()
+	require.NoError(t, err, "Failed to connect to database using SQLDB()")
 	require.NotNil(t, sqlDB, "SQL database connection should not be nil")
 	defer sqlDB.Close()
 

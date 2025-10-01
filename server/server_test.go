@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -235,7 +236,9 @@ func TestIntegration(t *testing.T) {
 
 		// Get the actual port that was assigned
 		port := strings.Split(addr, ":")[1]
-		resp, err := client.Get("http://localhost:" + port + "/health")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost:"+port+"/health", nil)
+		assert.NoError(t, err)
+		resp, err := client.Do(req)
 
 		if err == nil {
 			defer resp.Body.Close()

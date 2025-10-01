@@ -54,7 +54,6 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		}
 
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-
 		if err != nil {
 			// Schedule creation might fail if no worker is available, which is expected
 			t.Logf("Expected failure creating schedule without worker: %v", err)
@@ -108,7 +107,6 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		}
 
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-
 		if err != nil {
 			t.Logf("Expected failure creating interval schedule: %v", err)
 			return

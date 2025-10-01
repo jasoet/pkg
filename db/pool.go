@@ -88,7 +88,7 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	return db, nil
 }
 
-func (c *ConnectionConfig) SqlDB() (*sql.DB, error) {
+func (c *ConnectionConfig) SQLDB() (*sql.DB, error) {
 	gormDB, err := c.Pool()
 	if err != nil {
 		return nil, err
