@@ -13,7 +13,7 @@ func Gz(source io.Reader, writer io.Writer) (err error) {
 	gzWriter := gzip.NewWriter(writer)
 	defer gzWriter.Close()
 	_, err = io.Copy(gzWriter, source)
-	return
+	return err
 }
 
 func UnGz(src io.Reader, dst string) (written int64, err error) {
@@ -26,14 +26,14 @@ func UnGz(src io.Reader, dst string) (written int64, err error) {
 	zipReader, errReader := gzip.NewReader(src)
 	if errReader != nil {
 		err = errReader
-		return
+		return written, err
 	}
 	defer zipReader.Close()
 
 	destinationFile, errCreate := os.Create(cleanDst)
 	if errCreate != nil {
 		err = errCreate
-		return
+		return written, err
 	}
 	defer destinationFile.Close()
 

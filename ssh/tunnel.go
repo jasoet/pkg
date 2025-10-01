@@ -56,6 +56,7 @@ func New(config Config) *Tunnel {
 func (t *Tunnel) getHostKeyCallback() ssh.HostKeyCallback {
 	// If explicitly set to ignore host keys (NOT recommended for production)
 	if t.config.InsecureIgnoreHostKey {
+		// #nosec G106 -- Insecure host key verification is intentionally configurable for development/testing
 		return ssh.InsecureIgnoreHostKey()
 	}
 

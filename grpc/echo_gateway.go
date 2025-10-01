@@ -69,7 +69,7 @@ func waitForGRPCServer(ctx context.Context, endpoint string, opts []grpc.DialOpt
 
 	for i := 0; i < maxRetries; i++ {
 		// Try to establish connection
-		conn, err := grpc.DialContext(ctx, endpoint, opts...)
+		conn, err := grpc.NewClient(endpoint, opts...)
 		if err == nil {
 			conn.Close() // Close test connection
 			log.Printf("gRPC server at %s is ready for gateway registration", endpoint)

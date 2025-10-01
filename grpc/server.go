@@ -360,11 +360,8 @@ func (s *Server) trackUptime() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			s.metricsManager.UpdateUptime()
-		}
+	for range ticker.C {
+		s.metricsManager.UpdateUptime()
 	}
 }
 

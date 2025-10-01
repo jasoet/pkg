@@ -338,7 +338,6 @@ func TestClient_MakeRequest(t *testing.T) {
 		headers := map[string]string{"Content-Type": "application/json"}
 
 		response, err := client.MakeRequest(ctx, method, url, body, headers)
-
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}

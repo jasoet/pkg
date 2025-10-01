@@ -16,9 +16,11 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type Operation func(e *echo.Echo)
-type Shutdown func(e *echo.Echo)
-type EchoConfigurer func(e *echo.Echo)
+type (
+	Operation      func(e *echo.Echo)
+	Shutdown       func(e *echo.Echo)
+	EchoConfigurer func(e *echo.Echo)
+)
 
 type Config struct {
 	Port int

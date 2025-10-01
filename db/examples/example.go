@@ -347,7 +347,6 @@ func multipleConnectionsExample(ctx context.Context) {
 	connections := make(map[string]*gorm.DB)
 
 	for name, config := range databases {
-
 		// Only connect to primary database for demo
 		if name == "primary" {
 			database, err := config.Pool()
@@ -524,7 +523,7 @@ func rawSQLExample(ctx context.Context) {
 	}
 
 	// Get SQL DB directly
-	sqlDB, err := config.SqlDB()
+	sqlDB, err := config.SQLDB()
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to get SQL DB")
 		fmt.Printf("✗ Failed to get SQL DB: %v\n", err)
@@ -704,7 +703,6 @@ func transactionExample(ctx context.Context) {
 		// Simulate error condition
 		return errors.New("simulated error - transaction will rollback")
 	})
-
 	if err != nil {
 		fmt.Printf("   ✓ Transaction rolled back as expected: %v\n", err)
 	}

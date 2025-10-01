@@ -30,7 +30,6 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, e
 			ListenAddress: config.MetricsListenAddress,
 			TimerType:     "histogram",
 		})
-
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to create Prometheus scope")
 			return nil, err
@@ -41,7 +40,6 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, e
 
 	logger.Debug().Msg("Connecting to Temporal server")
 	c, err := client.Dial(clientOption)
-
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to Temporal server")
 		return nil, err
@@ -67,7 +65,6 @@ func newPrometheusScope(c prometheus.Configuration) (tally.Scope, error) {
 			},
 		},
 	)
-
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create Prometheus reporter")
 		return nil, err

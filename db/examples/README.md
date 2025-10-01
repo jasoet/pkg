@@ -194,7 +194,7 @@ database.Delete(&user)
 Execute raw SQL queries using the connection pool:
 
 ```go
-sqlDB, err := config.SqlDB()
+sqlDB, err := config.SQLDB()
 if err != nil {
     log.Fatal("Failed to get SQL DB:", err)
 }

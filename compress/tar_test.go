@@ -126,6 +126,7 @@ func TestTarGzBase64(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, base64)
 }
+
 func TestUnTarGzBase64(t *testing.T) {
 	archiveReader, err := os.Open("test_archive.tar.gz")
 	assert.Nil(t, err)
