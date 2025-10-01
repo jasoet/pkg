@@ -1,3 +1,9 @@
+## [1.4.1](https://github.com/jasoet/pkg/compare/v1.4.0...v1.4.1) (2025-10-01)
+
+### Code Refactoring
+
+* **grpc:** implement functional options pattern for cleaner API ([0abf7c9](https://github.com/jasoet/pkg/commit/0abf7c9173056a22f31122da2a7c4eca9e255b3d))
+
 ## [1.4.0](https://github.com/jasoet/pkg/compare/v1.3.6...v1.4.0) (2025-09-30)
 
 ### Features
