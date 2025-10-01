@@ -12,10 +12,9 @@ import (
 
 	"github.com/jasoet/pkg/otel"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel/attribute"
+	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
@@ -44,6 +43,7 @@ type Config struct {
 	EchoConfigurer EchoConfigurer
 
 	// OpenTelemetry configuration (optional - nil disables telemetry)
+	// Use otel.NewConfig("service-name") to get default logging
 	// Replaces EnableMetrics, MetricsPath, MetricsSubsystem from v1
 	OTelConfig *otel.Config
 }
@@ -69,23 +69,12 @@ func setupEcho(config Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 
-	// Standard request logging middleware (zerolog)
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogURI:    true,
-		LogStatus: true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			if v.Error == nil {
-				log.Info().
-					Str("URI", v.URI).
-					Int("status", v.Status).
-					Msg("request")
-			} else {
-				log.Error().Err(v.Error).Msg("request error")
-			}
-
-			return nil
-		},
-	}))
+	// OpenTelemetry logging middleware
+	// Note: Uses default stdout LoggerProvider from otel.NewConfig() if OTelConfig provided
+	// If OTelConfig is nil, logging is disabled
+	if config.OTelConfig != nil && config.OTelConfig.IsLoggingEnabled() {
+		e.Use(createLoggingMiddleware(config.OTelConfig))
+	}
 
 	// OpenTelemetry instrumentation (if configured)
 	if config.OTelConfig != nil {
@@ -99,14 +88,11 @@ func setupEcho(config Config) *echo.Echo {
 			e.Use(otelecho.Middleware(serviceName,
 				otelecho.WithTracerProvider(config.OTelConfig.TracerProvider),
 			))
-
-			log.Info().Str("service", serviceName).Msg("OpenTelemetry tracing enabled")
 		}
 
 		// Add metrics middleware
 		if config.OTelConfig.IsMetricsEnabled() {
 			e.Use(createMetricsMiddleware(config.OTelConfig))
-			log.Info().Msg("OpenTelemetry metrics enabled")
 		}
 	}
 
@@ -138,6 +124,58 @@ func setupEcho(config Config) *echo.Echo {
 	}
 
 	return e
+}
+
+// createLoggingMiddleware creates Echo middleware that logs HTTP requests via OpenTelemetry
+func createLoggingMiddleware(cfg *otel.Config) echo.MiddlewareFunc {
+	logger := cfg.GetLogger("server.http")
+
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			start := time.Now()
+			req := c.Request()
+
+			// Process request
+			err := next(c)
+
+			// Calculate duration
+			duration := time.Since(start)
+
+			// Prepare log record
+			severity := otellog.SeverityInfo
+			if err != nil || c.Response().Status >= 500 {
+				severity = otellog.SeverityError
+			} else if c.Response().Status >= 400 {
+				severity = otellog.SeverityWarn
+			}
+
+			// Create log attributes
+			attrs := []otellog.KeyValue{
+				otellog.String("http.method", req.Method),
+				otellog.String("http.route", c.Path()),
+				otellog.String("http.url", req.RequestURI),
+				otellog.Int("http.status_code", c.Response().Status),
+				otellog.Int64("http.request_size", req.ContentLength),
+				otellog.Int64("http.response_size", c.Response().Size),
+				otellog.Int64("http.duration_ms", duration.Milliseconds()),
+			}
+
+			if err != nil {
+				attrs = append(attrs, otellog.String("error", err.Error()))
+			}
+
+			// Emit log record
+			var logRecord otellog.Record
+			logRecord.SetTimestamp(start)
+			logRecord.SetSeverity(severity)
+			logRecord.SetBody(otellog.StringValue(fmt.Sprintf("%s %s", req.Method, req.RequestURI)))
+			logRecord.AddAttributes(attrs...)
+
+			logger.Emit(req.Context(), logRecord)
+
+			return err
+		}
+	}
 }
 
 // createMetricsMiddleware creates Echo middleware that records HTTP metrics via OpenTelemetry
@@ -208,15 +246,16 @@ func (s *httpServer) start() {
 	go s.config.Operation(s.echo)
 
 	go func() {
-		log.Info().Msgf("Starting server, on port %d", s.config.Port)
+		fmt.Printf("Starting server on port %d\n", s.config.Port)
 		if err := s.echo.Start(fmt.Sprintf(":%v", s.config.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal().Err(err).Msg("failed to start server")
+			fmt.Fprintf(os.Stderr, "Failed to start server: %v\n", err)
+			os.Exit(1)
 		}
 	}()
 }
 
 func (s *httpServer) stop() error {
-	log.Info().Msg("gracefully shutting down")
+	fmt.Println("Gracefully shutting down server...")
 
 	s.config.Shutdown(s.echo)
 
@@ -238,7 +277,8 @@ func StartWithConfig(config Config) {
 	<-ctx.Done()
 
 	if err := server.stop(); err != nil {
-		log.Fatal().Err(err).Msg("failed to shutdown server")
+		fmt.Fprintf(os.Stderr, "Failed to shutdown server: %v\n", err)
+		os.Exit(1)
 	}
 }
 
