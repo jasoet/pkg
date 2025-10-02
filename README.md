@@ -527,6 +527,16 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow details.
 - [ ] Create fullstack OTel example application (examples/fullstack-otel)
 - [ ] v2.0.0 GA release
 
+### 📝 Planned (Post v2.0 GA)
+- [ ] **Docker Executor Package** - Production-ready Docker execution helper inspired by testcontainer simplicity
+  - Execute short-lived jobs in containers
+  - Use cases: Infrastructure workflows, data pipelines, batch processing
+  - Foundation for Temporal workflow integration
+- [ ] **Temporal Docker Workflows** - Reusable Temporal workflows for Docker container execution
+  - Pre-built workflow templates for containerized jobs
+  - Integration with docker executor package
+  - Observability and error handling patterns
+
 ## 🔗 Links
 
 - **Documentation:** [Browse Package Docs](./docs/)
