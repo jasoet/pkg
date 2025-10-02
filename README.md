@@ -10,8 +10,8 @@ Production-ready Go utility packages with **OpenTelemetry** instrumentation, com
 
 ## 🎯 Version 2 Status
 
-**Current Release:** `v2.0.0-beta.2`
-**Status:** Release Candidate for v2.0.0 GA
+**Current Release:** `v2.0.0` (GA)
+**Status:** Production Ready
 **Test Coverage:** 85%
 
 > **v2 Highlights:** OpenTelemetry instrumentation across all packages, 85% test coverage, modernized dependencies
@@ -46,8 +46,8 @@ Production-ready components with comprehensive observability, testing, and examp
 # Latest stable v1 (production)
 go get github.com/jasoet/pkg
 
-# v2 Beta (includes OpenTelemetry)
-go get github.com/jasoet/pkg/v2@v2.0.0-beta.2
+# v2 (includes OpenTelemetry)
+go get github.com/jasoet/pkg/v2@v2.0.0
 ```
 
 ### Basic Usage
@@ -223,8 +223,8 @@ task lint               # Run golangci-lint
 - OpenTelemetry as first-class citizen
 
 **Version Information:**
-- **Current:** v2.0.0-beta.2 (includes OpenTelemetry)
-- **Stable:** v1.5.0 (no OpenTelemetry)
+- **Current:** v2.0.0 GA (includes OpenTelemetry)
+- **Stable v1:** v1.5.0 (no OpenTelemetry, maintenance only)
 - **Migration Guide:** See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md)
 
 ## 📚 Package Documentation
@@ -532,12 +532,12 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to
 - [x] gRPC & Protobuf support with Echo gateway
 - [x] Testcontainer-based integration tests
 
-### 🚧 In Progress (v2.0.0 GA)
-- [ ] Review and update all package READMEs
-- [ ] Review and update all example READMEs
-- [ ] Ensure all examples demonstrate OTel integration
-- [ ] Create fullstack OTel example application (examples/fullstack-otel)
-- [ ] v2.0.0 GA release
+### ✅ v2.0.0 GA Released
+- [x] Review and update all package READMEs
+- [x] Review and update all example READMEs
+- [x] Ensure all examples demonstrate OTel integration
+- [x] Create fullstack OTel example application (examples/fullstack-otel)
+- [x] v2.0.0 GA release
 
 ### 📝 Planned (Post v2.0 GA)
 - [ ] **Docker Executor Package** - Production-ready Docker execution helper inspired by testcontainer simplicity
