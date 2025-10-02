@@ -196,6 +196,222 @@ config.EchoConfigurer = func(e *echo.Echo) {
 }
 ```
 
+## OpenTelemetry Integration
+
+The gRPC server package supports OpenTelemetry for comprehensive observability with distributed tracing, metrics, and structured logging. When `OTelConfig` is provided, it replaces traditional Prometheus metrics with OpenTelemetry instrumentation.
+
+### Basic OpenTelemetry Setup
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/otel"
+    grpcserver "github.com/jasoet/pkg/grpc"
+    "google.golang.org/grpc"
+)
+
+func main() {
+    // Create OTel config with logging (traces and metrics optional)
+    otelCfg := otel.NewConfig("my-grpc-service").
+        WithServiceVersion("1.0.0")
+
+    // Or use logging package for better log-span correlation
+    loggerProvider := logging.NewLoggerProvider("my-grpc-service", false)
+    otelCfg.WithLoggerProvider(loggerProvider)
+
+    // Start server with OTel
+    server, err := grpcserver.New(
+        grpcserver.WithGRPCPort("50051"),
+        grpcserver.WithOTelConfig(otelCfg),
+        grpcserver.WithServiceRegistrar(func(s *grpc.Server) {
+            // Register your services
+        }),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := server.Start(); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Full OpenTelemetry Stack (Traces + Metrics + Logs)
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/jasoet/pkg/logging"
+    "github.com/jasoet/pkg/otel"
+    grpcserver "github.com/jasoet/pkg/grpc"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+    "go.opentelemetry.io/otel/sdk/metric"
+    "go.opentelemetry.io/otel/sdk/resource"
+    "go.opentelemetry.io/otel/sdk/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
+    "google.golang.org/grpc"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Setup resource attributes
+    res, err := resource.New(ctx,
+        resource.WithAttributes(
+            semconv.ServiceNameKey.String("my-grpc-service"),
+            semconv.ServiceVersionKey.String("1.0.0"),
+        ),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Setup TracerProvider with OTLP exporter
+    traceExporter, err := otlptracehttp.New(ctx,
+        otlptracehttp.WithEndpoint("localhost:4318"),
+        otlptracehttp.WithInsecure(),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    tracerProvider := trace.NewTracerProvider(
+        trace.WithBatcher(traceExporter),
+        trace.WithResource(res),
+    )
+
+    // Setup MeterProvider
+    meterProvider := metric.NewMeterProvider(
+        metric.WithResource(res),
+    )
+
+    // Setup LoggerProvider with trace correlation
+    loggerProvider := logging.NewLoggerProvider("my-grpc-service", false)
+
+    // Create OTel config
+    otelCfg := &otel.Config{
+        ServiceName:    "my-grpc-service",
+        ServiceVersion: "1.0.0",
+        TracerProvider: tracerProvider,
+        MeterProvider:  meterProvider,
+        LoggerProvider: loggerProvider,
+    }
+
+    // Start gRPC server with full OTel instrumentation
+    server, err := grpcserver.New(
+        grpcserver.WithGRPCPort("50051"),
+        grpcserver.WithOTelConfig(otelCfg),
+        grpcserver.WithServiceRegistrar(func(s *grpc.Server) {
+            // Register your services
+        }),
+        grpcserver.WithShutdownHandler(func() error {
+            // Shutdown OTel providers
+            ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+            defer cancel()
+
+            if err := tracerProvider.Shutdown(ctx); err != nil {
+                log.Printf("Error shutting down tracer provider: %v", err)
+            }
+            if err := meterProvider.Shutdown(ctx); err != nil {
+                log.Printf("Error shutting down meter provider: %v", err)
+            }
+            return nil
+        }),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := server.Start(); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### What Gets Instrumented
+
+When `OTelConfig` is provided, the server automatically instruments:
+
+#### gRPC Server
+- **Traces**: Distributed tracing for all gRPC methods with semantic conventions
+- **Metrics**:
+  - `rpc.server.request.count` - Total gRPC requests by method and status
+  - `rpc.server.duration` - Request duration histogram
+  - `rpc.server.active_requests` - Active concurrent requests
+- **Logs**: Structured logs with automatic trace_id/span_id correlation
+
+#### HTTP Gateway
+- **Traces**: HTTP request spans linked to gRPC spans
+- **Metrics**:
+  - `http.server.request.count` - Total HTTP requests
+  - `http.server.request.duration` - Request duration histogram
+  - `http.server.active_requests` - Active concurrent requests
+- **Logs**: HTTP access logs with trace correlation
+
+### Log-Span Correlation
+
+When using the `logging` package LoggerProvider, all logs automatically include `trace_id` and `span_id` fields, enabling you to:
+- Click a span in Grafana → See all related logs
+- Click a log → Jump to the trace
+- Filter logs by trace ID
+
+```json
+{
+  "level": "info",
+  "scope": "grpc.server",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "rpc.system": "grpc",
+  "rpc.method": "/calculator.v1.CalculatorService/Add",
+  "rpc.grpc.status_code": 0,
+  "message": "gRPC /calculator.v1.CalculatorService/Add"
+}
+```
+
+### Backwards Compatibility
+
+The gRPC server maintains backwards compatibility:
+- **Without OTelConfig**: Uses traditional Prometheus metrics and standard logging
+- **With OTelConfig**: Uses OpenTelemetry instrumentation
+- Health checks work in both modes
+- No breaking changes to existing code
+
+### Migration from Prometheus to OTel
+
+**Before (Prometheus):**
+```go
+server, err := grpcserver.New(
+    grpcserver.WithGRPCPort("50051"),
+    grpcserver.WithMetrics(),  // Prometheus metrics
+    grpcserver.WithLogging(),  // Standard logging
+    grpcserver.WithServiceRegistrar(serviceRegistrar),
+)
+```
+
+**After (OpenTelemetry):**
+```go
+otelCfg := otel.NewConfig("my-service").
+    WithTracerProvider(tracerProvider).
+    WithMeterProvider(meterProvider)
+
+server, err := grpcserver.New(
+    grpcserver.WithGRPCPort("50051"),
+    grpcserver.WithOTelConfig(otelCfg),  // Replaces metrics and logging
+    grpcserver.WithServiceRegistrar(serviceRegistrar),
+)
+```
+
 ## Configuration Options
 
 ### Core Settings

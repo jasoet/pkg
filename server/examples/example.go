@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jasoet/pkg/logging"
+	"github.com/jasoet/pkg/otel"
 	"github.com/jasoet/pkg/server"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -45,11 +45,8 @@ func (c *CustomHealthChecker) CheckHealth() map[string]string {
 }
 
 func main() {
-	// Initialize logging
-	logging.Initialize("server-examples", true)
-
-	fmt.Println("Server Package Examples")
-	fmt.Println("=======================")
+	fmt.Println("Server Package Examples (v2 with OpenTelemetry)")
+	fmt.Println("===============================================")
 
 	// Run different server examples in sequence
 	examples := []struct {
@@ -57,7 +54,7 @@ func main() {
 		fn   func()
 	}{
 		{"Basic Server Setup", basicServerExample},
-		{"Server with Custom Configuration", customConfigExample},
+		{"Server with OpenTelemetry Configuration", otelConfigExample},
 		{"Server with Custom Routes and Middleware", customRoutesExample},
 		{"Server with Health Checks", healthChecksExample},
 		{"Server with Graceful Shutdown", gracefulShutdownExample},
@@ -78,78 +75,103 @@ func main() {
 func basicServerExample() {
 	fmt.Println("Creating a basic HTTP server with default configuration...")
 
-	// Create server with minimal configuration
-	config := server.Config{
-		Port: 8080,
-		// Note: The server package handles graceful shutdown automatically
-		// with StartWithConfig(), but for demonstration we'll show the configuration
+	operation := func(e *echo.Echo) {
+		// Register custom routes
+		e.GET("/hello", func(c echo.Context) error {
+			return c.String(http.StatusOK, "Hello, World!")
+		})
 	}
+
+	shutdown := func(e *echo.Echo) {
+		// Cleanup resources
+		fmt.Println("Cleaning up resources...")
+	}
+
+	// Create server with minimal configuration
+	config := server.DefaultConfig(8080, operation, shutdown)
 
 	fmt.Printf("Server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Health endpoints: /health, /health/ready, /health/live\n")
-	fmt.Printf("- Metrics endpoint: /metrics\n")
-	fmt.Printf("- Built-in middleware: logging, CORS, recover\n")
+	fmt.Printf("- OpenTelemetry: disabled (nil)\n")
 
 	fmt.Println("\nTo start this server, you would call:")
 	fmt.Println("server.StartWithConfig(config)")
-	fmt.Println("\nNote: StartWithConfig() handles graceful shutdown automatically")
-	fmt.Println("For a running example, see other functions in this file.")
+	fmt.Println("\nNote: Without OTelConfig, no request logging or telemetry is enabled")
 	fmt.Println("✓ Basic server example completed")
 }
 
-func customConfigExample() {
-	fmt.Println("Creating server with custom configuration...")
+func otelConfigExample() {
+	fmt.Println("Creating server with OpenTelemetry configuration...")
 
-	// Custom configuration with various options
-	config := server.Config{
-		Port:            8081,
-		ShutdownTimeout: 10 * time.Second,
-		EnableMetrics:   true,
-		MetricsPath:     "/custom-metrics",
+	operation := func(e *echo.Echo) {
+		e.GET("/api/hello", func(c echo.Context) error {
+			return c.JSON(http.StatusOK, map[string]string{
+				"message": "Hello with telemetry!",
+			})
+		})
 	}
 
-	fmt.Printf("Custom server configuration:\n")
+	shutdown := func(e *echo.Echo) {
+		fmt.Println("Cleaning up resources...")
+	}
+
+	// Create OTel configuration with default LoggerProvider (stdout)
+	// This enables logging out of the box
+	otelCfg := otel.NewConfig("server-example").
+		WithServiceVersion("1.0.0")
+	// Note: TracerProvider and MeterProvider can be added via:
+	// .WithTracerProvider(tp).WithMeterProvider(mp)
+
+	config := server.DefaultConfig(8081, operation, shutdown)
+	config.ShutdownTimeout = 15 * time.Second
+	config.OTelConfig = otelCfg
+
+	fmt.Printf("Server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Shutdown Timeout: %v\n", config.ShutdownTimeout)
-	fmt.Printf("- Custom Metrics Path: %s\n", config.MetricsPath)
+	fmt.Printf("- OpenTelemetry Logging: enabled (stdout)\n")
+	fmt.Printf("- OpenTelemetry Tracing: disabled\n")
+	fmt.Printf("- OpenTelemetry Metrics: disabled\n")
 
 	fmt.Println("\nTo start this server, you would call:")
 	fmt.Println("server.StartWithConfig(config)")
-	fmt.Println("\nNote: The server package automatically provides health endpoints and graceful shutdown")
-	fmt.Println("✓ Custom configuration example completed")
+	fmt.Println("\nNote: Default LoggerProvider logs to stdout for easy debugging")
+	fmt.Println("✓ OpenTelemetry configuration example completed")
 }
 
 func customRoutesExample() {
 	fmt.Println("Creating server with custom routes and middleware...")
 
-	config := server.Config{
-		Port: 8082,
-		EchoConfigurer: func(e *echo.Echo) {
-			// Add custom middleware
-			e.Use(middleware.RequestID())
-			e.Use(customLoggingMiddleware())
+	operation := func(e *echo.Echo) {
+		// Add custom middleware
+		e.Use(middleware.RequestID())
 
-			// Add custom routes
-			api := e.Group("/api/v1")
-			api.Use(authMiddleware())
+		// Add custom routes
+		api := e.Group("/api/v1")
+		api.Use(authMiddleware())
 
-			// User endpoints
-			api.GET("/users", getUsersHandler)
-			api.GET("/users/:id", getUserHandler)
-			api.POST("/users", createUserHandler)
-			api.PUT("/users/:id", updateUserHandler)
-			api.DELETE("/users/:id", deleteUserHandler)
+		// User endpoints
+		api.GET("/users", getUsersHandler)
+		api.GET("/users/:id", getUserHandler)
+		api.POST("/users", createUserHandler)
+		api.PUT("/users/:id", updateUserHandler)
+		api.DELETE("/users/:id", deleteUserHandler)
 
-			// Admin endpoints
-			admin := api.Group("/admin")
-			admin.Use(adminMiddleware())
-			admin.GET("/stats", getStatsHandler)
+		// Admin endpoints
+		admin := api.Group("/admin")
+		admin.Use(adminMiddleware())
+		admin.GET("/stats", getStatsHandler)
 
-			// Public endpoints (no auth required)
-			e.GET("/public/info", getInfoHandler)
-		},
+		// Public endpoints (no auth required)
+		e.GET("/public/info", getInfoHandler)
 	}
+
+	shutdown := func(e *echo.Echo) {
+		fmt.Println("Shutting down API server...")
+	}
+
+	config := server.DefaultConfig(8082, operation, shutdown)
 
 	fmt.Printf("Server with custom routes:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -184,21 +206,24 @@ func healthChecksExample() {
 		},
 	}
 
-	config := server.Config{
-		Port: 8083,
-		EchoConfigurer: func(e *echo.Echo) {
-			// Add custom health endpoint with the health checker
-			e.GET("/custom-health", func(c echo.Context) error {
-				results := healthChecker.CheckHealth()
-				status := HealthStatus{
-					Status:    "ok",
-					Timestamp: time.Now(),
-					Services:  results,
-				}
-				return c.JSON(http.StatusOK, status)
-			})
-		},
+	operation := func(e *echo.Echo) {
+		// Add custom health endpoint with the health checker
+		e.GET("/custom-health", func(c echo.Context) error {
+			results := healthChecker.CheckHealth()
+			status := HealthStatus{
+				Status:    "ok",
+				Timestamp: time.Now(),
+				Services:  results,
+			}
+			return c.JSON(http.StatusOK, status)
+		})
 	}
+
+	shutdown := func(e *echo.Echo) {
+		fmt.Println("Closing health check connections...")
+	}
+
+	config := server.DefaultConfig(8083, operation, shutdown)
 
 	fmt.Printf("Server with custom health checks:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -213,18 +238,23 @@ func healthChecksExample() {
 func gracefulShutdownExample() {
 	fmt.Println("Demonstrating graceful shutdown with signal handling...")
 
-	config := server.Config{
-		Port:            8084,
-		ShutdownTimeout: 10 * time.Second,
-		EchoConfigurer: func(e *echo.Echo) {
-			// Add a long-running endpoint for testing graceful shutdown
-			e.GET("/slow", func(c echo.Context) error {
-				fmt.Println("   Processing slow request...")
-				time.Sleep(5 * time.Second)
-				return c.JSON(200, map[string]string{"status": "completed"})
-			})
-		},
+	operation := func(e *echo.Echo) {
+		// Add a long-running endpoint for testing graceful shutdown
+		e.GET("/slow", func(c echo.Context) error {
+			fmt.Println("   Processing slow request...")
+			time.Sleep(5 * time.Second)
+			return c.JSON(200, map[string]string{"status": "completed"})
+		})
 	}
+
+	shutdown := func(e *echo.Echo) {
+		fmt.Println("Waiting for in-flight requests to complete...")
+		time.Sleep(1 * time.Second)
+		fmt.Println("All requests completed, shutting down gracefully")
+	}
+
+	config := server.DefaultConfig(8084, operation, shutdown)
+	config.ShutdownTimeout = 10 * time.Second
 
 	fmt.Printf("Server with graceful shutdown:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -256,14 +286,13 @@ func testEndpoints(port int) {
 	}
 }
 
-func testCustomEndpoints(port int, config *server.Config) {
+func testCustomEndpoints(port int) {
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
 
 	endpoints := []string{
 		"/health",
 		"/health/ready",
 		"/health/live",
-		config.MetricsPath,
 	}
 
 	for _, endpoint := range endpoints {
@@ -358,30 +387,6 @@ func testHealthEndpoints(port int) {
 
 // Custom middleware and handlers
 
-func customLoggingMiddleware() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			start := time.Now()
-
-			err := next(c)
-
-			req := c.Request()
-			res := c.Response()
-
-			logger := logging.ContextLogger(req.Context(), "http-request")
-			logger.Info().
-				Str("method", req.Method).
-				Str("path", req.URL.Path).
-				Int("status", res.Status).
-				Dur("duration", time.Since(start)).
-				Str("remote_ip", c.RealIP()).
-				Msg("HTTP request")
-
-			return err
-		}
-	}
-}
-
 func authMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -451,12 +456,7 @@ func createUserHandler(c echo.Context) error {
 
 	// Simulate user creation
 	user.ID = 3
-
-	logger := logging.ContextLogger(c.Request().Context(), "user-api")
-	logger.Info().
-		Int("user_id", user.ID).
-		Str("user_name", user.Name).
-		Msg("User created")
+	fmt.Printf("User created: ID=%d, Name=%s\n", user.ID, user.Name)
 
 	return c.JSON(http.StatusCreated, user)
 }
@@ -470,21 +470,14 @@ func updateUserHandler(c echo.Context) error {
 
 	// Simulate user update
 	user.ID = 1 // Use ID from path
-
-	logger := logging.ContextLogger(c.Request().Context(), "user-api")
-	logger.Info().
-		Str("user_id", id).
-		Str("user_name", user.Name).
-		Msg("User updated")
+	fmt.Printf("User updated: ID=%s, Name=%s\n", id, user.Name)
 
 	return c.JSON(http.StatusOK, user)
 }
 
 func deleteUserHandler(c echo.Context) error {
 	id := c.Param("id")
-
-	logger := logging.ContextLogger(c.Request().Context(), "user-api")
-	logger.Info().Str("user_id", id).Msg("User deleted")
+	fmt.Printf("User deleted: ID=%s\n", id)
 
 	return c.NoContent(http.StatusNoContent)
 }
