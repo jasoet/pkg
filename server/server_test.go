@@ -34,7 +34,7 @@ func TestNewHttpServer(t *testing.T) {
 	assert.NotNil(t, server)
 	assert.NotNil(t, server.echo)
 	assert.Equal(t, config.Port, server.config.Port)
-	assert.Equal(t, config.EnableMetrics, server.config.EnableMetrics)
+	assert.Nil(t, server.config.OTelConfig, "OTelConfig should be nil by default")
 	assert.False(t, operationCalled, "Operation should not be called during initialization")
 	assert.False(t, shutdownCalled, "Shutdown should not be called during initialization")
 }
@@ -42,7 +42,6 @@ func TestNewHttpServer(t *testing.T) {
 func TestHealthEndpoints(t *testing.T) {
 	// Test health check endpoints
 	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	config.MetricsSubsystem = "testHealthEndpoints"
 	e := setupEcho(config)
 
 	// Test /health endpoint
@@ -70,32 +69,6 @@ func TestHealthEndpoints(t *testing.T) {
 	assert.Equal(t, `{"status":"ALIVE"}`, strings.TrimSpace(rec.Body.String()))
 }
 
-func TestMetricsEndpoint(t *testing.T) {
-	// Test metrics endpoint with metrics enabled
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	config.MetricsSubsystem = "TestMetricsEndpoint"
-	config.EnableMetrics = true
-	e := setupEcho(config)
-
-	// Test /metrics endpoint
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "# HELP")
-
-	// Test metrics endpoint with metrics disabled
-	config.EnableMetrics = false
-	e = setupEcho(config)
-
-	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	rec = httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-}
-
 func TestOperationExecution(t *testing.T) {
 	// Test that operation is executed when server starts
 	operationCh := make(chan bool, 1)
@@ -104,7 +77,6 @@ func TestOperationExecution(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, operation, func(e *echo.Echo) {})
-	config.MetricsSubsystem = "TestOperationExecution"
 	server := newHttpServer(config)
 
 	// Start the server
@@ -130,7 +102,6 @@ func TestShutdownExecution(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, func(e *echo.Echo) {}, shutdown)
-	config.MetricsSubsystem = "TestShutdownExecution"
 	server := newHttpServer(config)
 
 	// Start the server
@@ -151,7 +122,6 @@ func TestShutdownExecution(t *testing.T) {
 func TestHomeEndpoint(t *testing.T) {
 	// Test home endpoint
 	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	config.MetricsSubsystem = "TestHomeEndpoint"
 	e := setupEcho(config)
 
 	// Test / endpoint
@@ -174,7 +144,6 @@ func TestCustomMiddleware(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	config.MetricsSubsystem = "TestCustomMiddleware"
 	config.Middleware = []echo.MiddlewareFunc{middleware}
 	e := setupEcho(config)
 
@@ -214,7 +183,6 @@ func TestIntegration(t *testing.T) {
 
 	// Create a server with a random port
 	config := DefaultConfig(0, operation, shutdown)
-	config.MetricsSubsystem = "TestIntegration"
 	server := newHttpServer(config)
 
 	// Start the server
@@ -273,7 +241,6 @@ func TestServerStartStop(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, operation, shutdown) // Use port 0 to get a random available port
-	config.MetricsSubsystem = "TestServerStartStop"
 	server := newHttpServer(config)
 
 	// Start the server
@@ -309,7 +276,6 @@ func TestEchoConfigurer(t *testing.T) {
 
 	// Create a config with the configurer
 	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	config.MetricsSubsystem = "TestEchoConfigurer"
 	config.EchoConfigurer = configurer
 
 	// Setup Echo with the config

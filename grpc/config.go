@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jasoet/pkg/otel"
 	"github.com/labstack/echo/v4"
 	"google.golang.org/grpc"
 )
@@ -64,6 +65,9 @@ type config struct {
 	enableTLS bool   // Enable TLS
 	certFile  string // Path to certificate file
 	keyFile   string // Path to private key file
+
+	// OpenTelemetry Configuration (optional - nil disables telemetry)
+	otelConfig *otel.Config // OpenTelemetry configuration for traces, metrics, and logs
 }
 
 // newConfig creates a new config with defaults and applies the provided options
@@ -419,5 +423,17 @@ func WithShutdownHandler(fn func() error) Option {
 func WithMiddleware(mw ...echo.MiddlewareFunc) Option {
 	return func(c *config) {
 		c.middleware = append(c.middleware, mw...)
+	}
+}
+
+// ============================================================================
+// OpenTelemetry Options
+// ============================================================================
+
+// WithOTelConfig sets the OpenTelemetry configuration for traces, metrics, and logs
+// When set, the gRPC server will instrument with OTel instead of Prometheus
+func WithOTelConfig(cfg *otel.Config) Option {
+	return func(c *config) {
+		c.otelConfig = cfg
 	}
 }
