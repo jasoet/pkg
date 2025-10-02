@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/jasoet/pkg/v2/concurrent"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // testKey is a custom type for the context key to avoid collisions
@@ -559,6 +560,169 @@ func TestIsUnauthorized(t *testing.T) {
 
 		if IsUnauthorized(response) {
 			t.Error("Expected IsUnauthorized to return false for OK status")
+		}
+	})
+}
+
+func TestWithOTelConfig(t *testing.T) {
+	t.Run("sets OTel config on client", func(t *testing.T) {
+		cfg := &Config{
+			OTelConfig: nil,
+		}
+
+		otelCfg := otel.NewConfig("test-service")
+		option := WithOTelConfig(otelCfg)
+
+		client := &Client{
+			restConfig: cfg,
+		}
+		option(client)
+
+		if client.restConfig.OTelConfig != otelCfg {
+			t.Error("Expected OTel config to be set on client")
+		}
+	})
+
+	t.Run("works with NewClient", func(t *testing.T) {
+		otelCfg := otel.NewConfig("test-service")
+		client := NewClient(WithOTelConfig(otelCfg))
+
+		if client.restConfig.OTelConfig != otelCfg {
+			t.Error("Expected OTel config to be set via NewClient")
+		}
+	})
+}
+
+func TestSetMiddlewares(t *testing.T) {
+	t.Run("replaces existing middlewares", func(t *testing.T) {
+		client := NewClient()
+
+		// Initially should have default logging middleware
+		initial := len(client.GetMiddlewares())
+		if initial == 0 {
+			t.Error("Expected client to have default middlewares")
+		}
+
+		// Set new middlewares
+		mw1 := &TestMiddleware{Name: "test1"}
+		mw2 := &TestMiddleware{Name: "test2"}
+		client.SetMiddlewares(mw1, mw2)
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 2 {
+			t.Errorf("Expected 2 middlewares, got %d", len(middlewares))
+		}
+	})
+
+	t.Run("can set empty middlewares list", func(t *testing.T) {
+		client := NewClient()
+		client.SetMiddlewares()
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 0 {
+			t.Errorf("Expected 0 middlewares, got %d", len(middlewares))
+		}
+	})
+
+	t.Run("is thread-safe", func(t *testing.T) {
+		client := NewClient()
+		done := make(chan bool, 2)
+
+		// Concurrent writes
+		go func() {
+			for i := 0; i < 100; i++ {
+				client.SetMiddlewares(&TestMiddleware{Name: "goroutine1"})
+			}
+			done <- true
+		}()
+
+		go func() {
+			for i := 0; i < 100; i++ {
+				client.SetMiddlewares(&TestMiddleware{Name: "goroutine2"})
+			}
+			done <- true
+		}()
+
+		<-done
+		<-done
+
+		// Should complete without race conditions
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 1 {
+			t.Errorf("Expected 1 middleware after concurrent access, got %d", len(middlewares))
+		}
+	})
+}
+
+func TestAddMiddleware(t *testing.T) {
+	t.Run("appends middleware to existing list", func(t *testing.T) {
+		client := NewClient()
+		initial := len(client.GetMiddlewares())
+
+		mw := &TestMiddleware{Name: "additional"}
+		client.AddMiddleware(mw)
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != initial+1 {
+			t.Errorf("Expected %d middlewares, got %d", initial+1, len(middlewares))
+		}
+	})
+
+	t.Run("maintains order of middlewares", func(t *testing.T) {
+		client := NewClient()
+		client.SetMiddlewares() // Clear defaults
+
+		mw1 := &TestMiddleware{Name: "first"}
+		mw2 := &TestMiddleware{Name: "second"}
+		mw3 := &TestMiddleware{Name: "third"}
+
+		client.AddMiddleware(mw1)
+		client.AddMiddleware(mw2)
+		client.AddMiddleware(mw3)
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 3 {
+			t.Errorf("Expected 3 middlewares, got %d", len(middlewares))
+		}
+
+		if m, ok := middlewares[0].(*TestMiddleware); !ok || m.Name != "first" {
+			t.Error("Expected first middleware to be 'first'")
+		}
+		if m, ok := middlewares[1].(*TestMiddleware); !ok || m.Name != "second" {
+			t.Error("Expected second middleware to be 'second'")
+		}
+		if m, ok := middlewares[2].(*TestMiddleware); !ok || m.Name != "third" {
+			t.Error("Expected third middleware to be 'third'")
+		}
+	})
+}
+
+func TestGetMiddlewares(t *testing.T) {
+	t.Run("returns copy of middlewares", func(t *testing.T) {
+		client := NewClient()
+		client.SetMiddlewares(&TestMiddleware{Name: "test"})
+
+		middlewares1 := client.GetMiddlewares()
+		middlewares2 := client.GetMiddlewares()
+
+		// Verify we get different slices (copies)
+		if &middlewares1[0] == &middlewares2[0] {
+			t.Error("Expected GetMiddlewares to return a copy, not the original slice")
+		}
+	})
+
+	t.Run("modifications to returned slice don't affect client", func(t *testing.T) {
+		client := NewClient()
+		mw := &TestMiddleware{Name: "test"}
+		client.SetMiddlewares(mw)
+
+		middlewares := client.GetMiddlewares()
+		middlewares[0] = &TestMiddleware{Name: "modified"}
+
+		// Verify client's middlewares are unchanged
+		clientMiddlewares := client.GetMiddlewares()
+		if m, ok := clientMiddlewares[0].(*TestMiddleware); !ok || m.Name != "test" {
+			t.Error("Expected client middlewares to be unchanged after modifying returned slice")
 		}
 	})
 }

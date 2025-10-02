@@ -134,3 +134,76 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractOperationType(t *testing.T) {
+	tests := []struct {
+		name     string
+		sql      string
+		expected string
+	}{
+		{
+			name:     "SELECT query",
+			sql:      "SELECT * FROM users",
+			expected: "db.SELECT",
+		},
+		{
+			name:     "INSERT query",
+			sql:      "INSERT INTO users (name) VALUES ('John')",
+			expected: "db.INSERT",
+		},
+		{
+			name:     "UPDATE query",
+			sql:      "UPDATE users SET name='Jane' WHERE id=1",
+			expected: "db.UPDATE",
+		},
+		{
+			name:     "DELETE query",
+			sql:      "DELETE FROM users WHERE id=1",
+			expected: "db.DELETE",
+		},
+		{
+			name:     "CREATE query",
+			sql:      "CREATE TABLE users (id INT)",
+			expected: "db.CREATE",
+		},
+		{
+			name:     "DROP query",
+			sql:      "DROP TABLE users",
+			expected: "db.DROP",
+		},
+		{
+			name:     "query with newline",
+			sql:      "SELECT\n* FROM users",
+			expected: "db.SELECT",
+		},
+		{
+			name:     "query with tab",
+			sql:      "SELECT\t* FROM users",
+			expected: "db.SELECT",
+		},
+		{
+			name:     "empty SQL",
+			sql:      "",
+			expected: "db.query",
+		},
+		{
+			name:     "single word SQL",
+			sql:      "COMMIT",
+			expected: "db.query",
+		},
+		{
+			name:     "lowercase query",
+			sql:      "select * from users",
+			expected: "db.select",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractOperationType(tt.sql)
+			if result != tt.expected {
+				t.Errorf("extractOperationType() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
