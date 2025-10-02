@@ -65,7 +65,7 @@ Get your server up and running with minimal configuration:
 package main
 
 import (
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/server"
     "github.com/labstack/echo/v4"
 )
 
@@ -96,8 +96,8 @@ Version 2 uses OpenTelemetry for all observability needs.
 
 ```go
 import (
-    "github.com/jasoet/pkg/otel"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v2/server"
     "github.com/labstack/echo/v4"
 )
 
@@ -126,8 +126,8 @@ func main() {
 ```go
 import (
     "context"
-    "github.com/jasoet/pkg/otel"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v2/server"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/trace"
@@ -235,7 +235,7 @@ package main
 import (
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/server"
 )
 
 func main() {
@@ -271,7 +271,7 @@ package main
 import (
     "fmt"
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/server"
     "time"
 )
 
@@ -388,7 +388,7 @@ import (
     "context"
     "fmt"
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/server"
     "time"
 )
 
@@ -433,7 +433,7 @@ package main
 
 import (
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/server"
     "your-module/auth"
     "your-module/database"
 )
@@ -490,7 +490,7 @@ import (
     "github.com/labstack/echo/v4"
     "net/http"
     "time"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/server"
 )
 
 func main() {

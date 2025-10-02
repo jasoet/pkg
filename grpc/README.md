@@ -16,7 +16,7 @@ A production-ready, reusable gRPC server with Echo HTTP framework integration fo
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/grpc
+go get github.com/jasoet/pkg/v2/grpc
 ```
 
 ## Quick Start
