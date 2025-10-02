@@ -1,4 +1,4 @@
-//go:build temporal
+//go:build integration
 
 package temporal
 
@@ -89,8 +89,16 @@ func LongRunningTestActivity(ctx context.Context, duration time.Duration) (strin
 }
 
 func TestWorkerManager(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container once for all subtests
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9095"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("CreateWorkerManager", func(t *testing.T) {
 		wm, err := NewWorkerManager(config)
@@ -137,8 +145,16 @@ func TestWorkerManager(t *testing.T) {
 }
 
 func TestWorkerWorkflowExecution(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container once for all subtests
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9096"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
 	require.NoError(t, err)
@@ -257,8 +273,16 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 }
 
 func TestWorkerManagerLifecycle(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container once for all subtests
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9097"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("StartAll", func(t *testing.T) {
 		wm, err := NewWorkerManager(config)
@@ -308,8 +332,16 @@ func TestWorkerManagerLifecycle(t *testing.T) {
 }
 
 func TestWorkerConfiguration(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container and get client
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9098"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
 	require.NoError(t, err)
