@@ -5,11 +5,12 @@ import (
 
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
 	"go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/noop"
+	noopl "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/trace"
+	noopt "go.opentelemetry.io/otel/trace/noop"
 )
 
 // Config holds OpenTelemetry configuration for instrumentation.
@@ -98,7 +99,7 @@ func defaultLoggerProvider() log.LoggerProvider {
 	exporter, err := stdoutlog.New()
 	if err != nil {
 		// If stdout exporter fails, return no-op
-		return noop.NewLoggerProvider()
+		return noopl.NewLoggerProvider()
 	}
 
 	provider := sdklog.NewLoggerProvider(
@@ -147,7 +148,7 @@ func (c *Config) IsLoggingEnabled() bool {
 // Returns a no-op tracer if tracing is not configured.
 func (c *Config) GetTracer(scopeName string, opts ...trace.TracerOption) trace.Tracer {
 	if !c.IsTracingEnabled() {
-		return trace.NewNoopTracerProvider().Tracer(scopeName, opts...)
+		return noopt.NewTracerProvider().Tracer(scopeName, opts...)
 	}
 	return c.TracerProvider.Tracer(scopeName, opts...)
 }
@@ -165,7 +166,7 @@ func (c *Config) GetMeter(scopeName string, opts ...metric.MeterOption) metric.M
 // Returns a no-op logger if logging is not configured.
 func (c *Config) GetLogger(scopeName string, opts ...log.LoggerOption) log.Logger {
 	if !c.IsLoggingEnabled() {
-		return noop.NewLoggerProvider().Logger(scopeName, opts...)
+		return noopl.NewLoggerProvider().Logger(scopeName, opts...)
 	}
 	return c.LoggerProvider.Logger(scopeName, opts...)
 }

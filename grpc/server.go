@@ -75,6 +75,19 @@ func (s *Server) setupGRPCServer() {
 		}))
 	}
 
+	// Add OpenTelemetry interceptors if configured
+	if s.config.otelConfig != nil {
+		// Chain interceptors: logging -> tracing -> metrics -> handler
+		interceptors := []grpc.UnaryServerInterceptor{
+			createGRPCLoggingInterceptor(s.config.otelConfig),
+			createGRPCTracingInterceptor(s.config.otelConfig),
+			createGRPCMetricsInterceptor(s.config.otelConfig),
+		}
+
+		// Create chain interceptor
+		opts = append(opts, grpc.ChainUnaryInterceptor(interceptors...))
+	}
+
 	// Create gRPC server
 	s.grpcServer = grpc.NewServer(opts...)
 
@@ -102,17 +115,30 @@ func (s *Server) setupEchoServer() error {
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Add built-in middleware
-	if s.config.enableLogging {
-		e.Use(middleware.Logger())
+	// Add OpenTelemetry middleware if configured
+	if s.config.otelConfig != nil {
+		// Add OTel middleware: logging -> tracing -> metrics
+		if s.config.otelConfig.IsLoggingEnabled() {
+			e.Use(createHTTPGatewayLoggingMiddleware(s.config.otelConfig))
+		}
+		if s.config.otelConfig.IsTracingEnabled() {
+			e.Use(createHTTPGatewayTracingMiddleware(s.config.otelConfig))
+		}
+		if s.config.otelConfig.IsMetricsEnabled() {
+			e.Use(createHTTPGatewayMetricsMiddleware(s.config.otelConfig))
+		}
+	} else {
+		// Fallback to traditional logging and metrics (backwards compatibility)
+		if s.config.enableLogging {
+			e.Use(middleware.Logger())
+		}
+		if s.config.enableMetrics {
+			e.Use(s.metricsManager.EchoMetricsMiddleware())
+			s.metricsManager.RegisterEchoMetrics(e, s.config.metricsPath)
+		}
 	}
-	e.Use(middleware.Recover())
 
-	// Add metrics middleware
-	if s.config.enableMetrics {
-		e.Use(s.metricsManager.EchoMetricsMiddleware())
-		s.metricsManager.RegisterEchoMetrics(e, s.config.metricsPath)
-	}
+	e.Use(middleware.Recover())
 
 	// Add health checks
 	if s.config.enableHealthCheck {

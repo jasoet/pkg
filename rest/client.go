@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/jasoet/pkg/otel"
 	"github.com/rs/zerolog/log"
 )
 
@@ -42,6 +43,14 @@ func WithMiddlewares(middlewares ...Middleware) ClientOption {
 	}
 }
 
+// WithOTelConfig sets the OpenTelemetry configuration for the REST client
+// When set, adds OTel tracing, metrics, and logging middleware automatically
+func WithOTelConfig(cfg *otel.Config) ClientOption {
+	return func(client *Client) {
+		client.restConfig.OTelConfig = cfg
+	}
+}
+
 func NewClient(options ...ClientOption) *Client {
 	client := &Client{
 		restConfig:  DefaultRestConfig(),
@@ -50,6 +59,35 @@ func NewClient(options ...ClientOption) *Client {
 
 	for _, option := range options {
 		option(client)
+	}
+
+	// Add OTel middleware if configured (prepend to user middleware)
+	if client.restConfig.OTelConfig != nil {
+		// Save user-provided middlewares
+		userMiddlewares := make([]Middleware, len(client.middlewares))
+		copy(userMiddlewares, client.middlewares)
+
+		// Reset and add OTel middleware first
+		client.middlewares = []Middleware{}
+
+		// Add OTel middleware in order: tracing -> metrics -> logging
+		if tracingMW := NewOTelTracingMiddleware(client.restConfig.OTelConfig); tracingMW != nil {
+			client.middlewares = append(client.middlewares, tracingMW)
+		}
+		if metricsMW := NewOTelMetricsMiddleware(client.restConfig.OTelConfig); metricsMW != nil {
+			client.middlewares = append(client.middlewares, metricsMW)
+		}
+		if loggingMW := NewOTelLoggingMiddleware(client.restConfig.OTelConfig); loggingMW != nil {
+			client.middlewares = append(client.middlewares, loggingMW)
+		}
+
+		// Append user-provided middlewares (excluding default LoggingMiddleware)
+		for _, mw := range userMiddlewares {
+			// Skip default LoggingMiddleware as OTel provides logging
+			if _, isLogging := mw.(*LoggingMiddleware); !isLogging {
+				client.middlewares = append(client.middlewares, mw)
+			}
+		}
 	}
 
 	httpClient := resty.New()

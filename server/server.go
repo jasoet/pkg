@@ -183,19 +183,20 @@ func createMetricsMiddleware(cfg *otel.Config) echo.MiddlewareFunc {
 	meter := cfg.GetMeter("server")
 
 	// Create metrics instruments
-	requestCounter, _ := meter.Int64Counter(
+	// Note: errors are intentionally ignored as they only occur with nil meter (checked by GetMeter)
+	requestCounter, _ := meter.Int64Counter( //nolint:errcheck
 		"http.server.request.count",
 		metric.WithDescription("Total number of HTTP requests"),
 		metric.WithUnit("{request}"),
 	)
 
-	requestDuration, _ := meter.Float64Histogram(
+	requestDuration, _ := meter.Float64Histogram( //nolint:errcheck
 		"http.server.request.duration",
 		metric.WithDescription("HTTP request duration"),
 		metric.WithUnit("ms"),
 	)
 
-	activeRequests, _ := meter.Int64UpDownCounter(
+	activeRequests, _ := meter.Int64UpDownCounter( //nolint:errcheck
 		"http.server.active_requests",
 		metric.WithDescription("Number of active HTTP requests"),
 		metric.WithUnit("{request}"),
