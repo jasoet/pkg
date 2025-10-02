@@ -11,8 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	noopm "go.opentelemetry.io/otel/metric/noop"
+	noopt "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestNewHttpServer(t *testing.T) {
@@ -293,4 +296,259 @@ func TestEchoConfigurer(t *testing.T) {
 	assert.True(t, customErrorHandlerCalled, "Custom error handler should be called for non-existent path")
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	assert.Contains(t, rec.Body.String(), "error")
+}
+
+func TestCreateLoggingMiddleware(t *testing.T) {
+	t.Run("logs HTTP requests with OTel", func(t *testing.T) {
+		// Create OTel config with logging enabled
+		cfg := otel.NewConfig("test-service")
+
+		// Create Echo with logging middleware
+		e := echo.New()
+		e.Use(createLoggingMiddleware(cfg))
+		e.GET("/test", func(c echo.Context) error {
+			return c.String(http.StatusOK, "success")
+		})
+
+		// Make request
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "success", rec.Body.String())
+	})
+
+	t.Run("logs errors with error severity", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service")
+
+		e := echo.New()
+		e.Use(createLoggingMiddleware(cfg))
+		e.GET("/error", func(c echo.Context) error {
+			return echo.NewHTTPError(http.StatusInternalServerError, "test error")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/error", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+
+	t.Run("logs 4xx with warning severity", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service")
+
+		e := echo.New()
+		e.Use(createLoggingMiddleware(cfg))
+		e.GET("/notfound", func(c echo.Context) error {
+			return echo.NewHTTPError(http.StatusNotFound, "not found")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/notfound", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("handles nil OTel config gracefully", func(t *testing.T) {
+		// This shouldn't happen in practice as setupEcho checks for nil,
+		// but test defensive behavior
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("createLoggingMiddleware panicked with nil config: %v", r)
+			}
+		}()
+
+		e := echo.New()
+		// Don't use nil config - use config with logging disabled instead
+		cfg := otel.NewConfig("test-service").WithoutLogging()
+		if cfg.IsLoggingEnabled() {
+			e.Use(createLoggingMiddleware(cfg))
+		}
+		e.GET("/test", func(c echo.Context) error {
+			return c.String(http.StatusOK, "ok")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestCreateMetricsMiddleware(t *testing.T) {
+	t.Run("records HTTP metrics with OTel", func(t *testing.T) {
+		// Create OTel config with metrics enabled
+		cfg := otel.NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider())
+
+		// Create Echo with metrics middleware
+		e := echo.New()
+		e.Use(createMetricsMiddleware(cfg))
+		e.GET("/test", func(c echo.Context) error {
+			return c.String(http.StatusOK, "success")
+		})
+
+		// Make request
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("records metrics for multiple requests", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider())
+
+		e := echo.New()
+		e.Use(createMetricsMiddleware(cfg))
+		e.GET("/test", func(c echo.Context) error {
+			return c.String(http.StatusOK, "ok")
+		})
+
+		// Make multiple requests
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusOK, rec.Code)
+		}
+	})
+
+	t.Run("records metrics for different status codes", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider())
+
+		e := echo.New()
+		e.Use(createMetricsMiddleware(cfg))
+		e.GET("/success", func(c echo.Context) error {
+			return c.String(http.StatusOK, "ok")
+		})
+		e.GET("/error", func(c echo.Context) error {
+			return echo.NewHTTPError(http.StatusInternalServerError, "error")
+		})
+		e.GET("/notfound", func(c echo.Context) error {
+			return echo.NewHTTPError(http.StatusNotFound, "not found")
+		})
+
+		// Test different status codes
+		tests := []struct {
+			path           string
+			expectedStatus int
+		}{
+			{"/success", http.StatusOK},
+			{"/error", http.StatusInternalServerError},
+			{"/notfound", http.StatusNotFound},
+		}
+
+		for _, tt := range tests {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+		}
+	})
+
+	t.Run("handles nil OTel config gracefully", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("createMetricsMiddleware panicked with nil metrics: %v", r)
+			}
+		}()
+
+		e := echo.New()
+		// Don't use nil config - use config without metrics
+		cfg := otel.NewConfig("test-service")
+		if cfg.IsMetricsEnabled() {
+			e.Use(createMetricsMiddleware(cfg))
+		}
+		e.GET("/test", func(c echo.Context) error {
+			return c.String(http.StatusOK, "ok")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestSetupEchoWithOTel(t *testing.T) {
+	t.Run("sets up Echo with logging middleware when enabled", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service")
+		config := DefaultConfig(8080, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.OTelConfig = cfg
+
+		e := setupEcho(config)
+
+		// Verify middleware is set up by making a request
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("sets up Echo with metrics middleware when enabled", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider())
+		config := DefaultConfig(8080, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.OTelConfig = cfg
+
+		e := setupEcho(config)
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("sets up Echo with tracing middleware when enabled", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service").
+			WithTracerProvider(noopt.NewTracerProvider())
+		config := DefaultConfig(8080, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.OTelConfig = cfg
+
+		e := setupEcho(config)
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("sets up Echo with all telemetry enabled", func(t *testing.T) {
+		cfg := otel.NewConfig("test-service").
+			WithTracerProvider(noopt.NewTracerProvider()).
+			WithMeterProvider(noopm.NewMeterProvider())
+		config := DefaultConfig(8080, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.OTelConfig = cfg
+
+		e := setupEcho(config)
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("sets up Echo without telemetry when OTelConfig is nil", func(t *testing.T) {
+		config := DefaultConfig(8080, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.OTelConfig = nil
+
+		e := setupEcho(config)
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
 }

@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/jasoet/pkg/v2/concurrent"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // testKey is a custom type for the context key to avoid collisions
@@ -559,6 +562,339 @@ func TestIsUnauthorized(t *testing.T) {
 
 		if IsUnauthorized(response) {
 			t.Error("Expected IsUnauthorized to return false for OK status")
+		}
+	})
+}
+
+func TestWithOTelConfig(t *testing.T) {
+	t.Run("sets OTel config on client", func(t *testing.T) {
+		cfg := &Config{
+			OTelConfig: nil,
+		}
+
+		otelCfg := otel.NewConfig("test-service")
+		option := WithOTelConfig(otelCfg)
+
+		client := &Client{
+			restConfig: cfg,
+		}
+		option(client)
+
+		if client.restConfig.OTelConfig != otelCfg {
+			t.Error("Expected OTel config to be set on client")
+		}
+	})
+
+	t.Run("works with NewClient", func(t *testing.T) {
+		otelCfg := otel.NewConfig("test-service")
+		client := NewClient(WithOTelConfig(otelCfg))
+
+		if client.restConfig.OTelConfig != otelCfg {
+			t.Error("Expected OTel config to be set via NewClient")
+		}
+	})
+}
+
+func TestSetMiddlewares(t *testing.T) {
+	t.Run("replaces existing middlewares", func(t *testing.T) {
+		client := NewClient()
+
+		// Initially should have default logging middleware
+		initial := len(client.GetMiddlewares())
+		if initial == 0 {
+			t.Error("Expected client to have default middlewares")
+		}
+
+		// Set new middlewares
+		mw1 := &TestMiddleware{Name: "test1"}
+		mw2 := &TestMiddleware{Name: "test2"}
+		client.SetMiddlewares(mw1, mw2)
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 2 {
+			t.Errorf("Expected 2 middlewares, got %d", len(middlewares))
+		}
+	})
+
+	t.Run("can set empty middlewares list", func(t *testing.T) {
+		client := NewClient()
+		client.SetMiddlewares()
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 0 {
+			t.Errorf("Expected 0 middlewares, got %d", len(middlewares))
+		}
+	})
+
+	t.Run("is thread-safe", func(t *testing.T) {
+		client := NewClient()
+		done := make(chan bool, 2)
+
+		// Concurrent writes
+		go func() {
+			for i := 0; i < 100; i++ {
+				client.SetMiddlewares(&TestMiddleware{Name: "goroutine1"})
+			}
+			done <- true
+		}()
+
+		go func() {
+			for i := 0; i < 100; i++ {
+				client.SetMiddlewares(&TestMiddleware{Name: "goroutine2"})
+			}
+			done <- true
+		}()
+
+		<-done
+		<-done
+
+		// Should complete without race conditions
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 1 {
+			t.Errorf("Expected 1 middleware after concurrent access, got %d", len(middlewares))
+		}
+	})
+}
+
+func TestAddMiddleware(t *testing.T) {
+	t.Run("appends middleware to existing list", func(t *testing.T) {
+		client := NewClient()
+		initial := len(client.GetMiddlewares())
+
+		mw := &TestMiddleware{Name: "additional"}
+		client.AddMiddleware(mw)
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != initial+1 {
+			t.Errorf("Expected %d middlewares, got %d", initial+1, len(middlewares))
+		}
+	})
+
+	t.Run("maintains order of middlewares", func(t *testing.T) {
+		client := NewClient()
+		client.SetMiddlewares() // Clear defaults
+
+		mw1 := &TestMiddleware{Name: "first"}
+		mw2 := &TestMiddleware{Name: "second"}
+		mw3 := &TestMiddleware{Name: "third"}
+
+		client.AddMiddleware(mw1)
+		client.AddMiddleware(mw2)
+		client.AddMiddleware(mw3)
+
+		middlewares := client.GetMiddlewares()
+		if len(middlewares) != 3 {
+			t.Errorf("Expected 3 middlewares, got %d", len(middlewares))
+		}
+
+		if m, ok := middlewares[0].(*TestMiddleware); !ok || m.Name != "first" {
+			t.Error("Expected first middleware to be 'first'")
+		}
+		if m, ok := middlewares[1].(*TestMiddleware); !ok || m.Name != "second" {
+			t.Error("Expected second middleware to be 'second'")
+		}
+		if m, ok := middlewares[2].(*TestMiddleware); !ok || m.Name != "third" {
+			t.Error("Expected third middleware to be 'third'")
+		}
+	})
+}
+
+func TestGetMiddlewares(t *testing.T) {
+	t.Run("returns copy of middlewares", func(t *testing.T) {
+		client := NewClient()
+		client.SetMiddlewares(&TestMiddleware{Name: "test"})
+
+		middlewares1 := client.GetMiddlewares()
+		middlewares2 := client.GetMiddlewares()
+
+		// Verify we get different slices (copies)
+		if &middlewares1[0] == &middlewares2[0] {
+			t.Error("Expected GetMiddlewares to return a copy, not the original slice")
+		}
+	})
+
+	t.Run("modifications to returned slice don't affect client", func(t *testing.T) {
+		client := NewClient()
+		mw := &TestMiddleware{Name: "test"}
+		client.SetMiddlewares(mw)
+
+		middlewares := client.GetMiddlewares()
+		middlewares[0] = &TestMiddleware{Name: "modified"}
+
+		// Verify client's middlewares are unchanged
+		clientMiddlewares := client.GetMiddlewares()
+		if m, ok := clientMiddlewares[0].(*TestMiddleware); !ok || m.Name != "test" {
+			t.Error("Expected client middlewares to be unchanged after modifying returned slice")
+		}
+	})
+}
+
+func TestClient_MakeRequestWithTrace(t *testing.T) {
+	t.Run("returns error when client is nil", func(t *testing.T) {
+		client := &Client{
+			restClient: nil,
+			restConfig: DefaultRestConfig(),
+		}
+
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", "http://example.com", "", headers)
+		if err == nil {
+			t.Error("Expected error when rest client is nil")
+		}
+		if response != nil {
+			t.Error("Expected nil response when rest client is nil")
+		}
+	})
+
+	t.Run("makes successful GET request with trace", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("success"))
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response")
+		}
+		if response.StatusCode() != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", response.StatusCode())
+		}
+	})
+
+	t.Run("works with middleware", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		client.SetMiddlewares(&TestMiddleware{Name: "trace-test"})
+
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response")
+		}
+		if response.StatusCode() != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", response.StatusCode())
+		}
+	})
+
+	t.Run("supports different HTTP methods", func(t *testing.T) {
+		methodReceived := ""
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			methodReceived = r.Method
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+		for _, method := range methods {
+			methodReceived = ""
+			_, err := client.MakeRequestWithTrace(ctx, method, server.URL, "", headers)
+			if err != nil {
+				t.Errorf("Unexpected error for method %s: %v", method, err)
+			}
+			// HEAD and OPTIONS might not receive proper method confirmation from test server
+			if method != "HEAD" && method != "OPTIONS" {
+				if methodReceived != method {
+					t.Errorf("Expected method %s, got %s", method, methodReceived)
+				}
+			}
+		}
+	})
+
+	t.Run("includes request body", func(t *testing.T) {
+		bodyReceived := ""
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "POST" {
+				buf := new(strings.Builder)
+				io.Copy(buf, r.Body)
+				bodyReceived = buf.String()
+			}
+			w.WriteHeader(http.StatusCreated)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+		body := "test request body"
+
+		response, err := client.MakeRequestWithTrace(ctx, "POST", server.URL, body, headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response.StatusCode() != http.StatusCreated {
+			t.Errorf("Expected status 201, got %d", response.StatusCode())
+		}
+		if bodyReceived != body {
+			t.Errorf("Expected body %q, got %q", body, bodyReceived)
+		}
+	})
+
+	t.Run("handles server error response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("server error"))
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err == nil {
+			t.Error("Expected error for 500 status")
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response even on error")
+		}
+		if response.StatusCode() != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", response.StatusCode())
+		}
+	})
+
+	t.Run("enables tracing on request", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response")
+		}
+		// With trace enabled, TraceInfo should be populated (even if values are zero)
+		if response.Request != nil {
+			_ = response.Request.TraceInfo()
 		}
 	})
 }

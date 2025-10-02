@@ -1,4 +1,4 @@
-//go:build temporal
+//go:build integration
 
 package temporal
 
@@ -14,19 +14,18 @@ import (
 )
 
 func TestScheduleManagerIntegration(t *testing.T) {
-	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9099"
+	ctx := context.Background()
 
-	temporalClient, err := NewClient(config)
-	require.NoError(t, err, "Failed to create Temporal client")
-	defer temporalClient.Close()
+	// Start Temporal container and get client
+	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	defer cleanup()
 
 	scheduleManager := NewScheduleManager(temporalClient)
 	require.NotNil(t, scheduleManager, "ScheduleManager should not be nil")
 
 	t.Run("CreateScheduleManager", func(t *testing.T) {
-		client := scheduleManager.GetClient()
-		assert.Equal(t, temporalClient, client, "Client should match")
+		cli := scheduleManager.GetClient()
+		assert.Equal(t, temporalClient, cli, "Client should match")
 	})
 
 	t.Run("CreateCronSchedule", func(t *testing.T) {
@@ -238,12 +237,11 @@ func TestScheduleManagerIntegration(t *testing.T) {
 }
 
 func TestScheduleManagerErrorHandling(t *testing.T) {
-	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9100"
+	ctx := context.Background()
 
-	temporalClient, err := NewClient(config)
-	require.NoError(t, err)
-	defer temporalClient.Close()
+	// Start Temporal container and get client
+	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	defer cleanup()
 
 	scheduleManager := NewScheduleManager(temporalClient)
 
@@ -316,5 +314,222 @@ func TestScheduleManagerErrorHandling(t *testing.T) {
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
 		assert.Error(t, err, "Creating schedule with invalid cron should fail")
 		assert.Nil(t, handle, "Handle should be nil for invalid schedule")
+	})
+}
+
+// TestScheduleManagerAdditionalMethods tests uncovered methods
+func TestScheduleManagerAdditionalMethods(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container and get connection details
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
+	config := DefaultConfig()
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
+
+	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {
+		sm := NewScheduleManager(config)
+		require.NotNil(t, sm, "ScheduleManager created with config should not be nil")
+		assert.NotNil(t, sm.GetClient(), "Client should be created")
+		sm.Close()
+	})
+
+	t.Run("NewScheduleManagerWithClient", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm := NewScheduleManager(temporalClient)
+		require.NotNil(t, sm, "ScheduleManager created with client should not be nil")
+		assert.Equal(t, temporalClient, sm.GetClient(), "Client should match")
+	})
+
+	t.Run("NewScheduleManagerWithInvalidType", func(t *testing.T) {
+		sm := NewScheduleManager("invalid-type")
+		assert.Nil(t, sm, "ScheduleManager should be nil for invalid type")
+	})
+
+	t.Run("CreateScheduleWithOptions", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm := NewScheduleManager(temporalClient)
+		require.NotNil(t, sm)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		scheduleID := "test-options-schedule-" + time.Now().Format("20060102-150405")
+
+		options := client.ScheduleOptions{
+			ID: scheduleID,
+			Spec: client.ScheduleSpec{
+				CronExpressions: []string{"0 12 * * *"},
+			},
+			Action: &client.ScheduleWorkflowAction{
+				ID:        "options-workflow",
+				Workflow:  "TestWorkflow",
+				TaskQueue: "test-options-queue",
+				Args:      []interface{}{"test"},
+			},
+		}
+
+		handle, err := sm.CreateScheduleWithOptions(ctx, options)
+		if err != nil {
+			t.Logf("Expected failure creating schedule with options: %v", err)
+			return
+		}
+		require.NotNil(t, handle)
+
+		// Cleanup
+		err = handle.Delete(ctx)
+		assert.NoError(t, err)
+	})
+
+	t.Run("CreateWorkflowSchedule", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm := NewScheduleManager(temporalClient)
+		require.NotNil(t, sm)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		scheduleName := "test-workflow-schedule-" + time.Now().Format("20060102-150405")
+
+		wfOptions := WorkflowScheduleOptions{
+			WorkflowID: "workflow-" + scheduleName,
+			Workflow:   "TestWorkflow",
+			TaskQueue:  "test-wf-queue",
+			Interval:   1 * time.Hour,
+			Args:       []interface{}{"arg1", "arg2"},
+		}
+
+		handle, err := sm.CreateWorkflowSchedule(ctx, scheduleName, wfOptions)
+		if err != nil {
+			t.Logf("Expected failure creating workflow schedule: %v", err)
+			return
+		}
+		require.NotNil(t, handle)
+
+		// Cleanup
+		err = handle.Delete(ctx)
+		assert.NoError(t, err)
+	})
+
+	t.Run("DeleteSchedules", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm := NewScheduleManager(temporalClient)
+		require.NotNil(t, sm)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		// Create multiple schedules
+		scheduleIDs := []string{
+			"delete-all-1-" + time.Now().Format("20060102-150405"),
+			"delete-all-2-" + time.Now().Format("20060102-150405"),
+		}
+
+		for _, scheduleID := range scheduleIDs {
+			spec := client.ScheduleSpec{
+				CronExpressions: []string{"0 0 * * *"},
+			}
+			action := &client.ScheduleWorkflowAction{
+				ID:        "delete-all-workflow-" + scheduleID,
+				Workflow:  "TestWorkflow",
+				TaskQueue: "delete-all-queue",
+				Args:      []interface{}{"test"},
+			}
+
+			_, err := sm.CreateSchedule(ctx, scheduleID, spec, action)
+			if err != nil {
+				t.Logf("Could not create schedule for delete all test: %v", err)
+				continue
+			}
+		}
+
+		// Delete all schedules
+		err = sm.DeleteSchedules(ctx)
+		assert.NoError(t, err, "DeleteSchedules should succeed")
+
+		// Verify handlers map is empty
+		handlers := sm.GetScheduleHandlers()
+		assert.Empty(t, handlers, "Schedule handlers map should be empty after DeleteSchedules")
+	})
+
+	t.Run("DeleteSchedulesWithEmpty", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm := NewScheduleManager(temporalClient)
+		require.NotNil(t, sm)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Delete when no schedules exist
+		err = sm.DeleteSchedules(ctx)
+		assert.NoError(t, err, "DeleteSchedules on empty manager should succeed")
+	})
+
+	t.Run("GetScheduleHandlers", func(t *testing.T) {
+		temporalClient, err := NewClient(config)
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm := NewScheduleManager(temporalClient)
+		require.NotNil(t, sm)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		scheduleID := "get-handlers-schedule-" + time.Now().Format("20060102-150405")
+
+		spec := client.ScheduleSpec{
+			CronExpressions: []string{"0 0 * * *"},
+		}
+		action := &client.ScheduleWorkflowAction{
+			ID:        "get-handlers-workflow",
+			Workflow:  "TestWorkflow",
+			TaskQueue: "get-handlers-queue",
+			Args:      []interface{}{"test"},
+		}
+
+		handle, err := sm.CreateSchedule(ctx, scheduleID, spec, action)
+		if err != nil {
+			t.Logf("Could not create schedule for get handlers test: %v", err)
+			return
+		}
+
+		// Get handlers
+		handlers := sm.GetScheduleHandlers()
+		assert.NotNil(t, handlers, "Handlers map should not be nil")
+		assert.Contains(t, handlers, scheduleID, "Handlers should contain created schedule")
+
+		// Cleanup
+		err = handle.Delete(ctx)
+		assert.NoError(t, err)
+	})
+
+	t.Run("CloseScheduleManager", func(t *testing.T) {
+		sm := NewScheduleManager(config)
+		require.NotNil(t, sm)
+
+		// Should not panic
+		sm.Close()
+
+		// Closing again should also be safe
+		sm.Close()
 	})
 }

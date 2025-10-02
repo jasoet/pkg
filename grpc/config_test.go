@@ -4,9 +4,13 @@ import (
 	"testing"
 	"time"
 
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	noopl "go.opentelemetry.io/otel/log/noop"
+	noopm "go.opentelemetry.io/otel/metric/noop"
+	noopt "go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 )
 
@@ -432,4 +436,34 @@ func TestMultipleOptions(t *testing.T) {
 	assert.Equal(t, "/custom-health", cfg.healthPath)
 	assert.Equal(t, "/api/v2", cfg.gatewayBasePath)
 	assert.False(t, cfg.enableReflection)
+}
+
+func TestWithOTelConfig(t *testing.T) {
+	t.Run("WithOTelConfig sets config", func(t *testing.T) {
+		otelConfig := pkgotel.NewConfig("grpc-test").
+			WithTracerProvider(noopt.NewTracerProvider()).
+			WithMeterProvider(noopm.NewMeterProvider()).
+			WithLoggerProvider(noopl.NewLoggerProvider())
+
+		cfg, err := newConfig(WithOTelConfig(otelConfig))
+		require.NoError(t, err)
+
+		assert.NotNil(t, cfg.otelConfig)
+		assert.Equal(t, otelConfig, cfg.otelConfig)
+		assert.Equal(t, "grpc-test", cfg.otelConfig.ServiceName)
+	})
+
+	t.Run("Without OTelConfig is nil", func(t *testing.T) {
+		cfg, err := newConfig()
+		require.NoError(t, err)
+
+		assert.Nil(t, cfg.otelConfig)
+	})
+
+	t.Run("Nil OTelConfig can be set", func(t *testing.T) {
+		cfg, err := newConfig(WithOTelConfig(nil))
+		require.NoError(t, err)
+
+		assert.Nil(t, cfg.otelConfig)
+	})
 }

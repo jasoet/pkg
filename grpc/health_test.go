@@ -240,3 +240,55 @@ func TestHealthCheckResultSerialization(t *testing.T) {
 	assert.Equal(t, result.Status, unmarshaled.Status)
 	assert.Len(t, unmarshaled.Details, len(result.Details))
 }
+
+func TestHealthManagerRemoveCheck(t *testing.T) {
+	hm := NewHealthManager()
+
+	// Register a check
+	testChecker := func() HealthCheckResult {
+		return HealthCheckResult{Status: HealthStatusUp}
+	}
+	hm.RegisterCheck("test_service", testChecker)
+	assert.Len(t, hm.checks, 1)
+
+	// Remove the check
+	hm.RemoveCheck("test_service")
+	assert.Len(t, hm.checks, 0)
+	assert.NotContains(t, hm.checks, "test_service")
+
+	// Removing non-existent check should not cause error
+	hm.RemoveCheck("non_existent")
+	assert.Len(t, hm.checks, 0)
+}
+
+func TestHealthManagerSetEnabled(t *testing.T) {
+	hm := NewHealthManager()
+
+	// Initially enabled
+	assert.True(t, hm.enabled)
+
+	// Register a healthy service
+	hm.RegisterCheck("service", func() HealthCheckResult {
+		return HealthCheckResult{Status: HealthStatusUp}
+	})
+
+	// Disable health checks
+	hm.SetEnabled(false)
+	assert.False(t, hm.enabled)
+
+	// Check health should return unknown status when disabled
+	checks := hm.CheckHealth()
+	assert.Len(t, checks, 1)
+	assert.Equal(t, HealthStatusUnknown, checks["status"].Status)
+	assert.Equal(t, "health checks disabled", checks["status"].Error)
+
+	// Re-enable health checks
+	hm.SetEnabled(true)
+	assert.True(t, hm.enabled)
+
+	// Check health should work normally
+	checks = hm.CheckHealth()
+	assert.Len(t, checks, 1)
+	assert.Contains(t, checks, "service")
+	assert.Equal(t, HealthStatusUp, checks["service"].Status)
+}
