@@ -1,10 +1,10 @@
 # Full-Stack OpenTelemetry Integration Example
 
 This example demonstrates end-to-end distributed tracing, metrics, and logging across:
-- **gRPC Server** with HTTP Gateway (`github.com/jasoet/pkg/grpc`)
-- **REST Client** making HTTP calls (`github.com/jasoet/pkg/rest`)
-- **Database** operations with GORM (`github.com/jasoet/pkg/db`)
-- **Structured Logging** with trace correlation (`github.com/jasoet/pkg/logging`)
+- **gRPC Server** with HTTP Gateway (`github.com/jasoet/pkg/v2/grpc`)
+- **REST Client** making HTTP calls (`github.com/jasoet/pkg/v2/rest`)
+- **Database** operations with GORM (`github.com/jasoet/pkg/v2/db`)
+- **Structured Logging** with trace correlation (`github.com/jasoet/pkg/v2/logging`)
 
 ## Architecture
 
@@ -44,24 +44,63 @@ Response with full trace context
    - All logs linked by same trace_id
    - Click a span → See all related logs
 
-## Setup
+## Quick Start
 
-### 1. Start OpenTelemetry Collector (Optional)
+### Prerequisites
 
+- Go 1.23+
+- Docker and Docker Compose
+- protoc (protocol buffer compiler)
+- protoc-gen-go and protoc-gen-go-grpc plugins
+
+Install protoc plugins:
 ```bash
-docker run -d --name otel-collector \
-  -p 4317:4317 -p 4318:4318 \
-  otel/opentelemetry-collector:latest
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 ```
 
-Or use Jaeger all-in-one:
+### Running the Example
 
 ```bash
-docker run -d --name jaeger \
-  -p 16686:16686 \
-  -p 4317:4317 \
-  -p 4318:4318 \
-  jaegertracing/all-in-one:latest
+# 1. Start Jaeger and PostgreSQL
+make docker-up
+
+# 2. Run the example (generates proto and starts server)
+make run
+
+# 3. In another terminal, make some requests:
+curl http://localhost:50051/api/v1/users/1
+
+# 4. View traces in Jaeger UI
+open http://localhost:16686
+```
+
+### Stopping
+
+```bash
+# Stop the application (Ctrl+C in terminal)
+
+# Stop Docker containers
+make docker-down
+
+# Clean generated files
+make clean
+```
+
+## Setup
+
+### 1. Start OpenTelemetry Collector (Using Docker Compose)
+
+The example includes a `docker-compose.yml` that starts:
+- **Jaeger** (all-in-one) for distributed tracing
+- **PostgreSQL** (optional) for production-like database
+
+```bash
+# Start all dependencies
+docker-compose up -d
+
+# Or use the Makefile
+make docker-up
 ```
 
 Visit Jaeger UI: http://localhost:16686
@@ -76,11 +115,11 @@ import (
     "log"
     "time"
 
-    "github.com/jasoet/pkg/db"
-    "github.com/jasoet/pkg/grpc"
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/otel"
-    "github.com/jasoet/pkg/rest"
+    "github.com/jasoet/pkg/v2/db"
+    "github.com/jasoet/pkg/v2/grpc"
+    "github.com/jasoet/pkg/v2/logging"
+    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v2/rest"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"

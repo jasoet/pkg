@@ -1,9 +1,3 @@
-## [1.6.0](https://github.com/jasoet/pkg/compare/v1.5.0...v1.6.0) (2025-10-02)
-
-### Features
-
-* **otel:** OpenTelemetry v2 instrumentation ([#4](https://github.com/jasoet/pkg/issues/4)) ([e5ab332](https://github.com/jasoet/pkg/commit/e5ab332154f404b7d0b5728d60e61ae2af615db2))
-
 ## [1.5.0](https://github.com/jasoet/pkg/compare/v1.4.1...v1.5.0) (2025-10-01)
 
 ### Features
