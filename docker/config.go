@@ -395,7 +395,20 @@ func WithPorts(portMapping string) Option {
 func WithPortBindings(bindings map[string]string) Option {
 	return func(c *config) error {
 		for containerPort, hostPort := range bindings {
-			natPort, err := nat.NewPort("tcp", containerPort)
+			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
+			protocol := "tcp"
+			portNum := containerPort
+
+			// Check if protocol is specified
+			if strings.Contains(containerPort, "/") {
+				parts := strings.Split(containerPort, "/")
+				if len(parts) == 2 {
+					portNum = parts[0]
+					protocol = parts[1]
+				}
+			}
+
+			natPort, err := nat.NewPort(protocol, portNum)
 			if err != nil {
 				return fmt.Errorf("invalid container port %s: %w", containerPort, err)
 			}
@@ -413,7 +426,20 @@ func WithPortBindings(bindings map[string]string) Option {
 func WithExposedPorts(ports ...string) Option {
 	return func(c *config) error {
 		for _, port := range ports {
-			natPort, err := nat.NewPort("tcp", port)
+			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
+			protocol := "tcp"
+			portNum := port
+
+			// Check if protocol is specified
+			if strings.Contains(port, "/") {
+				parts := strings.Split(port, "/")
+				if len(parts) == 2 {
+					portNum = parts[0]
+					protocol = parts[1]
+				}
+			}
+
+			natPort, err := nat.NewPort(protocol, portNum)
 			if err != nil {
 				return fmt.Errorf("invalid port %s: %w", port, err)
 			}

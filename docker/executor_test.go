@@ -182,7 +182,7 @@ func TestExecutor_Logs(t *testing.T) {
 	exec, _ := docker.New(
 		docker.WithImage("alpine:latest"),
 		docker.WithCmd("echo", "Hello from Docker"),
-		docker.WithAutoRemove(true),
+		// Don't use AutoRemove - we need to read logs after container finishes
 	)
 
 	err := exec.Start(ctx)
@@ -365,7 +365,6 @@ func TestExecutor_EnvironmentVariables(t *testing.T) {
 		docker.WithEnvMap(map[string]string{
 			"ANOTHER_VAR": "world",
 		}),
-		docker.WithAutoRemove(true),
 	)
 
 	err := exec.Start(ctx)
@@ -386,7 +385,6 @@ func TestExecutor_WorkDir(t *testing.T) {
 		docker.WithImage("alpine:latest"),
 		docker.WithWorkDir("/tmp"),
 		docker.WithCmd("pwd"),
-		docker.WithAutoRemove(true),
 	)
 
 	err := exec.Start(ctx)
@@ -547,7 +545,6 @@ func TestExecutor_GetLogsSince(t *testing.T) {
 	exec, _ := docker.New(
 		docker.WithImage("alpine:latest"),
 		docker.WithCmd("sh", "-c", "echo start; sleep 2; echo end"),
-		docker.WithAutoRemove(true),
 	)
 
 	err := exec.Start(ctx)
@@ -568,7 +565,6 @@ func TestExecutor_GetLastNLines(t *testing.T) {
 	exec, _ := docker.New(
 		docker.WithImage("alpine:latest"),
 		docker.WithCmd("sh", "-c", "for i in $(seq 1 10); do echo Line $i; done"),
-		docker.WithAutoRemove(true),
 	)
 
 	err := exec.Start(ctx)
@@ -626,7 +622,6 @@ func TestExecutor_StdoutStderr(t *testing.T) {
 	exec, _ := docker.New(
 		docker.WithImage("alpine:latest"),
 		docker.WithCmd("sh", "-c", "echo stdout message; echo stderr message >&2"),
-		docker.WithAutoRemove(true),
 	)
 
 	err := exec.Start(ctx)
