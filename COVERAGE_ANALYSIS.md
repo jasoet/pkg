@@ -1,11 +1,11 @@
 # Test Coverage Analysis - v2.0.0-beta.1
 
-**Overall Combined Coverage: 53.3%** *(Unit + Integration Tests)*
+**Overall Combined Coverage: 56.7%** *(Unit + Integration Tests)*
 **Overall Unit Test Coverage: 51.5%** *(estimated)*
 **Initial Coverage:** 33.2%
 **Date:** 2025-10-02
 **Goal for v2.0.0 GA:** 75%+
-**Progress:** +20.1% (48% of goal achieved)
+**Progress:** +23.5% (56% of goal achieved)
 
 ## Coverage by Package
 
@@ -25,7 +25,7 @@
 | Package | Unit | Combined | Priority | Change |
 |---------|------|----------|----------|--------|
 | grpc | 76.3% | 76.3% | Low | +20.5% ⭐ |
-| db | 8.2% | 34.8% | **HIGH** | +4.4% unit, +26.6% integration ⭐ |
+| db | 8.2% | 77.8% | Medium | +4.4% unit, +69.6% integration ⭐ |
 
 ### ❌ Low Coverage (<30%)
 | Package | Unit | Combined | Priority | Issue | Change |
@@ -60,19 +60,28 @@
 - **Overall combined:** 52.5% → 53.3% (+0.8%)
 - Comprehensive security and edge case testing
 
-### ✅ Session 6 (temporal integration)
+### ✅ Session 6 (temporal integration, 53.3% combined)
 - **temporal package:** 68.2% → 86.4% (+18.2%, +210 lines of integration tests)
 - Comprehensive schedule manager testing (all methods covered)
 - Tests added: NewScheduleManagerWithConfig, CreateScheduleWithOptions, CreateWorkflowSchedule, DeleteSchedules, GetScheduleHandlers, Close
 
-**Total test code added: 3,389 lines**
+### ✅ Session 7 (56.7% combined)
+- **db package:** 34.8% → 77.8% (+43.0%, +670 lines of OTel and GORM integration tests)
+- **Overall combined:** 53.3% → 56.7% (+3.4%)
+- OTel tracing callbacks fully tested (Create, Query, Update, Delete, Row, Raw operations)
+- OTel metrics collection tested (pool stats monitoring)
+- GORM migration functions tested (RunPostgresMigrationsWithGorm, RunPostgresMigrationsDownWithGorm)
+- Comprehensive error handling tests for Pool(), SQLDB(), invalid configs
+
+**Total test code added: 4,059 lines**
 
 **Note on Testing Strategy:**
-- Combined coverage (unit + integration): **53.3%**
-- Integration tests provide significant value for db package (+26.6%)
+- Combined coverage (unit + integration): **56.7%**
+- Integration tests provide significant value for db package (+69.6% combined)
 - Focus shifted to testcontainer-based integration tests over mocking
 - grpc OTel instrumentation achieves excellent coverage with noop providers
 - compress package now has comprehensive security testing (path traversal, zip bombs)
+- db package OTel callbacks and GORM migrations tested with testcontainers (PostgreSQL, MySQL, MSSQL)
 
 ## Critical Gaps Identified
 
@@ -271,14 +280,14 @@
 
 | Category | Current (Unit) | Current (Combined) | Target | Gap |
 |----------|----------------|-------------------|--------|-----|
-| **Overall** | ~51.5% | 53.3% | 75%+ | +21.7% |
-| Critical Packages (otel, db, ssh) | 42.9% | 51.7% | 75%+ | +23.3% |
+| **Overall** | ~51.5% | 56.7% | 75%+ | +18.3% |
+| Critical Packages (otel, db, ssh) | 42.9% | 72.5% | 75%+ | +2.5% |
 | HTTP/gRPC (server, rest, grpc) | 84.1% | 84.1% | 70%+ | ✅ Met |
 | Utilities (compress, config, logging, concurrent) | 90.9% | 90.9% | 85%+ | ✅ Met |
 
 ## Quick Wins for Immediate Impact
 
-**Completed in Sessions 1-5 (33.2% → 53.3% combined):**
+**Completed in Sessions 1-7 (33.2% → 56.7% combined):**
 
 1. ✅ **otel Config tests** - DONE
    - Impact: +8% overall coverage
@@ -320,7 +329,12 @@
    - Files: Updated `temporal/schedule_integration_test.go` (+210 LOC)
    - Coverage: 68.2% → 86.4%
 
-**Total: ~20% combined coverage improvement**
+9. ✅ **db OTel and GORM integration tests** - DONE
+   - Impact: +3.4% overall combined coverage
+   - Files: Created `db/otel_integration_test.go` (670 LOC), Updated `db/migration_testcontainers_test.go` (+110 LOC)
+   - Coverage: 34.8% → 77.8% (+43%)
+
+**Total: ~23.5% combined coverage improvement**
 
 ## Action Items
 
