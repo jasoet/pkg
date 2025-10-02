@@ -50,7 +50,7 @@ func (l *zerologLogger) Emit(ctx context.Context, record log.Record) {
 ### Basic Setup (Legacy)
 
 ```go
-import "github.com/jasoet/pkg/logging"
+import "github.com/jasoet/pkg/v2/logging"
 
 // Initialize global logger
 logging.Initialize("my-service", true)
@@ -67,8 +67,8 @@ logger.Info().Str("user_id", "123").Msg("User created")
 
 ```go
 import (
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/otel"
+    "github.com/jasoet/pkg/v2/logging"
+    "github.com/jasoet/pkg/v2/otel"
 )
 
 // Create LoggerProvider with zerolog backend
@@ -100,9 +100,9 @@ logger.Emit(ctx, record)
 
 ```go
 import (
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/otel"
-    "github.com/jasoet/pkg/server"
+    "github.com/jasoet/pkg/v2/logging"
+    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v2/server"
 )
 
 func main() {

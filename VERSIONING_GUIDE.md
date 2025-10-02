@@ -163,19 +163,26 @@ After v2 GA, remove the v2 check in `.github/workflows/release.yml`:
 
 ### Breaking Changes in v2
 
-1. **OpenTelemetry v2 Migration**
-   - Updated from `go.opentelemetry.io/otel` v1.x to v2.x
-   - Metrics API changes: Instrument creation now requires explicit error handling
-   - Tracing API changes: Span creation and context propagation updated
-   - See [OpenTelemetry Go v2 Migration Guide](https://github.com/open-telemetry/opentelemetry-go/blob/main/UPGRADING.md)
+1. **OpenTelemetry Integration Added**
+   - **v1 has NO OpenTelemetry support**
+   - **v2 adds optional OpenTelemetry instrumentation** across all packages
+   - Minimal API changes - most packages accept optional `OTelConfig` parameter
+   - Automatic tracing, metrics, and logging integration when OTel is configured
+   - Users can ignore OTel features and use packages without observability
 
 2. **Database Package**
-   - `ConnectionConfig.OTelConfig` now uses v2 OTel types
-   - Metrics collection updated for v2 API compatibility
+   - New `ConnectionConfig.OTelConfig` field (optional)
+   - When provided, enables automatic query tracing and connection pool metrics
+   - Backward compatible - works without OTel config
 
-3. **HTTP Package**
-   - Middleware updated for v2 OTel instrumentation
-   - Context propagation follows v2 patterns
+3. **Server/gRPC/REST Packages**
+   - New `OTelConfig` field in configuration structs (optional)
+   - When provided, enables automatic request tracing and metrics
+   - Backward compatible - works without OTel config
+
+4. **Logging Package**
+   - New `NewLoggerProvider` function for OTel integration
+   - Legacy `Initialize` and `ContextLogger` functions still work
 
 ### Migration Steps
 
@@ -193,11 +200,11 @@ After v2 GA, remove the v2 check in `.github/workflows/release.yml`:
    import "github.com/jasoet/pkg/v2/db"
    ```
 
-3. **Update OpenTelemetry Code**
-   - Follow [OpenTelemetry v2 migration guide](https://github.com/open-telemetry/opentelemetry-go/blob/main/UPGRADING.md)
-   - Update meter and tracer creation
-   - Add error handling for instrument creation
-   - Update context propagation
+3. **(Optional) Add OpenTelemetry**
+   - v2 supports OpenTelemetry instrumentation (optional)
+   - To enable: create `otel.Config` and pass to package configs
+   - Without OTel: packages work exactly like v1 (no observability)
+   - With OTel: automatic tracing, metrics, and logging
 
 4. **Test Thoroughly**
    - Run your test suite
@@ -289,4 +296,4 @@ Run `npx semantic-release --dry-run` locally to see what version would be releas
 - [Semantic Versioning](https://semver.org/)
 - [Conventional Commits](https://www.conventionalcommits.org/)
 - [Semantic Release](https://semantic-release.gitbook.io/)
-- [OpenTelemetry Go v2 Migration](https://github.com/open-telemetry/opentelemetry-go/blob/main/UPGRADING.md)
+- [OpenTelemetry Go Documentation](https://opentelemetry.io/docs/languages/go/)
