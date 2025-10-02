@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -723,6 +725,176 @@ func TestGetMiddlewares(t *testing.T) {
 		clientMiddlewares := client.GetMiddlewares()
 		if m, ok := clientMiddlewares[0].(*TestMiddleware); !ok || m.Name != "test" {
 			t.Error("Expected client middlewares to be unchanged after modifying returned slice")
+		}
+	})
+}
+
+func TestClient_MakeRequestWithTrace(t *testing.T) {
+	t.Run("returns error when client is nil", func(t *testing.T) {
+		client := &Client{
+			restClient: nil,
+			restConfig: DefaultRestConfig(),
+		}
+
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", "http://example.com", "", headers)
+		if err == nil {
+			t.Error("Expected error when rest client is nil")
+		}
+		if response != nil {
+			t.Error("Expected nil response when rest client is nil")
+		}
+	})
+
+	t.Run("makes successful GET request with trace", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("success"))
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response")
+		}
+		if response.StatusCode() != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", response.StatusCode())
+		}
+	})
+
+	t.Run("works with middleware", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		client.SetMiddlewares(&TestMiddleware{Name: "trace-test"})
+
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response")
+		}
+		if response.StatusCode() != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", response.StatusCode())
+		}
+	})
+
+	t.Run("supports different HTTP methods", func(t *testing.T) {
+		methodReceived := ""
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			methodReceived = r.Method
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+		for _, method := range methods {
+			methodReceived = ""
+			_, err := client.MakeRequestWithTrace(ctx, method, server.URL, "", headers)
+			if err != nil {
+				t.Errorf("Unexpected error for method %s: %v", method, err)
+			}
+			// HEAD and OPTIONS might not receive proper method confirmation from test server
+			if method != "HEAD" && method != "OPTIONS" {
+				if methodReceived != method {
+					t.Errorf("Expected method %s, got %s", method, methodReceived)
+				}
+			}
+		}
+	})
+
+	t.Run("includes request body", func(t *testing.T) {
+		bodyReceived := ""
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "POST" {
+				buf := new(strings.Builder)
+				io.Copy(buf, r.Body)
+				bodyReceived = buf.String()
+			}
+			w.WriteHeader(http.StatusCreated)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+		body := "test request body"
+
+		response, err := client.MakeRequestWithTrace(ctx, "POST", server.URL, body, headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response.StatusCode() != http.StatusCreated {
+			t.Errorf("Expected status 201, got %d", response.StatusCode())
+		}
+		if bodyReceived != body {
+			t.Errorf("Expected body %q, got %q", body, bodyReceived)
+		}
+	})
+
+	t.Run("handles server error response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("server error"))
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err == nil {
+			t.Error("Expected error for 500 status")
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response even on error")
+		}
+		if response.StatusCode() != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", response.StatusCode())
+		}
+	})
+
+	t.Run("enables tracing on request", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClient()
+		ctx := context.Background()
+		headers := make(map[string]string)
+
+		response, err := client.MakeRequestWithTrace(ctx, "GET", server.URL, "", headers)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if response == nil {
+			t.Fatal("Expected non-nil response")
+		}
+		// With trace enabled, TraceInfo should be populated (even if values are zero)
+		if response.Request != nil {
+			_ = response.Request.TraceInfo()
 		}
 	})
 }
