@@ -1,11 +1,11 @@
 # Test Coverage Analysis - v2.0.0-beta.1
 
-**Overall Combined Coverage: 46.4%** *(Unit + Integration Tests)*
-**Overall Unit Test Coverage: 44.2%**
+**Overall Combined Coverage: 52.5%** *(Unit + Integration Tests)*
+**Overall Unit Test Coverage: 50.7%** *(estimated)*
 **Initial Coverage:** 33.2%
 **Date:** 2025-10-02
 **Goal for v2.0.0 GA:** 75%+
-**Progress:** +13.2% (32% of goal achieved)
+**Progress:** +19.3% (46% of goal achieved)
 
 ## Coverage by Package
 
@@ -22,8 +22,8 @@
 ### ⚠️ Medium Coverage (30-70%)
 | Package | Unit | Combined | Priority | Change |
 |---------|------|----------|----------|--------|
+| grpc | 76.3% | 76.3% | Low | +20.5% ⭐ |
 | compress | 72.6% | 72.6% | Low | - |
-| grpc | 55.8% | 55.8% | Medium | - |
 | db | 8.2% | 34.8% | **HIGH** | +4.4% unit, +26.6% integration ⭐ |
 
 ### ❌ Low Coverage (<30%)
@@ -50,12 +50,18 @@
 - **Combined coverage analysis:** Unit + Integration tests measured
 - **db package (with integration):** 8.2% → 34.8% (testcontainer integration tests)
 
-**Total test code added: 1,869 lines**
+### ✅ Session 4 (50.7% unit est., 52.5% combined)
+- **grpc package:** 55.8% → 76.3% (+20.5%, +560 lines of OTel tests)
+- **Overall combined:** 46.4% → 52.5% (+6.1%)
+- OTel instrumentation for gRPC and HTTP gateway fully tested
+
+**Total test code added: 2,429 lines**
 
 **Note on Testing Strategy:**
-- Combined coverage (unit + integration): **46.4%**
+- Combined coverage (unit + integration): **52.5%**
 - Integration tests provide significant value for db package (+26.6%)
 - Focus shifted to testcontainer-based integration tests over mocking
+- grpc OTel instrumentation achieves excellent coverage with noop providers
 
 ## Critical Gaps Identified
 
@@ -254,14 +260,14 @@
 
 | Category | Current (Unit) | Current (Combined) | Target | Gap |
 |----------|----------------|-------------------|--------|-----|
-| **Overall** | 44.2% | 46.4% | 75%+ | +28.6% |
+| **Overall** | ~50.7% | 52.5% | 75%+ | +22.5% |
 | Critical Packages (otel, db, ssh) | 42.9% | 51.7% | 75%+ | +23.3% |
-| HTTP/gRPC (server, rest, grpc) | 77.2% | 77.2% | 70%+ | ✅ Met |
+| HTTP/gRPC (server, rest, grpc) | 84.1% | 84.1% | 70%+ | ✅ Met |
 | Utilities (compress, config, logging, concurrent) | 87.3% | 87.3% | 85%+ | ✅ Met |
 
 ## Quick Wins for Immediate Impact
 
-**Completed in Sessions 1-3 (33.2% → 46.4% combined):**
+**Completed in Sessions 1-4 (33.2% → 52.5% combined):**
 
 1. ✅ **otel Config tests** - DONE
    - Impact: +8% overall coverage
@@ -288,7 +294,12 @@
    - Files: Created `ssh/tunnel_test.go` (350 LOC)
    - Coverage: 0% → 23.3%
 
-**Total: ~13% combined coverage improvement**
+6. ✅ **grpc OTel instrumentation tests** - DONE
+   - Impact: +6.1% overall coverage
+   - Files: Created `grpc/otel_instrumentation_test.go` (560 LOC)
+   - Coverage: 55.8% → 76.3%
+
+**Total: ~19% combined coverage improvement**
 
 ## Action Items
 
@@ -321,11 +332,11 @@
 
 Run these commands to check current coverage:
 ```bash
-# Unit tests only (44.2%)
+# Unit tests only (~50.7%)
 task test
 open output/coverage.html
 
-# Combined unit + integration tests (46.4%)
+# Combined unit + integration tests (52.5%)
 export GOFLAGS="-mod=mod" && go test -tags=integration -cover -coverprofile=/tmp/coverage_all.out ./...
 go tool cover -func=/tmp/coverage_all.out | grep total
 go tool cover -html=/tmp/coverage_all.out -o /tmp/coverage_combined.html
