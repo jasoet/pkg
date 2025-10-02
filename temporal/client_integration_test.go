@@ -15,10 +15,17 @@ import (
 )
 
 func TestClientIntegration(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container once for all subtests
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := &Config{
-		HostPort:             "localhost:7233",
+		HostPort:             container.HostPort,
 		Namespace:            "default",
-		MetricsListenAddress: "0.0.0.0:9091", // Use different port to avoid conflicts
+		MetricsListenAddress: "0.0.0.0:0", // Random port
 	}
 
 	t.Run("NewClient", func(t *testing.T) {
@@ -74,12 +81,11 @@ func TestClientIntegration(t *testing.T) {
 }
 
 func TestClientOperations(t *testing.T) {
-	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9093"
+	ctx := context.Background()
 
-	temporalClient, err := NewClient(config)
-	require.NoError(t, err, "Failed to create Temporal client")
-	defer temporalClient.Close()
+	// Start Temporal container and get client
+	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	defer cleanup()
 
 	t.Run("DescribeTaskQueue", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -108,12 +114,11 @@ func TestClientOperations(t *testing.T) {
 
 // TestWorkflowExecution tests basic workflow execution functionality
 func TestWorkflowExecution(t *testing.T) {
-	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9094"
+	ctx := context.Background()
 
-	temporalClient, err := NewClient(config)
-	require.NoError(t, err, "Failed to create Temporal client")
-	defer temporalClient.Close()
+	// Start Temporal container and get client
+	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	defer cleanup()
 
 	t.Run("ExecuteSimpleWorkflow", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

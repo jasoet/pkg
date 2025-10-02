@@ -32,7 +32,7 @@
 |---------|------|----------|----------|-------|--------|
 | ssh | 23.3% | 23.3% | Medium | Integration tests needed | +23.3% ⭐ |
 
-*temporal requires temporal server running (use `task temporal:start` then `task test:temporal`)
+*temporal uses testcontainers (Docker required, no manual server needed)
 
 ## Recent Progress (Sessions 1-3)
 
@@ -89,6 +89,15 @@
 - Tests added: MountGatewayOnEcho, MountGatewayWithStripPrefix, SetupGatewayForH2C, SetupGatewayForSeparate, waitForGRPCServer, CreateGatewayMux, GatewayHealthMiddleware, LogGatewayRoutes
 - Gateway integration testing with real gRPC servers
 - Echo middleware testing for gateway health monitoring
+
+### ✅ Session 10 (68.8% complete combined)
+- **temporal package:** Refactored to use testcontainers (no manual server needed)
+- **Infrastructure improvement:** Eliminated need for `task temporal:start` before testing
+- Created `temporal/testcontainer_test.go` helper (107 lines)
+- Updated all temporal integration tests to use testcontainers
+- Tests now automatically start/stop Temporal containers via Docker
+- Using `temporalio/temporal:latest` with `server start-dev` command
+- Coverage: 86.0% (maintained from previous session)
 
 **Total test code added: 4,307 lines**
 **Key Insight:** Temporal package (86.4%) was previously excluded from combined coverage calculations!
@@ -388,9 +397,9 @@
 
 - **Complete combined coverage (unit + integration + temporal): 68.8%**
 - Unit tests only: `task test` (~52.0%)
-- Integration tests: `task test:integration` (db package goes to 77.8%)
-- Temporal tests: `task test:temporal` (86.4% coverage, requires server)
-- **All tests combined:** `task test:all` (68.8%, requires temporal server)
+- Integration tests: `task test:integration` (db package goes to 77.8%, uses testcontainers)
+- Temporal tests: `task test:temporal` (86.0% coverage, uses testcontainers - Docker required)
+- **All tests combined:** `task test:all` (68.8%, uses testcontainers - Docker required)
 - Coverage reports available in `output/` directory
 
 ## Tracking
@@ -398,8 +407,7 @@
 Run these commands to check current coverage:
 ```bash
 # ⭐ RECOMMENDED: Complete combined coverage (68.8%)
-# Requires temporal server running first
-task temporal:start
+# Requires Docker for testcontainers
 task test:all
 # Output: output/coverage-all.html and prints total coverage
 
@@ -407,17 +415,15 @@ task test:all
 task test
 open output/coverage.html
 
-# Integration tests only (db: 77.8%)
+# Integration tests only (db: 77.8%, requires Docker)
 task test:integration
 open output/coverage-integration.html
 
-# Temporal tests only (86.4%, requires server)
-task temporal:start
+# Temporal tests only (86.0%, requires Docker)
 task test:temporal
 open output/coverage-temporal.html
-
-# Stop temporal server when done
-task temporal:stop
 ```
 
 **Recommended:** Use `task test:all` for complete coverage tracking (unit + integration + temporal) for v2.0.0 GA.
+
+**Note:** Integration and Temporal tests use testcontainers and require Docker to be running. Manual server management is no longer needed.

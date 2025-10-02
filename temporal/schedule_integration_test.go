@@ -14,19 +14,18 @@ import (
 )
 
 func TestScheduleManagerIntegration(t *testing.T) {
-	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9099"
+	ctx := context.Background()
 
-	temporalClient, err := NewClient(config)
-	require.NoError(t, err, "Failed to create Temporal client")
-	defer temporalClient.Close()
+	// Start Temporal container and get client
+	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	defer cleanup()
 
 	scheduleManager := NewScheduleManager(temporalClient)
 	require.NotNil(t, scheduleManager, "ScheduleManager should not be nil")
 
 	t.Run("CreateScheduleManager", func(t *testing.T) {
-		client := scheduleManager.GetClient()
-		assert.Equal(t, temporalClient, client, "Client should match")
+		cli := scheduleManager.GetClient()
+		assert.Equal(t, temporalClient, cli, "Client should match")
 	})
 
 	t.Run("CreateCronSchedule", func(t *testing.T) {
@@ -238,12 +237,11 @@ func TestScheduleManagerIntegration(t *testing.T) {
 }
 
 func TestScheduleManagerErrorHandling(t *testing.T) {
-	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9100"
+	ctx := context.Background()
 
-	temporalClient, err := NewClient(config)
-	require.NoError(t, err)
-	defer temporalClient.Close()
+	// Start Temporal container and get client
+	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	defer cleanup()
 
 	scheduleManager := NewScheduleManager(temporalClient)
 
@@ -321,8 +319,16 @@ func TestScheduleManagerErrorHandling(t *testing.T) {
 
 // TestScheduleManagerAdditionalMethods tests uncovered methods
 func TestScheduleManagerAdditionalMethods(t *testing.T) {
+	ctx := context.Background()
+
+	// Start Temporal container and get connection details
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9101"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {
 		sm := NewScheduleManager(config)
