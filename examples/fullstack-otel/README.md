@@ -77,10 +77,10 @@ go mod download
 
 ```bash
 # 1. Start Jaeger and PostgreSQL
-make docker-up
+task docker:up
 
 # 2. Run the example (generates proto and starts server)
-make run
+task run
 
 # 3. In another terminal, make some requests:
 curl http://localhost:50051/api/v1/users/1
@@ -95,10 +95,10 @@ open http://localhost:16686
 # Stop the application (Ctrl+C in terminal)
 
 # Stop Docker containers
-make docker-down
+task docker:down
 
 # Clean generated files
-make clean
+task clean
 ```
 
 ## Setup
@@ -113,8 +113,8 @@ The example includes a `docker-compose.yml` that starts:
 # Start all dependencies
 docker-compose up -d
 
-# Or use the Makefile
-make docker-up
+# Or use the Taskfile
+task docker:up
 ```
 
 Visit Jaeger UI: http://localhost:16686

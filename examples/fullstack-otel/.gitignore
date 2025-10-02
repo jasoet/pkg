@@ -21,6 +21,9 @@ fullstack-otel
 *.swo
 *~
 
+# Task runner
+.task/
+
 # OS
 .DS_Store
 Thumbs.db
