@@ -35,12 +35,14 @@ tasks:
       - 'echo "✓ Temporal coverage: output/coverage-temporal.html"'
 
   test:all:
-    desc: Run all tests (unit + integration + temporal)
+    desc: Run all tests (unit + integration + temporal) with combined coverage
     silent: true
     cmds:
-      - task: test
-      - task: test:integration
-      - task: test:temporal
+      - mkdir -p output
+      - go test -race -count=1 -coverprofile=output/coverage-all.out -covermode=atomic -tags="integration,temporal" -timeout=15m ./...
+      - go tool cover -html=output/coverage-all.out -o output/coverage-all.html
+      - 'echo "✓ Complete coverage: output/coverage-all.html"'
+      - go tool cover -func=output/coverage-all.out | grep total
 
   lint:
     desc: Run golangci-lint
