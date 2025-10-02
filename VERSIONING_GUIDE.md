@@ -188,7 +188,7 @@ After v2 GA, remove the v2 check in `.github/workflows/release.yml`:
 
 1. **Update Dependencies**
    ```bash
-   go get github.com/jasoet/pkg/v2@v2.0.0-beta.2
+   go get github.com/jasoet/pkg/v2@v2.0.0
    ```
 
 2. **Update Import Paths**
