@@ -93,10 +93,12 @@
 ### ✅ Session 10 (68.8% complete combined)
 - **temporal package:** Refactored to use testcontainers (no manual server needed)
 - **Infrastructure improvement:** Eliminated need for `task temporal:start` before testing
+- **Build tag consolidation:** Changed temporal tests from `temporal` to `integration` tag
 - Created `temporal/testcontainer_test.go` helper (107 lines)
 - Updated all temporal integration tests to use testcontainers
 - Tests now automatically start/stop Temporal containers via Docker
 - Using `temporalio/temporal:latest` with `server start-dev` command
+- **Simplified testing:** Now only two test categories (unit and integration)
 - Coverage: 86.0% (maintained from previous session)
 
 **Total test code added: 4,307 lines**
@@ -395,35 +397,35 @@
 
 ## Notes
 
-- **Complete combined coverage (unit + integration + temporal): 68.8%**
+- **Complete combined coverage (unit + integration): 68.8%**
 - Unit tests only: `task test` (~52.0%)
-- Integration tests: `task test:integration` (db package goes to 77.8%, uses testcontainers)
-- Temporal tests: `task test:temporal` (86.0% coverage, uses testcontainers - Docker required)
-- **All tests combined:** `task test:all` (68.8%, uses testcontainers - Docker required)
+- **Integration tests:** `task test:integration` (includes db + temporal, 68.8% combined, uses testcontainers - Docker required)
+- **All tests combined:** `task test:all` (same as integration, 68.8%)
 - Coverage reports available in `output/` directory
+- **Note:** Temporal tests now use `integration` build tag (consolidated with db tests)
 
 ## Tracking
 
 Run these commands to check current coverage:
 ```bash
-# ⭐ RECOMMENDED: Complete combined coverage (68.8%)
+# ⭐ RECOMMENDED: Complete coverage (unit + integration)
 # Requires Docker for testcontainers
 task test:all
 # Output: output/coverage-all.html and prints total coverage
 
-# Unit tests only (~52.0%)
+# Unit tests only (~52.0%, no Docker required)
 task test
 open output/coverage.html
 
-# Integration tests only (db: 77.8%, requires Docker)
+# Integration tests only (db + temporal, 68.8%, requires Docker)
 task test:integration
 open output/coverage-integration.html
-
-# Temporal tests only (86.0%, requires Docker)
-task test:temporal
-open output/coverage-temporal.html
 ```
 
-**Recommended:** Use `task test:all` for complete coverage tracking (unit + integration + temporal) for v2.0.0 GA.
+**Recommended:** Use `task test:all` for complete coverage tracking (unit + integration) for v2.0.0 GA.
 
-**Note:** Integration and Temporal tests use testcontainers and require Docker to be running. Manual server management is no longer needed.
+**Test Categories:**
+- **Unit tests:** No build tags, no Docker required
+- **Integration tests:** Build tag `integration`, Docker required (includes db + temporal testcontainers)
+
+**Note:** All integration tests (db and temporal) now use testcontainers and require Docker to be running. Manual server management is no longer needed.

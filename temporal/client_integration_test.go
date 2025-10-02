@@ -1,4 +1,4 @@
-//go:build temporal
+//go:build integration
 
 package temporal
 

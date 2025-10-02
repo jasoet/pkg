@@ -1,12 +1,12 @@
 # Temporal Package Integration Tests
 
-This directory contains comprehensive integration tests for the Temporal package. These tests require a running Temporal server and are designed to test the full functionality of the Temporal client, worker manager, and schedule manager.
+This directory contains comprehensive integration tests for the Temporal package. These tests use testcontainers to automatically manage Temporal server instances and test the full functionality of the Temporal client, worker manager, and schedule manager.
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker (for testcontainers)
 - Go 1.23+
-- Temporal server (will be started automatically via Docker Compose)
+- No manual Temporal server setup required
 
 ## Test Categories
 
@@ -46,85 +46,52 @@ Tests complex, real-world scenarios:
 
 ## Running the Tests
 
-### Option 1: Using Mage (Recommended)
+### Using Task (Recommended)
 
-The project includes a Mage build system with predefined tasks:
+The project uses Taskfile for running tests:
 
 ```bash
-# Start Temporal services and run integration tests
-mage temporalTest
+# Run all integration tests (includes temporal + db tests)
+task test:integration
 
-# Just start Temporal services (for manual testing)
-mage temporal:up
-
-# View Temporal service logs
-mage temporal:logs
-
-# Stop Temporal services
-mage temporal:down
-
-# Restart Temporal services
-mage temporal:restart
+# Run all tests with combined coverage
+task test:all
 ```
 
-### Option 2: Manual Docker Setup
+### Direct Go Test Command
 
-1. **Start Temporal Server**:
-   ```bash
-   cd scripts/compose
-   docker compose -f temporal-compose.yml up -d
-   ```
+```bash
+# Run temporal integration tests only
+go test -tags=integration -timeout=10m ./temporal/...
 
-2. **Wait for Services to Initialize**:
-   ```bash
-   # Wait about 30 seconds for Temporal to fully start
-   sleep 30
-   ```
+# Run with verbose output
+go test -tags=integration -v ./temporal/...
 
-3. **Run Integration Tests**:
-   ```bash
-   go test -tags=temporal -timeout=10m ./temporal/...
-   ```
+# Run specific test
+go test -tags=integration -run TestClientIntegration ./temporal/...
+```
 
-4. **Clean Up**:
-   ```bash
-   docker compose -f temporal-compose.yml down -v
-   ```
+### How It Works
 
-### Option 3: Using External Temporal Server
+The tests use **testcontainers** to automatically:
+1. Pull the `temporalio/temporal:latest` Docker image
+2. Start a Temporal server container for each test suite
+3. Wait for the server to be ready
+4. Run the tests against the containerized server
+5. Automatically clean up containers when tests complete
 
-If you have Temporal running elsewhere:
-
-1. **Update Configuration**:
-   ```go
-   config := &temporal.Config{
-       HostPort:             "your-temporal-host:7233",
-       Namespace:            "your-namespace",
-       MetricsListenAddress: "0.0.0.0:9090",
-   }
-   ```
-
-2. **Run Tests**:
-   ```bash
-   go test -tags=temporal ./temporal/...
-   ```
+No manual server management required!
 
 ## Test Configuration
 
-The integration tests use the following default configuration:
+The integration tests use testcontainers with automatic configuration:
 
-- **Temporal Server**: `localhost:7233`
+- **Temporal Server**: Dynamically assigned port (managed by testcontainers)
 - **Namespace**: `default`
-- **Database**: PostgreSQL (started via Docker Compose)
-- **UI**: Available at `http://localhost:8233`
+- **Database**: Built-in (managed by Temporal container)
+- **Container Image**: `temporalio/temporal:latest`
 
-### Docker Compose Services
-
-The `temporal-compose.yml` includes:
-
-- **PostgreSQL**: Database for Temporal (port 5434)
-- **Temporal Server**: Core Temporal service (port 7233)
-- **Temporal UI**: Web interface (port 8233)
+Each test suite gets its own isolated Temporal container instance.
 
 ## Test Features
 
@@ -174,17 +141,14 @@ Tests include controlled failure scenarios:
 ### Debugging Commands
 
 ```bash
-# Check Temporal server status
-docker compose -f scripts/compose/temporal-compose.yml logs temporal-server
+# List running testcontainer instances
+docker ps | grep temporalio/temporal
 
-# Check PostgreSQL status
-docker compose -f scripts/compose/temporal-compose.yml logs postgresql-temporal
+# View logs from a specific container
+docker logs <container-id>
 
-# List running containers
-docker ps
-
-# Check Temporal CLI connectivity
-docker exec temporal-server tctl namespace describe default
+# Check Docker status
+docker info
 ```
 
 ### Test Logging
@@ -193,10 +157,10 @@ The integration tests use structured logging with different levels:
 
 ```bash
 # Run with verbose output
-go test -tags=temporal -v ./temporal/...
+go test -tags=integration -v ./temporal/...
 
 # Run with debug logging
-DEBUG=true go test -tags=temporal ./temporal/...
+DEBUG=true go test -tags=integration ./temporal/...
 ```
 
 ## Performance Considerations
@@ -226,9 +190,9 @@ The tests are designed to run safely in parallel:
 
 When adding new integration tests:
 
-1. **Use the `//go:build temporal` tag**
+1. **Use the `//go:build integration` tag**
 2. **Create unique identifiers** (workflow IDs, task queues, etc.)
-3. **Include proper cleanup** in test teardown
+3. **Use the testcontainer helper** (`setupTemporalContainerForTest`)
 4. **Add realistic error scenarios** where appropriate
 5. **Document any new configuration requirements**
 
@@ -241,26 +205,26 @@ When adding new integration tests:
 
 ## Monitoring and Observability
 
-### Temporal UI
+### Testcontainer Logs
 
-Access the Temporal UI at `http://localhost:8233` to:
-- View workflow executions
-- Monitor worker activity
-- Debug failed workflows
-- Inspect workflow history
+View container logs during test execution:
+```bash
+# Watch test output for container status
+go test -tags=integration -v ./temporal/...
+```
 
 ### Metrics
 
-The tests expose Prometheus metrics on various ports:
-- 9091-9102: Different test configurations
+The tests use dynamic port allocation for metrics:
+- Port 0 (random available port) for each test instance
 - Metrics include workflow counts, activity durations, worker status
 
 ### Logs
 
 All components provide structured logging:
-- Temporal server logs
-- Worker manager logs  
+- Temporal container logs (viewable via docker logs)
+- Worker manager logs
 - Individual workflow and activity logs
 - Integration test logs
 
-This comprehensive test suite ensures the Temporal package works correctly in real-world scenarios and provides confidence when making changes to the codebase.
+This comprehensive test suite uses testcontainers to ensure the Temporal package works correctly in isolated, reproducible environments and provides confidence when making changes to the codebase.
