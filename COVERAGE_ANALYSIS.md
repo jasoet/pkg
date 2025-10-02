@@ -1,11 +1,11 @@
 # Test Coverage Analysis - v2.0.0-beta.1
 
-**Overall Combined Coverage: 56.7%** *(Unit + Integration Tests)*
+**Overall Combined Coverage: 57.1%** *(Unit + Integration Tests)*
 **Overall Unit Test Coverage: 51.5%** *(estimated)*
 **Initial Coverage:** 33.2%
 **Date:** 2025-10-02
 **Goal for v2.0.0 GA:** 75%+
-**Progress:** +23.5% (56% of goal achieved)
+**Progress:** +23.9% (57% of goal achieved)
 
 ## Coverage by Package
 
@@ -24,7 +24,7 @@
 ### ⚠️ Medium Coverage (30-70%)
 | Package | Unit | Combined | Priority | Change |
 |---------|------|----------|----------|--------|
-| grpc | 76.3% | 76.3% | Low | +20.5% ⭐ |
+| grpc | 77.8% | 77.8% | Low | +22.0% ⭐ |
 | db | 8.2% | 77.8% | Medium | +4.4% unit, +69.6% integration ⭐ |
 
 ### ❌ Low Coverage (<30%)
@@ -73,15 +73,23 @@
 - GORM migration functions tested (RunPostgresMigrationsWithGorm, RunPostgresMigrationsDownWithGorm)
 - Comprehensive error handling tests for Pool(), SQLDB(), invalid configs
 
-**Total test code added: 4,059 lines**
+### ✅ Session 8 (57.1% combined)
+- **grpc package:** 76.3% → 77.8% (+1.5%, +65 lines of unit tests)
+- **Overall combined:** 56.7% → 57.1% (+0.4%)
+- Added tests for HealthManager: RemoveCheck, SetEnabled (disabled health checks)
+- Added tests for Config: WithOTelConfig (with noop providers, nil config)
+- Health manager state management fully covered
+
+**Total test code added: 4,124 lines**
 
 **Note on Testing Strategy:**
-- Combined coverage (unit + integration): **56.7%**
+- Combined coverage (unit + integration): **57.1%**
 - Integration tests provide significant value for db package (+69.6% combined)
 - Focus shifted to testcontainer-based integration tests over mocking
 - grpc OTel instrumentation achieves excellent coverage with noop providers
 - compress package now has comprehensive security testing (path traversal, zip bombs)
 - db package OTel callbacks and GORM migrations tested with testcontainers (PostgreSQL, MySQL, MSSQL)
+- grpc health manager and config now have full state management coverage
 
 ## Critical Gaps Identified
 
