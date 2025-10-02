@@ -16,6 +16,7 @@
 | otel | 97.1% | 97.1% | ✅ Excellent | +97.1% ⭐ |
 | config | 94.7% | 94.7% | ✅ Excellent | - |
 | rest | 92.9% | 92.9% | ✅ Excellent | +52.7% ⭐ |
+| temporal | 0.0% | 86.4%* | ✅ Excellent | +86.4% ⭐ |
 | compress | 86.3% | 86.3% | ✅ Excellent | +13.7% ⭐ |
 | server | 83.0% | 83.0% | ✅ Excellent | +50.0% ⭐ |
 | logging | 82.0% | 82.0% | ✅ Excellent | - |
@@ -30,9 +31,8 @@
 | Package | Unit | Combined | Priority | Issue | Change |
 |---------|------|----------|----------|-------|--------|
 | ssh | 23.3% | 23.3% | Medium | Integration tests needed | +23.3% ⭐ |
-| temporal | 0.0% | 0.0%* | Medium | Requires temporal server | - |
 
-*temporal has 68.2% coverage when temporal server is running (requires `task test:temporal`)
+*temporal requires temporal server running (use `task temporal:start` then `task test:temporal`)
 
 ## Recent Progress (Sessions 1-3)
 
@@ -60,7 +60,12 @@
 - **Overall combined:** 52.5% → 53.3% (+0.8%)
 - Comprehensive security and edge case testing
 
-**Total test code added: 3,179 lines**
+### ✅ Session 6 (temporal integration)
+- **temporal package:** 68.2% → 86.4% (+18.2%, +210 lines of integration tests)
+- Comprehensive schedule manager testing (all methods covered)
+- Tests added: NewScheduleManagerWithConfig, CreateScheduleWithOptions, CreateWorkflowSchedule, DeleteSchedules, GetScheduleHandlers, Close
+
+**Total test code added: 3,389 lines**
 
 **Note on Testing Strategy:**
 - Combined coverage (unit + integration): **53.3%**
@@ -310,6 +315,11 @@
    - Files: Created `compress/security_test.go` (750 LOC)
    - Coverage: 72.6% → 86.3%
 
+8. ✅ **temporal integration tests** - DONE
+   - Impact: temporal package only
+   - Files: Updated `temporal/schedule_integration_test.go` (+210 LOC)
+   - Coverage: 68.2% → 86.4%
+
 **Total: ~20% combined coverage improvement**
 
 ## Action Items
@@ -336,7 +346,7 @@
 
 - All coverage measurements from: `task test` (unit tests only)
 - Integration tests (`task test:integration`) increase db to 30.4%
-- Temporal tests (`task test:temporal`) show 68.2% coverage
+- Temporal tests (`task test:temporal`) show 86.4% coverage
 - Coverage reports available in `output/coverage.html`
 
 ## Tracking
