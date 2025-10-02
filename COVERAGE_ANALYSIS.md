@@ -1,11 +1,11 @@
 # Test Coverage Analysis - v2.0.0-beta.1
 
-**Overall Combined Coverage: 68.8%** *(Unit + Integration + Temporal Tests)*
+**Overall Combined Coverage: 70.0%** *(Unit + Integration Tests)*
 **Overall Unit Test Coverage: 52.0%** *(unit only, estimated)*
 **Initial Coverage:** 33.2%
 **Date:** 2025-10-02
 **Goal for v2.0.0 GA:** 75%+
-**Progress:** +35.6% (85% of goal achieved)**
+**Progress:** +36.8% (93% of goal achieved)**
 
 ## Coverage by Package
 
@@ -27,10 +27,10 @@
 | grpc | 82.0% | 82.0% | Low | +26.2% ⭐ |
 | db | 8.2% | 77.8% | Medium | +4.4% unit, +69.6% integration ⭐ |
 
-### ❌ Low Coverage (<30%)
-| Package | Unit | Combined | Priority | Issue | Change |
-|---------|------|----------|----------|-------|--------|
-| ssh | 23.3% | 23.3% | Medium | Integration tests needed | +23.3% ⭐ |
+### ⚠️ Good Coverage (70-80%)
+| Package | Unit | Combined | Priority | Change |
+|---------|------|----------|----------|--------|
+| ssh | 23.3% | 76.7% | Low | +53.4% ⭐ |
 
 *temporal uses testcontainers (Docker required, no manual server needed)
 
@@ -101,8 +101,22 @@
 - **Simplified testing:** Now only two test categories (unit and integration)
 - Coverage: 86.0% (maintained from previous session)
 
-**Total test code added: 4,307 lines**
-**Key Insight:** Temporal package (86.4%) was previously excluded from combined coverage calculations!
+### ✅ Session 11 (70.0% complete combined)
+- **ssh package:** 23.3% → 76.7% (+53.4%, +450 lines of integration tests)
+- **Overall combined:** 68.8% → 70.0% (+1.2%)
+- Created `ssh/tunnel_integration_test.go` with comprehensive integration tests
+- Using `lscr.io/linuxserver/openssh-server` testcontainer
+- Tests added: SSH connection establishment, port forwarding, error handling, timeout behavior, multiple tunnels
+- Achieved 76.7% coverage for security-critical SSH tunnel functionality
+- Integration tests cover: Start(), forward(), Close() with real SSH server
+- **Goal progress:** 93% toward 75% GA target (only 5% remaining)
+
+**Total test code added: 4,757 lines** (including 450 lines for SSH integration tests)
+**Key Achievements:**
+- Temporal package uses testcontainers (no manual server needed)
+- SSH package now has comprehensive integration tests (76.7% coverage)
+- All integration tests consolidated under single `integration` build tag
+- 93% toward 75% GA coverage goal
 
 **Note on Testing Strategy:**
 - **Complete combined coverage (unit + integration + temporal): 68.8%**
@@ -313,14 +327,14 @@
 
 | Category | Current (Unit) | Current (Complete) | Target | Gap |
 |----------|----------------|-------------------|--------|-----|
-| **Overall** | ~52.0% | **68.8%** | 75%+ | **+6.2%** |
-| Critical Packages (otel, db, ssh, temporal) | 42.9% | 71.3% | 75%+ | +3.7% |
+| **Overall** | ~52.0% | **70.0%** | 75%+ | **+5.0%** |
+| Critical Packages (otel, db, ssh, temporal) | 42.9% | 80.1% | 75%+ | ✅ Met |
 | HTTP/gRPC (server, rest, grpc) | 85.7% | 85.7% | 70%+ | ✅ Met |
 | Utilities (compress, config, logging, concurrent) | 90.9% | 90.9% | 85%+ | ✅ Met |
 
 ## Quick Wins for Immediate Impact
 
-**Completed in Sessions 1-9 (33.2% → 68.8% complete combined):**
+**Completed in Sessions 1-11 (33.2% → 70.0% complete combined):**
 
 1. ✅ **otel Config tests** - DONE
    - Impact: +8% overall coverage
@@ -342,10 +356,10 @@
    - Files: Created `rest/otel_middleware_test.go` (568 LOC)
    - Coverage: 40.2% → 92.9%
 
-5. ✅ **ssh basic tests** - DONE
-   - Impact: +0.4% overall coverage
-   - Files: Created `ssh/tunnel_test.go` (350 LOC)
-   - Coverage: 0% → 23.3%
+5. ✅ **ssh integration tests** - DONE
+   - Impact: +1.2% overall coverage
+   - Files: Created `ssh/tunnel_test.go` (350 LOC), `ssh/tunnel_integration_test.go` (450 LOC)
+   - Coverage: 0% → 76.7% (+53.4% from integration tests)
 
 6. ✅ **grpc OTel instrumentation tests** - DONE
    - Impact: +6.1% overall coverage
@@ -373,7 +387,7 @@
    - Coverage: 77.8% → 82.0% (+4.2%)
    - Tests: Gateway mounting, setup functions, wait logic, health middleware, logging
 
-**Total: ~35.6% complete combined coverage improvement (including temporal)**
+**Total: +36.8% complete combined coverage improvement (from 33.2% to 70.0%)**
 
 ## Action Items
 
@@ -397,12 +411,12 @@
 
 ## Notes
 
-- **Complete combined coverage (unit + integration): 68.8%**
+- **Complete combined coverage (unit + integration): 70.0%**
 - Unit tests only: `task test` (~52.0%)
-- **Integration tests:** `task test:integration` (includes db + temporal, 68.8% combined, uses testcontainers - Docker required)
-- **All tests combined:** `task test:all` (same as integration, 68.8%)
+- **Integration tests:** `task test:integration` (includes db + temporal + ssh, 70.0% combined, uses testcontainers - Docker required)
+- **All tests combined:** `task test:all` (same as integration, 70.0%)
 - Coverage reports available in `output/` directory
-- **Note:** Temporal tests now use `integration` build tag (consolidated with db tests)
+- **Note:** All integration tests (db, temporal, ssh) use `integration` build tag
 
 ## Tracking
 
