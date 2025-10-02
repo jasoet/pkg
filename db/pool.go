@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	pkgotel "github.com/jasoet/pkg/otel"
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"

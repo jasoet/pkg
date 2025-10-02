@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/jasoet/pkg/config"
+	"github.com/jasoet/pkg/v2/config"
 )
 
 // AppConfig is a sample configuration struct

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jasoet/pkg/logging"
+	"github.com/jasoet/pkg/v2/logging"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )

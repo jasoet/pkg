@@ -9,9 +9,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"google.golang.org/grpc"
 
-	grpcserver "github.com/jasoet/pkg/grpc"
-	calculatorv1 "github.com/jasoet/pkg/grpc/examples/gen/calculator/v1"
-	"github.com/jasoet/pkg/grpc/examples/internal/service"
+	grpcserver "github.com/jasoet/pkg/v2/grpc"
+	calculatorv1 "github.com/jasoet/pkg/v2/grpc/examples/gen/calculator/v1"
+	"github.com/jasoet/pkg/v2/grpc/examples/internal/service"
 )
 
 func main() {

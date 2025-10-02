@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	calculatorv1 "github.com/jasoet/pkg/grpc/examples/gen/calculator/v1"
+	calculatorv1 "github.com/jasoet/pkg/v2/grpc/examples/gen/calculator/v1"
 )
 
 func main() {

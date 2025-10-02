@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jasoet/pkg/otel"
+	"github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel/attribute"

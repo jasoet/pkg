@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jasoet/pkg/logging"
-	"github.com/jasoet/pkg/rest"
+	"github.com/jasoet/pkg/v2/logging"
+	"github.com/jasoet/pkg/v2/rest"
 	"github.com/rs/zerolog"
 )
 
