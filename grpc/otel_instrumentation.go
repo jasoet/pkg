@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	pkgotel "github.com/jasoet/pkg/otel"
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"

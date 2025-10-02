@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pkgotel "github.com/jasoet/pkg/otel"
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	otellog "go.opentelemetry.io/otel/log"

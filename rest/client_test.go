@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/jasoet/pkg/concurrent"
+	"github.com/jasoet/pkg/v2/concurrent"
 )
 
 // testKey is a custom type for the context key to avoid collisions

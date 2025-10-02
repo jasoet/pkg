@@ -3,7 +3,7 @@ package rest
 import (
 	"time"
 
-	"github.com/jasoet/pkg/otel"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // Config RestConfig contains configuration for REST client

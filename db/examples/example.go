@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasoet/pkg/db"
-	"github.com/jasoet/pkg/logging"
+	"github.com/jasoet/pkg/v2/db"
+	"github.com/jasoet/pkg/v2/logging"
 	"gorm.io/gorm"
 )
 

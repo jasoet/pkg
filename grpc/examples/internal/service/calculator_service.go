@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	calculatorv1 "github.com/jasoet/pkg/grpc/examples/gen/calculator/v1"
+	calculatorv1 "github.com/jasoet/pkg/v2/grpc/examples/gen/calculator/v1"
 )
 
 // CalculatorService implements the CalculatorService gRPC service

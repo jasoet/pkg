@@ -44,7 +44,7 @@ type Config struct {
 // For production use with better formatting and automatic log-span correlation,
 // use logging.NewLoggerProvider() instead:
 //
-//	import "github.com/jasoet/pkg/logging"
+//	import "github.com/jasoet/pkg/v2/logging"
 //	cfg := &otel.Config{
 //	    ServiceName:    "my-service",
 //	    LoggerProvider: logging.NewLoggerProvider("my-service", false),

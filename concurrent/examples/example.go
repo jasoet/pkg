@@ -10,7 +10,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/jasoet/pkg/concurrent"
+	"github.com/jasoet/pkg/v2/concurrent"
 )
 
 // Example data structures

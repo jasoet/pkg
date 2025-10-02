@@ -5,7 +5,7 @@ package workflows
 import (
 	"time"
 
-	"github.com/jasoet/pkg/temporal/examples/activities"
+	"github.com/jasoet/pkg/v2/temporal/examples/activities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
