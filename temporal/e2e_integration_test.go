@@ -1,4 +1,4 @@
-//go:build temporal
+//go:build integration
 
 package temporal
 
@@ -256,8 +256,16 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	// Initialize logging for integration tests
 	logging.Initialize("temporal-integration-test", true)
 
+	ctx := context.Background()
+
+	// Start Temporal container once for all subtests
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9101"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
 	require.NoError(t, err, "Failed to create WorkerManager")
@@ -443,8 +451,16 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 func TestE2ETemporalIntegration(t *testing.T) {
 	logging.Initialize("temporal-full-integration", true)
 
+	ctx := context.Background()
+
+	// Start Temporal container once for all subtests
+	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	defer containerCleanup()
+
+	// Create config using container's address
 	config := DefaultConfig()
-	config.MetricsListenAddress = "0.0.0.0:9102"
+	config.HostPort = container.HostPort
+	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("FullTemporalStackTest", func(t *testing.T) {
 		// Test the full Temporal stack integration

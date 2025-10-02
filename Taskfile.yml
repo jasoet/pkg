@@ -17,30 +17,23 @@ tasks:
       - 'echo "✓ Coverage: output/coverage.html"'
 
   test:integration:
-    desc: Run integration tests (testcontainers)
+    desc: Run integration tests including temporal (testcontainers, Docker required)
     silent: true
     cmds:
       - mkdir -p output
-      - go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration ./...
+      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration -timeout=15m
       - go tool cover -html=output/coverage-integration.out -o output/coverage-integration.html
       - 'echo "✓ Integration coverage: output/coverage-integration.html"'
 
-  test:temporal:
-    desc: Run Temporal tests (requires Temporal server running)
+  test:all:
+    desc: Run all tests with combined coverage (unit + integration, Docker required, excludes examples)
     silent: true
     cmds:
       - mkdir -p output
-      - go test -race -count=1 -coverprofile=output/coverage-temporal.out -covermode=atomic -tags=temporal -timeout=10m ./temporal/...
-      - go tool cover -html=output/coverage-temporal.out -o output/coverage-temporal.html
-      - 'echo "✓ Temporal coverage: output/coverage-temporal.html"'
-
-  test:all:
-    desc: Run all tests (unit + integration + temporal)
-    silent: true
-    cmds:
-      - task: test
-      - task: test:integration
-      - task: test:temporal
+      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-all.out -covermode=atomic -tags=integration -timeout=15m
+      - go tool cover -html=output/coverage-all.out -o output/coverage-all.html
+      - 'echo "✓ Complete coverage: output/coverage-all.html"'
+      - go tool cover -func=output/coverage-all.out | grep total
 
   lint:
     desc: Run golangci-lint
@@ -56,7 +49,7 @@ tasks:
       - task: lint
 
   temporal:start:
-    desc: Start Temporal dev server in background
+    desc: Start Temporal dev server for manual testing (tests use testcontainers)
     cmds:
       - mkdir -p .temporal
       - |
@@ -64,6 +57,7 @@ tasks:
           echo "✓ Temporal server already running"
         else
           echo "Starting Temporal server in background..."
+          echo "Note: Temporal tests use testcontainers and don't need this server"
           nohup temporal server start-dev --db-filename .temporal/temporal.db > .temporal/temporal.log 2>&1 &
           sleep 2
           echo "✓ Temporal server started"
@@ -84,7 +78,7 @@ tasks:
         fi
 
   temporal:status:
-    desc: Check Temporal server status
+    desc: Check Temporal dev server status
     cmds:
       - |
         if pgrep -f "temporal server start-dev" > /dev/null; then
@@ -94,18 +88,19 @@ tasks:
           echo "   Logs: .temporal/temporal.log"
         else
           echo "❌ Temporal server not running"
-          echo "   Start with: task temporal:start"
+          echo "   Note: Tests use testcontainers and don't need this"
+          echo "   For manual testing: task temporal:start"
         fi
 
   temporal:logs:
-    desc: Show Temporal server logs (tail -f)
+    desc: Show Temporal dev server logs
     cmds:
       - |
         if [ -f .temporal/temporal.log ]; then
           tail -f .temporal/temporal.log
         else
           echo "❌ Log file not found (.temporal/temporal.log)"
-          echo "   Start Temporal first: task temporal:start"
+          echo "   For manual testing: task temporal:start"
         fi
 
   # Utilities
