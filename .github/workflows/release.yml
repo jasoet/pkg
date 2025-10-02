@@ -36,15 +36,28 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check for v2 tags
+        id: check_v2
+        run: |
+          if git tag -l "v2.*" | grep -q .; then
+            echo "v2_exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️ v2 tag detected - skipping semantic-release (manual v2 beta releases)"
+          else
+            echo "v2_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Setup Node.js
+        if: steps.check_v2.outputs.v2_exists != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install dependencies
+        if: steps.check_v2.outputs.v2_exists != 'true'
         run: npm install -g semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/github conventional-changelog-conventionalcommits
 
       - name: Release
+        if: steps.check_v2.outputs.v2_exists != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
