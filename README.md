@@ -6,16 +6,17 @@
 [![Test Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/jasoet/pkg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jasoet/pkg/v2)](https://goreportcard.com/report/github.com/jasoet/pkg/v2)
 
-Production-ready Go utility packages with **OpenTelemetry v2** instrumentation, comprehensive testing, and battle-tested components for building modern cloud-native applications.
+Production-ready Go utility packages with **OpenTelemetry** instrumentation, comprehensive testing, and battle-tested components for building modern cloud-native applications.
 
 ## 🎯 Version 2 Status
 
 **Current Release:** `v2.0.0-beta.2`
-**Status:** Release Candidate - Ready for v2.0.0 GA
-**Test Coverage:** 85% (excludes generated code)
-**Breaking Changes:** OpenTelemetry v2 migration
+**Status:** Release Candidate for v2.0.0 GA
+**Test Coverage:** 85%
 
-> **v2 Highlights:** Full OpenTelemetry v2 support, 85% test coverage, modernized dependencies, enhanced observability
+> **v2 Highlights:** OpenTelemetry instrumentation across all packages, 85% test coverage, modernized dependencies
+>
+> **Breaking Change:** v1 does not include OpenTelemetry. v2 adds optional OTel support with minimal API changes.
 
 See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for migration instructions and versioning workflow.
 
@@ -23,21 +24,19 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for migration instructions and ve
 
 Production-ready components with comprehensive observability, testing, and examples:
 
-| Package | Description | Coverage | Key Features |
-|---------|-------------|----------|--------------|
-| **[otel](./otel/)** | OpenTelemetry v2 integration | 97.1% | Tracing, metrics, logging, unified config |
-| **[config](./config/)** | YAML configuration with env overrides | 94.7% | Type-safe, validation, hot-reload |
-| **[logging](./logging/)** | Structured logging with zerolog | 82.0% | Context-aware, OTel integration |
-| **[db](./db/)** | Multi-database support | 79.1% | PostgreSQL, MySQL, MSSQL, migrations, OTel |
-| **[server](./server/)** | HTTP server with Echo | 83.0% | Health checks, metrics, graceful shutdown |
-| **[grpc](./grpc/)** | gRPC server with Echo gateway | 82.0% | H2C mode, dual protocol, observability |
-| **[rest](./rest/)** | HTTP client framework | 92.9% | Retries, timeouts, OTel tracing |
-| **[concurrent](./concurrent/)** | Type-safe concurrent execution | 100% | Generics, error handling, cancellation |
-| **[temporal](./temporal/)** | Temporal workflow integration | 86.4% | Workers, scheduling, monitoring |
-| **[ssh](./ssh/)** | SSH tunneling utilities | 76.7% | Secure connections, port forwarding |
-| **[compress](./compress/)** | File compression utilities | 86.3% | ZIP, tar.gz, security validation |
-
-**Overall Coverage:** 85.0% (unit + integration tests, excludes generated protobuf code)
+| Package | Description | Key Features |
+|---------|-------------|--------------|
+| **[otel](./otel/)** | OpenTelemetry integration | Tracing, metrics, logging, unified config |
+| **[config](./config/)** | YAML configuration with env overrides | Type-safe, validation, hot-reload |
+| **[logging](./logging/)** | Structured logging with zerolog | Context-aware, OTel integration |
+| **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations, OTel |
+| **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
+| **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, dual protocol, observability |
+| **[rest](./rest/)** | HTTP client framework | Retries, timeouts, OTel tracing |
+| **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation |
+| **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring |
+| **[ssh](./ssh/)** | SSH tunneling utilities | Secure connections, port forwarding |
+| **[compress](./compress/)** | File compression utilities | ZIP, tar.gz, security validation | 
 
 ## 🚀 Quick Start
 
@@ -47,7 +46,7 @@ Production-ready components with comprehensive observability, testing, and examp
 # Latest stable v1 (production)
 go get github.com/jasoet/pkg
 
-# v2 Beta (OpenTelemetry v2)
+# v2 Beta (includes OpenTelemetry)
 go get github.com/jasoet/pkg/v2@v2.0.0-beta.2
 ```
 
@@ -61,11 +60,16 @@ import (
     "github.com/jasoet/pkg/v2/logging"
     "github.com/jasoet/pkg/v2/server"
     "github.com/jasoet/pkg/v2/otel"
+    "github.com/labstack/echo/v4"
 )
+
+type AppConfig struct {
+    Port int `yaml:"port"`
+}
 
 func main() {
     // Load configuration
-    cfg := config.NewConfig("config.yml")
+    cfg, _ := config.LoadString[AppConfig](`port: 8080`)
 
     // Setup OpenTelemetry
     otelConfig := otel.NewConfig("my-service").
@@ -73,17 +77,23 @@ func main() {
         WithMeterProvider(/* your meter */)
 
     // Setup logging with OTel
-    logger := logging.NewLogger(logging.Config{
-        Level:      "info",
-        OTelConfig: otelConfig,
-    })
+    loggerProvider := logging.NewLoggerProvider("my-service", false)
+    otelConfig.LoggerProvider = loggerProvider
 
     // Start HTTP server with observability
-    server.Start(server.Config{
-        Port:       8080,
-        Logger:     logger,
-        OTelConfig: otelConfig,
-    })
+    operation := func(e *echo.Echo) {
+        e.GET("/", func(c echo.Context) error {
+            return c.String(200, "Hello!")
+        })
+    }
+
+    shutdown := func(e *echo.Echo) {
+        // cleanup
+    }
+
+    serverCfg := server.DefaultConfig(cfg.Port, operation, shutdown)
+    serverCfg.OTelConfig = otelConfig
+    server.StartWithConfig(serverCfg)
 }
 ```
 
@@ -105,35 +115,28 @@ go build -tags=example ./...
 
 ## 🔬 Test Coverage
 
-**Overall: 85.0%** (unit + integration tests)
+**Overall Coverage: 85%**
 
-### Coverage by Package
-- ✅ **Excellent (80%+):** concurrent (100%), otel (97.1%), config (94.7%), rest (92.9%), compress (86.3%), temporal (86.4%), server (83.0%), grpc (82.0%), logging (82.0%)
-- ✅ **Good (70-80%):** db (79.1%), ssh (76.7%)
-
-### Testing Strategy
-- **Unit Tests:** Pure logic, no dependencies (`task test`)
-- **Integration Tests:** Real databases, SSH servers, Temporal (`task test:integration`)
-- **Complete Coverage:** Unit + Integration (`task test:all`)
-- **Tools:** testcontainers for real services, assert library for assertions
+### Package Coverage
+- concurrent (100%), otel (97%), config (95%), rest (93%), compress (86%), temporal (86%), server (83%), grpc (82%), logging (82%), db (79%), ssh (77%)
 
 ### Run Tests
 
 ```bash
-# Unit tests only (no Docker required)
+# Unit tests
 task test
 
-# Integration tests (requires Docker)
+# Integration tests (Docker required)
 task test:integration
 
-# All tests with complete coverage report
+# All tests with coverage report
 task test:all
 open output/coverage-all.html
 ```
 
 ## 🎯 Key Features
 
-### OpenTelemetry v2 Integration
+### OpenTelemetry Integration
 - **Unified Configuration:** Single config for tracing, metrics, and logging
 - **Automatic Instrumentation:** Built-in for HTTP, gRPC, database operations
 - **Context Propagation:** Distributed tracing across services
@@ -165,52 +168,26 @@ open output/coverage-all.html
 
 ## 🔧 Development
 
-### Prerequisites
-
-- **Go 1.25+** - Latest Go version with enhanced generics
-- **[Task](https://taskfile.dev/)** - Modern task runner
-- **Docker & Docker Compose** - For integration tests and services
-
 ### Development Commands
 
 ```bash
-# Setup
-task docker:up          # Start PostgreSQL and services
-task dependencies       # Check and update dependencies
 
 # Testing
+# All integration test using testcontainer, docker engine required
 task test               # Unit tests
 task test:integration   # Integration tests (Docker required)
 task test:all           # All tests with coverage
-task coverage           # Generate coverage report
 
 # Quality
 task lint               # Run golangci-lint
-task security           # Security analysis with gosec
-task checkall           # Run all quality checks
-
-# Docker Services
-task docker:down        # Stop services
-task docker:restart     # Restart services
-task docker:logs        # View service logs
 ```
-
-### Database Configuration
-
-PostgreSQL available for testing:
-- **Host:** localhost:5439
-- **Username:** jasoet
-- **Password:** localhost
-- **Database:** pkg_db
 
 ## 🤖 AI Agent Instructions
 
-**Repository Type:** Go utility library (v2) - production-ready infrastructure components with OpenTelemetry v2
+**Repository Type:** Go utility library (v2) - production-ready infrastructure components with OpenTelemetry 
 
 **Critical Setup:**
-```bash
-task docker:up  # Start PostgreSQL (localhost:5439, user: jasoet, password: localhost, db: pkg_db)
-```
+- Ensure docker engine available and accessible from testcontainer
 
 **Architecture:**
 - **11 core packages:** otel, config, logging, db, server, grpc, rest, concurrent, temporal, ssh, compress
@@ -219,7 +196,7 @@ task docker:up  # Start PostgreSQL (localhost:5439, user: jasoet, password: loca
 - **Module Path:** `github.com/jasoet/pkg/v2` (Go v2+ semantics)
 
 **Key Development Patterns:**
-- **OpenTelemetry:** v2 instrumentation across all packages (otel package)
+- **OpenTelemetry:** Instrumentation across all packages (otel package)
 - **Configuration:** Type-safe YAML with environment variable overrides (config package)
 - **Database:** Multi-database support with GORM, migrations, OTel tracing (db package)
 - **HTTP Server:** Echo framework with health checks, metrics, graceful shutdown (server package)
@@ -241,20 +218,20 @@ task docker:up  # Start PostgreSQL (localhost:5439, user: jasoet, password: loca
 
 **Library Usage Focus:**
 - Emphasize zero-configuration startup
-- Type safety with Go 1.25+ generics
+- Type safety with generics
 - Production-grade features: health endpoints, metrics, observability, graceful shutdown
-- OpenTelemetry v2 as first-class citizen
+- OpenTelemetry as first-class citizen
 
 **Version Information:**
-- **Current:** v2.0.0-beta.2 (OpenTelemetry v2)
-- **Stable:** v1.6.0 (OpenTelemetry v1)
+- **Current:** v2.0.0-beta.2 (includes OpenTelemetry)
+- **Stable:** v1.5.0 (no OpenTelemetry)
 - **Migration Guide:** See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md)
 
 ## 📚 Package Documentation
 
 ### Core Infrastructure
 
-#### [otel](./otel/) - OpenTelemetry v2 Integration
+#### [otel](./otel/) - OpenTelemetry Integration
 Unified configuration for tracing, metrics, and logging.
 
 ```go
@@ -280,24 +257,38 @@ type AppConfig struct {
     DB     DBConfig     `yaml:"database"`
 }
 
-cfg := config.NewConfig("config.yml")
-var appCfg AppConfig
-cfg.Unmarshal(&appCfg)
+// Load from file
+cfg, _ := config.LoadString[AppConfig](yamlContent)
+
+// Or from string
+yamlStr := `
+server:
+  port: 8080
+database:
+  host: localhost
+`
+cfg, _ := config.LoadString[AppConfig](yamlStr)
 ```
 
 **Features:** Hot-reload, validation, environment overrides
 **Coverage:** 94.7% | **[Examples](./config/examples/)** | **[Documentation](./config/README.md)**
 
 #### [logging](./logging/) - Structured Logging
-Zerolog-based structured logging with OTel integration.
+Zerolog-based OTel LoggerProvider with automatic trace correlation.
 
 ```go
-logger := logging.NewLogger(logging.Config{
-    Level:      "info",
-    OTelConfig: otelConfig,
-})
+// Create LoggerProvider
+loggerProvider := logging.NewLoggerProvider("my-service", false)
 
-logger.Info().Str("user", "john").Msg("User logged in")
+// Use with OTel config
+otelCfg := &otel.Config{
+    LoggerProvider: loggerProvider,
+    // ... other config
+}
+
+// Or use legacy zerolog
+logging.Initialize("my-service", false)
+log.Info().Str("user", "john").Msg("User logged in")
 ```
 
 **Features:** Context-aware, OTel log provider, performance optimized
@@ -332,11 +323,17 @@ pool.Find(&users)
 Echo-based HTTP server with built-in observability.
 
 ```go
-server.Start(server.Config{
-    Port:       8080,
-    Logger:     logger,
-    OTelConfig: otelConfig,
-})
+operation := func(e *echo.Echo) {
+    e.GET("/health", healthHandler)
+}
+
+shutdown := func(e *echo.Echo) {
+    // cleanup
+}
+
+config := server.DefaultConfig(8080, operation, shutdown)
+config.OTelConfig = otelConfig
+server.StartWithConfig(config)
 ```
 
 **Features:** Health checks, Prometheus metrics, graceful shutdown, middleware
@@ -346,14 +343,16 @@ server.Start(server.Config{
 Production-ready gRPC with Echo gateway integration.
 
 ```go
-cfg := grpc.NewConfig("my-service", 9090).
-    WithGatewayPort(8080).
-    WithH2CMode(true).
-    WithOTelConfig(otelConfig)
+server, _ := grpc.New(
+    grpc.WithGRPCPort("9090"),
+    grpc.WithOTelConfig(otelConfig),
+    grpc.WithServiceRegistrar(func(s *grpc.Server) {
+        // Register your gRPC services
+        pb.RegisterYourServiceServer(s, &YourService{})
+    }),
+)
 
-srv := grpc.NewServer(cfg)
-// Register your services
-srv.Start()
+server.Start()
 ```
 
 **Features:** H2C mode, dual HTTP/gRPC, gateway, observability
@@ -363,15 +362,19 @@ srv.Start()
 Resilient REST client with OTel tracing.
 
 ```go
-client := rest.NewClient(rest.ClientConfig{
-    BaseURL:    "https://api.example.com",
-    Timeout:    30 * time.Second,
-    RetryCount: 3,
-    OTelConfig: otelConfig,
-})
+config := rest.Config{
+    RetryCount:       3,
+    RetryWaitTime:    1 * time.Second,
+    RetryMaxWaitTime: 10 * time.Second,
+    Timeout:          30 * time.Second,
+}
 
-var result Response
-client.Get("/endpoint", &result)
+client := rest.NewClient(
+    rest.WithRestConfig(config),
+    rest.WithOTelConfig(otelConfig),
+)
+
+response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", headers)
 ```
 
 **Features:** Retries, circuit breaking, tracing, middleware support
@@ -383,9 +386,16 @@ client.Get("/endpoint", &result)
 Generics-based parallel execution with error handling.
 
 ```go
-results, err := concurrent.Map(items, func(item Item) (Result, error) {
-    return processItem(item)
-})
+funcs := map[string]concurrent.Func[string]{
+    "task1": func(ctx context.Context) (string, error) {
+        return "result1", nil
+    },
+    "task2": func(ctx context.Context) (string, error) {
+        return "result2", nil
+    },
+}
+
+results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
 ```
 
 **Features:** Go 1.25+ generics, error aggregation, context support
@@ -395,11 +405,13 @@ results, err := concurrent.Map(items, func(item Item) (Result, error) {
 Temporal workflow integration with observability.
 
 ```go
-manager := temporal.NewScheduleManager(temporal.Config{
-    HostPort:   "localhost:7233",
-    Namespace:  "default",
-    OTelConfig: otelConfig,
-})
+config := &temporal.Config{
+    HostPort:  "localhost:7233",
+    Namespace: "default",
+}
+
+client, _ := temporal.NewClient(config)
+manager := temporal.NewScheduleManager(client)
 
 manager.CreateWorkflowSchedule(ctx, scheduleID, workflow, schedule)
 ```
@@ -411,13 +423,17 @@ manager.CreateWorkflowSchedule(ctx, scheduleID, workflow, schedule)
 Secure SSH tunneling and port forwarding.
 
 ```go
-tunnel := ssh.NewTunnel(ssh.Config{
+config := ssh.Config{
     Host:       "remote-host",
     Port:       22,
     User:       "user",
-    PrivateKey: privateKey,
-})
+    Password:   "password",
+    RemoteHost: "db.internal",
+    RemotePort: 5432,
+    LocalPort:  15432,
+}
 
+tunnel := ssh.New(config)
 tunnel.Start()
 defer tunnel.Close()
 ```
@@ -429,8 +445,14 @@ defer tunnel.Close()
 Secure file compression with validation.
 
 ```go
-compress.ZipFiles(files, "output.zip")
-compress.UnzipFile("archive.zip", "output/")
+// Gzip compression
+sourceFile, _ := os.Open("input.txt")
+outputFile, _ := os.Create("output.gz")
+compress.Gz(sourceFile, outputFile)
+
+// Tar.gz archive
+outputFile, _ := os.Create("archive.tar.gz")
+compress.TarGz("/path/to/directory", outputFile)
 ```
 
 **Features:** ZIP, tar.gz, security validation, path traversal protection
@@ -495,23 +517,13 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `ci`
 **Breaking Changes:** Add `!` after type or `BREAKING CHANGE:` in footer
 
-See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow details.
-
-## 📋 Version Support
-
-| Version | Status | OpenTelemetry | Go Version | Support |
-|---------|--------|---------------|------------|---------|
-| v2.0.0-beta.2 | Beta | v2 (v1.38+) | 1.25+ | Active development |
-| v1.6.0 | Stable | v1 (v1.x) | 1.23+ | Critical fixes (6 months) |
-| < v1.6.0 | Legacy | v1 (v1.x) | 1.23+ | No support |
-
-**Migration:** See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for v1 to v2 migration instructions.
+See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to v2 migration instructions.
 
 ## 📈 Roadmap
 
 ### ✅ Completed
 - [x] Core packages (11 components)
-- [x] OpenTelemetry v2 integration
+- [x] OpenTelemetry instrumentation
 - [x] 85% test coverage (unit + integration)
 - [x] Integration examples
 - [x] Task-based development workflow
@@ -520,17 +532,22 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow details.
 - [x] gRPC & Protobuf support with Echo gateway
 - [x] Testcontainer-based integration tests
 
-### 🚧 In Progress
-- [ ] v2.0.0 GA release (after beta validation)
-- [ ] OpenTelemetry v2 migration guide
-- [ ] Performance benchmarks
+### 🚧 In Progress (v2.0.0 GA)
+- [ ] Review and update all package READMEs
+- [ ] Review and update all example READMEs
+- [ ] Ensure all examples demonstrate OTel integration
+- [ ] Create fullstack OTel example application (examples/fullstack-otel)
+- [ ] v2.0.0 GA release
 
-### 📝 Planned
-- [ ] GraphQL server package
-- [ ] Message queue integrations (Kafka, RabbitMQ)
-- [ ] Distributed caching (Redis)
-- [ ] Service mesh integration (Istio, Linkerd)
-- [ ] Advanced tracing patterns
+### 📝 Planned (Post v2.0 GA)
+- [ ] **Docker Executor Package** - Production-ready Docker execution helper inspired by testcontainer simplicity
+  - Execute short-lived jobs in containers
+  - Use cases: Infrastructure workflows, data pipelines, batch processing
+  - Foundation for Temporal workflow integration
+- [ ] **Temporal Docker Workflows** - Reusable Temporal workflows for Docker container execution
+  - Pre-built workflow templates for containerized jobs
+  - Integration with docker executor package
+  - Observability and error handling patterns
 
 ## 🔗 Links
 

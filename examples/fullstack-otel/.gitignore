@@ -1,0 +1,26 @@
+# Generated protobuf files
+*.pb.go
+
+# Binaries
+fullstack-otel
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

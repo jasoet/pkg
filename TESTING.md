@@ -19,18 +19,18 @@ go test ./config/...
 go test ./logging/...
 ```
 
-### 2. Database Integration Tests  
-**Purpose**: Test database connectivity and operations  
-**Requirements**: PostgreSQL, MySQL, MSSQL (via Docker)  
-**Command**: `task integration-test`  
+### 2. Integration Tests
+**Purpose**: Test with real dependencies (database, etc.)
+**Requirements**: Docker (testcontainers)
+**Command**: `task test:integration`
 **Build Tag**: `integration`
 
 ```bash
-# Run database integration tests (starts Docker services automatically)
-task integration-test
+# Run integration tests (uses testcontainers)
+task test:integration
 
 # Manual execution
-go test -tags=integration ./db/...
+go test -tags=integration ./...
 ```
 
 **Covered packages**:
@@ -42,79 +42,58 @@ go test -tags=integration ./db/...
 - `rest/` - HTTP client operations
 - `server/` - HTTP server startup and health checks
 
-### 3. Temporal Integration Tests
-**Purpose**: Test Temporal workflow engine integration  
-**Requirements**: Temporal server + PostgreSQL (via Docker)  
-**Command**: `task temporal-test`  
-**Build Tag**: `temporal`
+### 3. All Tests (Unit + Integration)
+**Purpose**: Run complete test suite with coverage
+**Requirements**: Docker (testcontainers)
+**Command**: `task test:all`
 
 ```bash
-# Run Temporal integration tests (starts Temporal server automatically)
-task temporal-test
+# Run all tests with coverage report
+task test:all
 
-# Manual execution  
-go test -tags=temporal ./temporal/...
+# Opens output/coverage-all.html automatically
 ```
 
-**Test scenarios**:
-- Client connectivity and configuration
-- Worker registration and lifecycle management
-- Workflow execution with activities
-- Schedule creation and management
-- End-to-end order processing workflows
-- Error handling and compensation patterns
-
-### 4. All Integration Tests
-**Purpose**: Run both database and temporal integration tests  
-**Requirements**: All Docker services  
-**Command**: `task all-integration-tests`
-
-```bash
-# Run all integration tests sequentially
-task all-integration-tests
-```
+**Integration test packages**:
+- `db/` - Database with testcontainer (PostgreSQL, MySQL, MSSQL)
+- `temporal/` - Temporal with testcontainer
+- `compress/`, `concurrent/`, `config/`, `logging/`, `rest/`, `server/`
 
 ## Additional Test Commands
 
-### Quality and Security Testing
+### Quality Testing
 ```bash
-task lint          # Run linter (golangci-lint)
-task security      # Run security analysis (gosec)
-task dependencies  # Check for vulnerabilities (nancy)
-task coverage      # Generate test coverage report
-task checkall      # Run all quality checks
+task lint      # Run linter (golangci-lint)
+task check     # Run golangci-lint and tests
 ```
 
 ### Development Tools
 ```bash
-task tools         # Install all development tools
-task clean         # Clean build artifacts
+task tools     # Install development tools
+task fmt       # Format code
+task clean     # Clean build artifacts
 ```
 
 ### Coverage Reports
-The coverage task generates detailed HTML reports:
+The test:all task generates detailed HTML reports:
 ```bash
-task coverage
-# Opens dist/coverage.html in browser for detailed coverage analysis
+task test:all
+# Opens output/coverage-all.html automatically
 ```
 
 ## Service Management
 
-### Database Services
+### Temporal Services (Optional)
+For manual testing, you can start Temporal services:
+
 ```bash
-task docker:up        # Start PostgreSQL, MySQL, MSSQL
-task docker:down      # Stop database services  
-task docker:logs      # View database logs
-task docker:restart   # Restart database services
+task temporal:start   # Start Temporal server (docker compose)
+task temporal:stop    # Stop Temporal services
+task temporal:logs    # View Temporal logs
+task temporal:status  # Check Temporal status
 ```
 
-### Temporal Services  
-```bash
-task temporal:up      # Start Temporal server + PostgreSQL
-task temporal:down    # Stop Temporal services
-task temporal:logs    # View Temporal logs
-task temporal:restart # Restart Temporal services
-```
+**Note**: Integration tests use testcontainers and manage their own services automatically.
 
 ## Test Isolation Strategy
 
@@ -126,22 +105,23 @@ task temporal:restart # Restart Temporal services
 
 ### Why Separate Tags?
 
-1. **Fast Development Feedback**  
-   - `mage test` runs quickly without external dependencies
+1. **Fast Development Feedback**
+   - `task test` runs quickly without external dependencies
    - Developers get immediate feedback on code changes
 
 2. **Focused Integration Testing**
-   - `mage integrationTest` tests database functionality without requiring Temporal
-   - `mage temporalTest` tests workflow functionality with proper Temporal setup
+   - `task test:integration` tests with real dependencies using testcontainers
+   - Automatic service management (no manual Docker setup)
 
 3. **CI/CD Flexibility**
    - Different CI stages can run different test suites
    - Parallel execution of independent test categories
-   - Graceful handling of missing services
+   - Testcontainers handle service lifecycle automatically
 
-4. **Resource Optimization**  
-   - Only start required services for specific test categories
-   - Avoid unnecessary service startup time and resource usage
+4. **Resource Optimization**
+   - Unit tests run without Docker overhead
+   - Integration tests use testcontainers for isolation
+   - Services start only when needed and clean up automatically
 
 ## Environment Configuration
 
@@ -171,11 +151,11 @@ DEBUG=true             # Enable debug logging
 # 1. Quick validation during development
 task test
 
-# 2. Test database integration before commit
-task integration-test
+# 2. Test with real dependencies before commit
+task test:integration
 
-# 3. Full validation before release
-task all-integration-tests
+# 3. Full validation with coverage before release
+task test:all
 ```
 
 ### CI/CD Pipeline
@@ -184,45 +164,37 @@ task all-integration-tests
 task test
 task lint
 
-# Stage 2: Database integration (parallel)
-task integration-test
+# Stage 2: Full test suite with coverage
+task test:all
 
-# Stage 3: Temporal integration (parallel) 
-task temporal-test
-
-# Stage 4: Quality checks
-task security
-task dependencies
-task coverage
+# Stage 3: Code quality
+task check
 ```
 
 ### Debugging Failed Tests
 
-#### Database Connection Issues
+#### Integration Test Issues
 ```bash
-# Check if services are running
-docker ps
+# Check if Docker is running
+docker info
 
-# View database logs
-task docker:logs
+# View testcontainer logs (during test)
+go test -tags=integration -v ./db/...
 
-# Test direct connection
-psql -h localhost -p 5439 -U jasoet -d pkg_db
+# Clean up old containers
+docker system prune
 ```
 
-#### Temporal Connection Issues  
+#### Temporal Test Issues
 ```bash
-# Check Temporal services
-docker ps | grep temporal
+# Run with verbose output
+go test -tags=integration -v ./temporal/...
 
-# View Temporal logs
-task temporal:logs
+# Check Docker resources
+docker ps
+docker system df
 
-# Check Temporal UI
-open http://localhost:8233
-
-# Test connectivity
-go test -tags=temporal -v ./temporal/client_integration_test.go
+# Ensure sufficient Docker resources (memory, disk)
 ```
 
 ## Best Practices
@@ -248,32 +220,33 @@ go test -tags=temporal -v ./temporal/client_integration_test.go
 ## Performance Targets
 
 - **Unit Tests**: < 5 seconds total
-- **Database Integration**: < 30 seconds  
-- **Temporal Integration**: < 2 minutes
-- **All Integration Tests**: < 3 minutes
+- **Integration Tests**: < 2 minutes (with testcontainer startup)
+- **All Tests**: < 3 minutes (unit + integration + coverage)
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Port Conflicts**
-   - Check for services using ports 5439, 7233, 8233
-   - Use `lsof -i :PORT` to identify conflicts
-
-2. **Docker Issues**  
+1. **Docker Issues**
    - Ensure Docker is running: `docker info`
-   - Clean up containers: `docker system prune`
+   - Clean up old containers: `docker system prune`
    - Check disk space: `docker system df`
+   - Ensure sufficient memory (4GB+ recommended)
 
-3. **Build Tag Confusion**
-   - Unit tests: no tag needed
-   - Database: `-tags=integration`
-   - Temporal: `-tags=temporal`  
+2. **Build Tag Confusion**
+   - Unit tests: no tag needed - `task test`
+   - Integration tests: `-tags=integration` - `task test:integration`
    - Examples: `-tags=example`
 
-4. **Service Startup Timing**
-   - Database services: Wait 2-5 seconds
-   - Temporal services: Wait 10-30 seconds
-   - Check health with `docker compose logs`
+3. **Testcontainer Issues**
+   - Testcontainers manages service lifecycle automatically
+   - Containers are ephemeral and cleaned up after tests
+   - If tests hang, check Docker resources
+   - View testcontainer logs with `-v` flag
+
+4. **Test Parallelization**
+   - Integration tests may run slower due to container startup
+   - Each test suite gets isolated containers
+   - Parallel execution is safe (containers don't conflict)
 
 This testing strategy ensures reliable, maintainable tests while providing flexibility for different development and deployment scenarios.
