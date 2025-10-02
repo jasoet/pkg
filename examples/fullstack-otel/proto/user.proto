@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package user;
 
-option go_package = "github.com/jasoet/pkg/v2/examples/fullstack-otel/proto;user";
+option go_package = "github.com/jasoet/fullstack-otel-example/proto;user";
 
 // User service for demonstration
 service UserService {

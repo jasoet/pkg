@@ -1,10 +1,12 @@
 # Full-Stack OpenTelemetry Integration Example
 
-This example demonstrates end-to-end distributed tracing, metrics, and logging across:
+**This is a standalone, independent Go module** demonstrating end-to-end distributed tracing, metrics, and logging across:
 - **gRPC Server** with HTTP Gateway (`github.com/jasoet/pkg/v2/grpc`)
 - **REST Client** making HTTP calls (`github.com/jasoet/pkg/v2/rest`)
 - **Database** operations with GORM (`github.com/jasoet/pkg/v2/db`)
 - **Structured Logging** with trace correlation (`github.com/jasoet/pkg/v2/logging`)
+
+This example can be copied and run independently without cloning the entire `pkg/v2` repository.
 
 ## Architecture
 
@@ -48,7 +50,7 @@ Response with full trace context
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.25.1+
 - Docker and Docker Compose
 - protoc (protocol buffer compiler)
 - protoc-gen-go and protoc-gen-go-grpc plugins
@@ -57,6 +59,18 @@ Install protoc plugins:
 ```bash
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```
+
+### Installation
+
+This example is a standalone module. You can run it directly:
+
+```bash
+# Clone or copy this directory
+cd fullstack-otel-example
+
+# Dependencies are already in go.mod - no need to clone pkg/v2
+go mod download
 ```
 
 ### Running the Example
