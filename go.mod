@@ -1,4 +1,4 @@
-module github.com/jasoet/pkg
+module github.com/jasoet/pkg/v2
 
 go 1.25.1
 

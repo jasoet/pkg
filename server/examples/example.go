@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jasoet/pkg/otel"
-	"github.com/jasoet/pkg/server"
+	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v2/server"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )

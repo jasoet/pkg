@@ -2,7 +2,7 @@ package otel
 
 import "go.opentelemetry.io/otel/attribute"
 
-// Semantic conventions specific to github.com/jasoet/pkg library.
+// Semantic conventions specific to github.com/jasoet/pkg/v2 library.
 // These complement standard OpenTelemetry semantic conventions.
 const (
 	// Package identification

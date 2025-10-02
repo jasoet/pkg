@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jasoet/pkg/compress"
+	"github.com/jasoet/pkg/v2/compress"
 )
 
 func check(err error) {

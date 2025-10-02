@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jasoet/pkg/ssh"
+	"github.com/jasoet/pkg/v2/ssh"
 	_ "github.com/lib/pq"
 	"gopkg.in/yaml.v3"
 )

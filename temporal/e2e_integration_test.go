@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/logging"
+	"github.com/jasoet/pkg/v2/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
