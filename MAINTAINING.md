@@ -6,13 +6,13 @@ This document explains how to maintain and release patches for both v1 and v2 ve
 
 ### `main` - v2 Development (Current)
 - **Module Path:** `github.com/jasoet/pkg/v2`
-- **Latest Version:** v2.0.0-beta.1
+- **Latest Version:** v2.0.0-beta.2
 - **Purpose:** Active development for v2.x releases
 - **Go Version:** 1.25.1+
 
 ### `release/v1` - v1 Maintenance
 - **Module Path:** `github.com/jasoet/pkg` (no /v2 suffix)
-- **Latest Version:** v1.6.0
+- **Latest Version:** v1.5.0
 - **Purpose:** Bug fixes and security patches for v1.x
 - **Go Version:** 1.25.1+
 
@@ -43,21 +43,20 @@ git commit -m "fix: description of the fix"
 
 ### 3. Test thoroughly
 ```bash
-# Run all tests
+# Run all tests with coverage
 task test:all
 
 # Or run individually
-task test
-task test:integration
-task test:temporal
+task test              # Unit tests
+task test:integration  # Integration tests (with testcontainers)
 ```
 
 ### 4. Tag and release
 ```bash
-# Tag with appropriate version (e.g., v1.6.1, v1.6.2)
-git tag v1.6.1
+# Tag with appropriate version (e.g., v1.5.1, v1.5.2)
+git tag v1.5.1
 git push origin release/v1
-git push origin v1.6.1
+git push origin v1.5.1
 ```
 
 ### 5. Return to main
@@ -82,9 +81,10 @@ git push origin v2.0.0
 ## Version Guidelines
 
 ### v1.x.x (Maintenance Only)
-- **Patch releases** (v1.6.1, v1.6.2): Bug fixes, security patches
+- **Patch releases** (v1.5.1, v1.5.2): Bug fixes, security patches
 - **NO new features** - v1 is in maintenance mode
 - **NO breaking changes** - maintain backward compatibility
+- **NO OpenTelemetry** - v1 does not have OTel support
 
 ### v2.x.x (Active Development)
 - **Major releases** (v2.0.0, v3.0.0): Breaking changes allowed
@@ -100,7 +100,7 @@ import "github.com/jasoet/pkg/server"
 ```
 
 ```bash
-go get github.com/jasoet/pkg@v1.6.1
+go get github.com/jasoet/pkg@v1.5.0
 ```
 
 ### Using v2 (Current)
@@ -110,7 +110,7 @@ import "github.com/jasoet/pkg/v2/server"
 ```
 
 ```bash
-go get github.com/jasoet/pkg/v2@v2.0.0
+go get github.com/jasoet/pkg/v2@v2.0.0-beta.2
 ```
 
 ## Testing Strategy
@@ -119,12 +119,11 @@ Before any release (v1 or v2):
 
 1. **Unit Tests:** `task test`
 2. **Integration Tests:** `task test:integration`
-3. **Temporal Tests:** `task test:temporal`
-4. **Linting:** `task lint`
+3. **Linting:** `task lint`
 
 Or run everything:
 ```bash
-task test:all
+task test:all  # Runs all tests with coverage
 ```
 
 ## Common Scenarios
@@ -134,7 +133,7 @@ task test:all
 1. Identify the vulnerability
 2. Fix on `release/v1` branch
 3. Test thoroughly
-4. Release as v1.6.x (patch version)
+4. Release as v1.5.x (patch version)
 5. Optionally apply to main if relevant to v2
 
 ### Bug Fix Needed for Both v1 and v2
@@ -143,7 +142,7 @@ task test:all
 2. Cherry-pick to `release/v1`
 3. Test on both branches
 4. Release both versions:
-   - v1.6.x (patch)
+   - v1.5.x (patch)
    - v2.0.x or v2.x.0 (depending on scope)
 
 ### Migration from v1 to v2

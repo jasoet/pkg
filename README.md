@@ -46,7 +46,7 @@ Production-ready components with comprehensive observability, testing, and examp
 # Latest stable v1 (production)
 go get github.com/jasoet/pkg
 
-# v2 Beta (OpenTelemetry v2)
+# v2 Beta (includes OpenTelemetry)
 go get github.com/jasoet/pkg/v2@v2.0.0-beta.2
 ```
 
@@ -60,11 +60,16 @@ import (
     "github.com/jasoet/pkg/v2/logging"
     "github.com/jasoet/pkg/v2/server"
     "github.com/jasoet/pkg/v2/otel"
+    "github.com/labstack/echo/v4"
 )
+
+type AppConfig struct {
+    Port int `yaml:"port"`
+}
 
 func main() {
     // Load configuration
-    cfg := config.NewConfig("config.yml")
+    cfg, _ := config.LoadString[AppConfig](`port: 8080`)
 
     // Setup OpenTelemetry
     otelConfig := otel.NewConfig("my-service").
@@ -72,17 +77,23 @@ func main() {
         WithMeterProvider(/* your meter */)
 
     // Setup logging with OTel
-    logger := logging.NewLogger(logging.Config{
-        Level:      "info",
-        OTelConfig: otelConfig,
-    })
+    loggerProvider := logging.NewLoggerProvider("my-service", false)
+    otelConfig.LoggerProvider = loggerProvider
 
     // Start HTTP server with observability
-    server.Start(server.Config{
-        Port:       8080,
-        Logger:     logger,
-        OTelConfig: otelConfig,
-    })
+    operation := func(e *echo.Echo) {
+        e.GET("/", func(c echo.Context) error {
+            return c.String(200, "Hello!")
+        })
+    }
+
+    shutdown := func(e *echo.Echo) {
+        // cleanup
+    }
+
+    serverCfg := server.DefaultConfig(cfg.Port, operation, shutdown)
+    serverCfg.OTelConfig = otelConfig
+    server.StartWithConfig(serverCfg)
 }
 ```
 
@@ -246,24 +257,38 @@ type AppConfig struct {
     DB     DBConfig     `yaml:"database"`
 }
 
-cfg := config.NewConfig("config.yml")
-var appCfg AppConfig
-cfg.Unmarshal(&appCfg)
+// Load from file
+cfg, _ := config.LoadString[AppConfig](yamlContent)
+
+// Or from string
+yamlStr := `
+server:
+  port: 8080
+database:
+  host: localhost
+`
+cfg, _ := config.LoadString[AppConfig](yamlStr)
 ```
 
 **Features:** Hot-reload, validation, environment overrides
 **Coverage:** 94.7% | **[Examples](./config/examples/)** | **[Documentation](./config/README.md)**
 
 #### [logging](./logging/) - Structured Logging
-Zerolog-based structured logging with OTel integration.
+Zerolog-based OTel LoggerProvider with automatic trace correlation.
 
 ```go
-logger := logging.NewLogger(logging.Config{
-    Level:      "info",
-    OTelConfig: otelConfig,
-})
+// Create LoggerProvider
+loggerProvider := logging.NewLoggerProvider("my-service", false)
 
-logger.Info().Str("user", "john").Msg("User logged in")
+// Use with OTel config
+otelCfg := &otel.Config{
+    LoggerProvider: loggerProvider,
+    // ... other config
+}
+
+// Or use legacy zerolog
+logging.Initialize("my-service", false)
+log.Info().Str("user", "john").Msg("User logged in")
 ```
 
 **Features:** Context-aware, OTel log provider, performance optimized
@@ -298,11 +323,17 @@ pool.Find(&users)
 Echo-based HTTP server with built-in observability.
 
 ```go
-server.Start(server.Config{
-    Port:       8080,
-    Logger:     logger,
-    OTelConfig: otelConfig,
-})
+operation := func(e *echo.Echo) {
+    e.GET("/health", healthHandler)
+}
+
+shutdown := func(e *echo.Echo) {
+    // cleanup
+}
+
+config := server.DefaultConfig(8080, operation, shutdown)
+config.OTelConfig = otelConfig
+server.StartWithConfig(config)
 ```
 
 **Features:** Health checks, Prometheus metrics, graceful shutdown, middleware
@@ -312,14 +343,16 @@ server.Start(server.Config{
 Production-ready gRPC with Echo gateway integration.
 
 ```go
-cfg := grpc.NewConfig("my-service", 9090).
-    WithGatewayPort(8080).
-    WithH2CMode(true).
-    WithOTelConfig(otelConfig)
+server, _ := grpc.New(
+    grpc.WithGRPCPort("9090"),
+    grpc.WithOTelConfig(otelConfig),
+    grpc.WithServiceRegistrar(func(s *grpc.Server) {
+        // Register your gRPC services
+        pb.RegisterYourServiceServer(s, &YourService{})
+    }),
+)
 
-srv := grpc.NewServer(cfg)
-// Register your services
-srv.Start()
+server.Start()
 ```
 
 **Features:** H2C mode, dual HTTP/gRPC, gateway, observability
@@ -329,15 +362,19 @@ srv.Start()
 Resilient REST client with OTel tracing.
 
 ```go
-client := rest.NewClient(rest.ClientConfig{
-    BaseURL:    "https://api.example.com",
-    Timeout:    30 * time.Second,
-    RetryCount: 3,
-    OTelConfig: otelConfig,
-})
+config := rest.Config{
+    RetryCount:       3,
+    RetryWaitTime:    1 * time.Second,
+    RetryMaxWaitTime: 10 * time.Second,
+    Timeout:          30 * time.Second,
+}
 
-var result Response
-client.Get("/endpoint", &result)
+client := rest.NewClient(
+    rest.WithRestConfig(config),
+    rest.WithOTelConfig(otelConfig),
+)
+
+response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", headers)
 ```
 
 **Features:** Retries, circuit breaking, tracing, middleware support
@@ -349,9 +386,16 @@ client.Get("/endpoint", &result)
 Generics-based parallel execution with error handling.
 
 ```go
-results, err := concurrent.Map(items, func(item Item) (Result, error) {
-    return processItem(item)
-})
+funcs := map[string]concurrent.Func[string]{
+    "task1": func(ctx context.Context) (string, error) {
+        return "result1", nil
+    },
+    "task2": func(ctx context.Context) (string, error) {
+        return "result2", nil
+    },
+}
+
+results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
 ```
 
 **Features:** Go 1.25+ generics, error aggregation, context support
@@ -361,11 +405,13 @@ results, err := concurrent.Map(items, func(item Item) (Result, error) {
 Temporal workflow integration with observability.
 
 ```go
-manager := temporal.NewScheduleManager(temporal.Config{
-    HostPort:   "localhost:7233",
-    Namespace:  "default",
-    OTelConfig: otelConfig,
-})
+config := &temporal.Config{
+    HostPort:  "localhost:7233",
+    Namespace: "default",
+}
+
+client, _ := temporal.NewClient(config)
+manager := temporal.NewScheduleManager(client)
 
 manager.CreateWorkflowSchedule(ctx, scheduleID, workflow, schedule)
 ```
@@ -377,13 +423,17 @@ manager.CreateWorkflowSchedule(ctx, scheduleID, workflow, schedule)
 Secure SSH tunneling and port forwarding.
 
 ```go
-tunnel := ssh.NewTunnel(ssh.Config{
+config := ssh.Config{
     Host:       "remote-host",
     Port:       22,
     User:       "user",
-    PrivateKey: privateKey,
-})
+    Password:   "password",
+    RemoteHost: "db.internal",
+    RemotePort: 5432,
+    LocalPort:  15432,
+}
 
+tunnel := ssh.New(config)
 tunnel.Start()
 defer tunnel.Close()
 ```
@@ -395,8 +445,14 @@ defer tunnel.Close()
 Secure file compression with validation.
 
 ```go
-compress.ZipFiles(files, "output.zip")
-compress.UnzipFile("archive.zip", "output/")
+// Gzip compression
+sourceFile, _ := os.Open("input.txt")
+outputFile, _ := os.Create("output.gz")
+compress.Gz(sourceFile, outputFile)
+
+// Tar.gz archive
+outputFile, _ := os.Create("archive.tar.gz")
+compress.TarGz("/path/to/directory", outputFile)
 ```
 
 **Features:** ZIP, tar.gz, security validation, path traversal protection
