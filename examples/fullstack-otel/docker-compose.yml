@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # Jaeger all-in-one for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - otel-demo
+
+  # Optional: PostgreSQL for production-like database
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: testdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - otel-demo
+
+networks:
+  otel-demo:
+    driver: bridge
+
+volumes:
+  postgres_data:
