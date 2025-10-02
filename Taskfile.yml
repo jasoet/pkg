@@ -21,16 +21,16 @@ tasks:
     silent: true
     cmds:
       - mkdir -p output
-      - go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration -timeout=15m ./...
+      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration -timeout=15m
       - go tool cover -html=output/coverage-integration.out -o output/coverage-integration.html
       - 'echo "✓ Integration coverage: output/coverage-integration.html"'
 
   test:all:
-    desc: Run all tests with combined coverage (unit + integration, Docker required)
+    desc: Run all tests with combined coverage (unit + integration, Docker required, excludes examples)
     silent: true
     cmds:
       - mkdir -p output
-      - go test -race -count=1 -coverprofile=output/coverage-all.out -covermode=atomic -tags=integration -timeout=15m ./...
+      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-all.out -covermode=atomic -tags=integration -timeout=15m
       - go tool cover -html=output/coverage-all.out -o output/coverage-all.html
       - 'echo "✓ Complete coverage: output/coverage-all.html"'
       - go tool cover -func=output/coverage-all.out | grep total
