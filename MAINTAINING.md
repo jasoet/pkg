@@ -6,7 +6,7 @@ This document explains how to maintain and release patches for both v1 and v2 ve
 
 ### `main` - v2 Development (Current)
 - **Module Path:** `github.com/jasoet/pkg/v2`
-- **Latest Version:** v2.0.0-beta.2
+- **Latest Version:** v2.0.0
 - **Purpose:** Active development for v2.x releases
 - **Go Version:** 1.25.1+
 
@@ -110,7 +110,7 @@ import "github.com/jasoet/pkg/v2/server"
 ```
 
 ```bash
-go get github.com/jasoet/pkg/v2@v2.0.0-beta.2
+go get github.com/jasoet/pkg/v2@v2.0.0
 ```
 
 ## Testing Strategy
