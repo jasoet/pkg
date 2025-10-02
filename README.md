@@ -520,17 +520,12 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow details.
 - [x] gRPC & Protobuf support with Echo gateway
 - [x] Testcontainer-based integration tests
 
-### 🚧 In Progress
-- [ ] v2.0.0 GA release (after beta validation)
-- [ ] OpenTelemetry v2 migration guide
-- [ ] Performance benchmarks
-
-### 📝 Planned
-- [ ] GraphQL server package
-- [ ] Message queue integrations (Kafka, RabbitMQ)
-- [ ] Distributed caching (Redis)
-- [ ] Service mesh integration (Istio, Linkerd)
-- [ ] Advanced tracing patterns
+### 🚧 In Progress (v2.0.0 GA)
+- [ ] Review and update all package READMEs
+- [ ] Review and update all example READMEs
+- [ ] Ensure all examples demonstrate OTel integration
+- [ ] Create fullstack OTel example application (examples/fullstack-otel)
+- [ ] v2.0.0 GA release
 
 ## 🔗 Links
 
