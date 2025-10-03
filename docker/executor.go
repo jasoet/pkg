@@ -76,9 +76,31 @@ func New(opts ...Option) (*Executor, error) {
 }
 
 // NewFromRequest creates a new Docker executor from a ContainerRequest struct.
-// This is a convenience function equivalent to: New(WithRequest(req))
-func NewFromRequest(req ContainerRequest) (*Executor, error) {
-	return New(WithRequest(req))
+// Additional options can be passed to override or extend the request configuration.
+//
+// Example with just struct:
+//
+//	req := docker.ContainerRequest{
+//	    Image: "nginx:latest",
+//	    Env: map[string]string{"KEY": "value"},
+//	}
+//	exec, err := docker.NewFromRequest(req)
+//
+// Example with additional options (options override struct fields):
+//
+//	req := docker.ContainerRequest{
+//	    Image: "nginx:latest",
+//	    Name:  "default-name",
+//	}
+//	exec, err := docker.NewFromRequest(req,
+//	    docker.WithName("override-name"),  // Overrides struct name
+//	    docker.WithOTelConfig(otelCfg),    // Adds observability
+//	    docker.WithPorts("80:8080"),       // Adds port mapping
+//	)
+func NewFromRequest(req ContainerRequest, opts ...Option) (*Executor, error) {
+	// Prepend WithRequest so additional options can override struct fields
+	allOpts := append([]Option{WithRequest(req)}, opts...)
+	return New(allOpts...)
 }
 
 // Start pulls the image (if needed), creates and starts the container.

@@ -6,8 +6,11 @@ import (
 	"time"
 
 	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestExecutor_ContainerID(t *testing.T) {
@@ -185,6 +188,60 @@ func TestExecutor_NewFromRequest(t *testing.T) {
 	exec, err := docker.NewFromRequest(req)
 	require.NoError(t, err)
 	assert.NotNil(t, exec)
+}
+
+func TestExecutor_NewFromRequest_WithOptions(t *testing.T) {
+	req := docker.ContainerRequest{
+		Image: "alpine:latest",
+		Name:  "struct-name",
+		Env: map[string]string{
+			"VAR1": "value1",
+		},
+	}
+
+	// Add additional options that override struct fields
+	exec, err := docker.NewFromRequest(req,
+		docker.WithName("option-name"), // Override name
+		docker.WithCmd("echo", "test"),
+		docker.WithEnv("VAR2=value2"), // Add another env var
+	)
+	require.NoError(t, err)
+	assert.NotNil(t, exec)
+
+	// Note: We can't directly access config fields to verify,
+	// but we can verify it doesn't error and creates executor
+}
+
+func TestExecutor_NewFromRequest_WithOTel(t *testing.T) {
+	ctx := context.Background()
+
+	req := docker.ContainerRequest{
+		Image: "alpine:latest",
+		Cmd:   []string{"echo", "otel-test"},
+	}
+
+	// Create OTel config
+	tp := trace.NewTracerProvider()
+	mp := metric.NewMeterProvider()
+
+	otelCfg := &otel.Config{
+		TracerProvider: tp,
+		MeterProvider:  mp,
+	}
+
+	exec, err := docker.NewFromRequest(req,
+		docker.WithOTelConfig(otelCfg),
+	)
+	require.NoError(t, err)
+	assert.NotNil(t, exec)
+
+	// Verify it works with OTel
+	err = exec.Start(ctx)
+	require.NoError(t, err)
+	defer exec.Terminate(ctx)
+
+	time.Sleep(2 * time.Second)
+	assert.NotEmpty(t, exec.ContainerID())
 }
 
 func TestExecutor_StatusBeforeStart(t *testing.T) {

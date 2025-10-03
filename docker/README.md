@@ -98,8 +98,10 @@ func main() {
 
 ### Hybrid Style (Mix Both)
 
+You can combine both styles in two ways:
+
+**1. Struct within options:**
 ```go
-// Start with struct, add functional options
 req := docker.ContainerRequest{
     Image: "nginx:latest",
     ExposedPorts: []string{"80/tcp"},
@@ -109,6 +111,35 @@ exec, _ := docker.New(
     docker.WithRequest(req),
     docker.WithName("my-nginx"),
     docker.WithOTelConfig(otelCfg), // Add observability
+)
+```
+
+**2. Options after struct (NEW):**
+```go
+req := docker.ContainerRequest{
+    Image: "postgres:16-alpine",
+    Env: map[string]string{
+        "POSTGRES_PASSWORD": "secret",
+    },
+}
+
+// Add additional options that override/extend the struct
+exec, _ := docker.NewFromRequest(req,
+    docker.WithName("my-postgres"),        // Add name
+    docker.WithPorts("5432:15432"),        // Add port mapping
+    docker.WithOTelConfig(otelCfg),        // Add observability
+)
+```
+
+**Note:** When using both, later options override earlier ones:
+```go
+req := docker.ContainerRequest{
+    Image: "nginx:latest",
+    Name:  "default-name",
+}
+
+exec, _ := docker.NewFromRequest(req,
+    docker.WithName("override-name"),  // ← This wins!
 )
 ```
 
