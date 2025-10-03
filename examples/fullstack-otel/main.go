@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jasoet/fullstack-otel-example/proto"
 	"github.com/jasoet/pkg/v2/db"
-	"github.com/jasoet/pkg/v2/examples/fullstack-otel/proto"
-	"github.com/jasoet/pkg/v2/grpc"
+	grpcserver "github.com/jasoet/pkg/v2/grpc"
 	"github.com/jasoet/pkg/v2/logging"
 	"github.com/jasoet/pkg/v2/otel"
 	"github.com/jasoet/pkg/v2/rest"
@@ -21,8 +21,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
+	"google.golang.org/grpc"
 	"gorm.io/gorm"
-	gormLogger "gorm.io/gorm/logger"
 )
 
 // User model for database
@@ -131,7 +131,7 @@ func main() {
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("fullstack-example"),
 			semconv.ServiceVersionKey.String("1.0.0"),
-			semconv.DeploymentEnvironmentKey.String("development"),
+			attribute.String("deployment.environment", "development"),
 		),
 	)
 	if err != nil {
@@ -181,15 +181,19 @@ func main() {
 	// Step 2: Setup Database with OTel
 	// =========================================================================
 
-	// Note: This example uses SQLite for simplicity. In production, use PostgreSQL/MySQL.
+	// Database configuration using PostgreSQL from docker-compose
+	// Use SQLite in-memory if PostgreSQL is not available
 	dbConfig := &db.ConnectionConfig{
-		DbType:       db.Sqlite,
-		DbName:       ":memory:", // In-memory database for demo
+		DbType:       db.Postgresql,
+		Host:         "localhost",
+		Port:         5432,
+		Username:     "user",
+		Password:     "password",
+		DbName:       "testdb",
 		Timeout:      30 * time.Second,
 		MaxIdleConns: 2,
 		MaxOpenConns: 5,
 		OTelConfig:   otelCfg,
-		LogLevel:     gormLogger.Silent, // Reduce noise
 	}
 
 	database, err := dbConfig.Pool()
@@ -236,10 +240,10 @@ func main() {
 	// Step 4: Setup gRPC Server with OTel
 	// =========================================================================
 
-	server, err := grpc.New(
-		grpc.WithGRPCPort("50051"),
-		grpc.WithOTelConfig(otelCfg),
-		grpc.WithServiceRegistrar(func(s *grpc.Server) {
+	server, err := grpcserver.New(
+		grpcserver.WithGRPCPort("50051"),
+		grpcserver.WithOTelConfig(otelCfg),
+		grpcserver.WithServiceRegistrar(func(s *grpc.Server) {
 			// Register User service
 			userService := &UserServiceImpl{
 				db:         database,
@@ -249,7 +253,7 @@ func main() {
 			user.RegisterUserServiceServer(s, userService)
 			log.Println("✓ UserService registered")
 		}),
-		grpc.WithShutdownHandler(func() error {
+		grpcserver.WithShutdownHandler(func() error {
 			log.Println("Shutting down OTel providers...")
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
