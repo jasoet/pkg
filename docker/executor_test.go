@@ -3,7 +3,6 @@ package docker_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -25,7 +24,7 @@ func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker processes").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 	require.NoError(t, err)
@@ -45,7 +44,9 @@ func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, endpoint)
 
-	resp, err := http.Get("http://" + endpoint)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+endpoint, nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -99,7 +100,7 @@ func TestExecutor_Hybrid_Redis(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("Ready to accept connections").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 	require.NoError(t, err)
@@ -123,7 +124,7 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 			docker.WithPorts("80:0"),
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
-				docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+				docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 			),
 		)
 
@@ -141,7 +142,7 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 			docker.WithPorts("80:8888"),
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
-				docker.WaitForPort("80/tcp").WithStartupTimeout(30 * time.Second),
+				docker.WaitForPort("80/tcp").WithStartupTimeout(30*time.Second),
 			),
 		)
 
@@ -160,7 +161,7 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
 				docker.WaitForHTTP("80", "/", 200).
-					WithStartupTimeout(30 * time.Second),
+					WithStartupTimeout(30*time.Second),
 			),
 		)
 
@@ -169,7 +170,9 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 		defer exec.Terminate(ctx)
 
 		endpoint, _ := exec.Endpoint(ctx, "80/tcp")
-		resp, err := http.Get("http://" + endpoint)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+endpoint, nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		resp.Body.Close()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -246,7 +249,7 @@ func TestExecutor_Status(t *testing.T) {
 		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -272,7 +275,7 @@ func TestExecutor_Network(t *testing.T) {
 		docker.WithPorts("80:9999"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -428,7 +431,7 @@ func TestExecutor_MultipleContainers(t *testing.T) {
 		docker.WithName("test-multi-nginx"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -439,7 +442,7 @@ func TestExecutor_MultipleContainers(t *testing.T) {
 		docker.WithName("test-multi-redis"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("Ready to accept").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("Ready to accept").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -526,7 +529,7 @@ func TestExecutor_ConnectionString(t *testing.T) {
 		docker.WithPorts("80:8765"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -597,7 +600,7 @@ func TestExecutor_ErrorHandling(t *testing.T) {
 			docker.WithPorts("80:7777"),
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
-				docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+				docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 			),
 		)
 
@@ -660,7 +663,7 @@ func BenchmarkExecutor_GetStatus(b *testing.B) {
 		docker.WithImage("nginx:alpine"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -691,15 +694,4 @@ func BenchmarkExecutor_GetLogs(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		exec.Logs(ctx)
 	}
-}
-
-// Helper function for HTTP tests
-func httpGet(url string) (int, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	io.ReadAll(resp.Body)
-	return resp.StatusCode, nil
 }

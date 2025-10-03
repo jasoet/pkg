@@ -30,6 +30,7 @@ Production-ready components with comprehensive observability, testing, and examp
 | **[config](./config/)** | YAML configuration with env overrides | Type-safe, validation, hot-reload |
 | **[logging](./logging/)** | Structured logging with zerolog | Context-aware, OTel integration |
 | **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations, OTel |
+| **[docker](./docker/)** | Docker container executor | Lifecycle management, wait strategies, dual API |
 | **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
 | **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, dual protocol, observability |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, OTel tracing |
@@ -118,7 +119,7 @@ go build -tags=example ./...
 **Overall Coverage: 85%**
 
 ### Package Coverage
-- concurrent (100%), otel (97%), config (95%), rest (93%), compress (86%), temporal (86%), server (83%), grpc (82%), logging (82%), db (79%), ssh (77%)
+- concurrent (100%), otel (97%), config (95%), rest (93%), compress (86%), temporal (86%), docker (84%), server (83%), grpc (82%), logging (82%), db (79%), ssh (77%)
 
 ### Run Tests
 
@@ -184,13 +185,13 @@ task lint               # Run golangci-lint
 
 ## 🤖 AI Agent Instructions
 
-**Repository Type:** Go utility library (v2) - production-ready infrastructure components with OpenTelemetry 
+**Repository Type:** Go utility library (v2) - production-ready infrastructure components with OpenTelemetry
 
 **Critical Setup:**
 - Ensure docker engine available and accessible from testcontainer
 
 **Architecture:**
-- **11 core packages:** otel, config, logging, db, server, grpc, rest, concurrent, temporal, ssh, compress
+- **12 core packages:** otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress
 - **Integration-ready:** Packages work seamlessly together
 - **Examples:** Each package has runnable examples with `go run -tags=example ./package/examples`
 - **Module Path:** `github.com/jasoet/pkg/v2` (Go v2+ semantics)
@@ -316,6 +317,40 @@ pool.Find(&users)
 
 **Features:** Connection pooling, migrations, OTel tracing, health monitoring
 **Coverage:** 79.1% | **[Examples](./db/examples/)** | **[Documentation](./db/README.md)**
+
+#### [docker](./docker/) - Docker Container Executor
+Production-ready Docker container management with dual API styles.
+
+```go
+// Functional options style
+exec, _ := docker.New(
+    docker.WithImage("nginx:alpine"),
+    docker.WithPorts("80:8080"),
+    docker.WithWaitStrategy(
+        docker.WaitForLog("start worker processes"),
+    ),
+)
+
+exec.Start(ctx)
+defer exec.Terminate(ctx)
+
+endpoint, _ := exec.Endpoint(ctx, "80/tcp")
+// Use: http://localhost:8080
+
+// Or struct-based (testcontainers-like)
+req := docker.ContainerRequest{
+    Image:        "postgres:16-alpine",
+    ExposedPorts: []string{"5432/tcp"},
+    Env: map[string]string{
+        "POSTGRES_PASSWORD": "secret",
+    },
+    WaitingFor: docker.WaitForLog("ready to accept connections"),
+}
+exec, _ := docker.NewFromRequest(req)
+```
+
+**Features:** Lifecycle management, wait strategies, log streaming, dual API (functional + struct)
+**Coverage:** 83.9% | **[Examples](./docker/examples/)** | **[Documentation](./docker/README.md)**
 
 ### HTTP & gRPC
 
@@ -539,11 +574,16 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to
 - [x] Create fullstack OTel example application (examples/fullstack-otel)
 - [x] v2.0.0 GA release
 
-### 📝 Planned (Post v2.0 GA)
-- [ ] **Docker Executor Package** - Production-ready Docker execution helper inspired by testcontainer simplicity
-  - Execute short-lived jobs in containers
-  - Use cases: Infrastructure workflows, data pipelines, batch processing
-  - Foundation for Temporal workflow integration
+### ✅ Completed (Post v2.0 GA)
+- [x] **Docker Executor Package** - Production-ready Docker execution helper with testcontainer-compatible API
+  - Dual API: functional options + struct-based (testcontainers-like)
+  - Lifecycle management: Start, Stop, Restart, Terminate, Wait
+  - Wait strategies: log patterns, port listening, HTTP health checks
+  - Log streaming with filtering
+  - OpenTelemetry v2 instrumentation
+  - 83.9% test coverage, zero lint issues
+
+### 📝 Planned
 - [ ] **Temporal Docker Workflows** - Reusable Temporal workflows for Docker container execution
   - Pre-built workflow templates for containerized jobs
   - Integration with docker executor package

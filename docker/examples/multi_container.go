@@ -1,3 +1,5 @@
+//go:build example
+
 package main
 
 import (
@@ -29,7 +31,7 @@ func multiContainerExample(ctx context.Context) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker processes").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 	if err != nil {
@@ -45,7 +47,7 @@ func multiContainerExample(ctx context.Context) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("Ready to accept connections").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 	if err != nil {

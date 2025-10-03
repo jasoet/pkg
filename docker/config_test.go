@@ -258,7 +258,7 @@ func TestConfigOptions_WaitStrategy(t *testing.T) {
 	exec, err := docker.New(
 		docker.WithImage("nginx:alpine"),
 		docker.WithWaitStrategy(
-			docker.WaitForLog("nginx").WithStartupTimeout(30 * time.Second),
+			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
 	require.NoError(t, err)
@@ -268,7 +268,7 @@ func TestConfigOptions_WaitStrategy(t *testing.T) {
 func TestConfigOptions_Timeout(t *testing.T) {
 	exec, err := docker.New(
 		docker.WithImage("alpine:latest"),
-		docker.WithTimeout(60 * time.Second),
+		docker.WithTimeout(60*time.Second),
 	)
 	require.NoError(t, err)
 	assert.NotNil(t, exec)
@@ -294,7 +294,7 @@ func TestConfigOptions_Combined(t *testing.T) {
 		docker.WithWorkDir("/usr/share/nginx/html"),
 		docker.WithAutoRemove(true),
 		docker.WithLabel("app", "test"),
-		docker.WithTimeout(30 * time.Second),
+		docker.WithTimeout(30*time.Second),
 	)
 	require.NoError(t, err)
 	assert.NotNil(t, exec)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 )
 
@@ -161,7 +160,7 @@ func (e *Executor) ExitCode(ctx context.Context) (int, error) {
 
 // Inspect returns the full container inspection details.
 // This provides access to all container metadata.
-func (e *Executor) Inspect(ctx context.Context) (*types.ContainerJSON, error) {
+func (e *Executor) Inspect(ctx context.Context) (*container.InspectResponse, error) {
 	e.mu.RLock()
 	containerID := e.containerID
 	e.mu.RUnlock()

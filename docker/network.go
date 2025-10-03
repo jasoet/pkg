@@ -27,19 +27,19 @@ func (e *Executor) Host(ctx context.Context) (string, error) {
 
 	// For bridge network mode, use localhost
 	if inspect.HostConfig.NetworkMode.IsHost() {
-		return "localhost", nil
+		return defaultHost, nil
 	}
 
 	// For other modes, try to get the gateway
 	if len(inspect.NetworkSettings.Networks) > 0 {
 		for _, network := range inspect.NetworkSettings.Networks {
 			if network.Gateway != "" {
-				return "localhost", nil // Still use localhost for port-forwarded containers
+				return defaultHost, nil // Still use localhost for port-forwarded containers
 			}
 		}
 	}
 
-	return "localhost", nil
+	return defaultHost, nil
 }
 
 // MappedPort returns the host port mapped to a container port.

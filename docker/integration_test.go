@@ -274,7 +274,7 @@ func TestIntegration_PortMapping(t *testing.T) {
 		}),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForPort("80/tcp").WithStartupTimeout(30 * time.Second),
+			docker.WaitForPort("80/tcp").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -301,7 +301,7 @@ func TestIntegration_WaitStrategies(t *testing.T) {
 				docker.WaitForAll(
 					docker.WaitForLog("start worker"),
 					docker.WaitForPort("80/tcp"),
-				).WithStartupTimeout(60 * time.Second),
+				).WithStartupTimeout(60*time.Second),
 			),
 		)
 
@@ -320,7 +320,7 @@ func TestIntegration_WaitStrategies(t *testing.T) {
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
 				docker.WaitForHTTP("80", "/", 200).
-					WithStartupTimeout(30 * time.Second),
+					WithStartupTimeout(30*time.Second),
 			),
 		)
 

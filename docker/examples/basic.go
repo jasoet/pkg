@@ -1,3 +1,5 @@
+//go:build example
+
 package main
 
 import (
@@ -36,7 +38,7 @@ func functionalOptionsExample(ctx context.Context) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker processes").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 	if err != nil {
@@ -122,7 +124,7 @@ func hybridExample(ctx context.Context) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForHTTP("80", "/", 200).
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 	if err != nil {

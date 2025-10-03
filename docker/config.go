@@ -94,27 +94,27 @@ type ContainerRequest struct {
 // It's built from either functional options or ContainerRequest.
 type config struct {
 	// Container configuration
-	image           string
-	name            string
-	hostname        string
-	cmd             []string
-	entrypoint      []string
-	env             map[string]string
-	exposedPorts    nat.PortSet
-	portBindings    nat.PortMap
-	volumes         map[string]struct{}
-	binds           []string
-	labels          map[string]string
-	workDir         string
-	user            string
-	networks        []string
-	networkMode     string
-	autoRemove      bool
-	privileged      bool
-	capAdd          []string
-	capDrop         []string
-	tmpfs           map[string]string
-	shmSize         int64
+	image        string
+	name         string
+	hostname     string
+	cmd          []string
+	entrypoint   []string
+	env          map[string]string
+	exposedPorts nat.PortSet
+	portBindings nat.PortMap
+	volumes      map[string]struct{}
+	binds        []string
+	labels       map[string]string
+	workDir      string
+	user         string
+	networks     []string
+	networkMode  string
+	autoRemove   bool
+	privileged   bool
+	capAdd       []string
+	capDrop      []string
+	tmpfs        map[string]string
+	shmSize      int64
 
 	// Operational configuration
 	waitStrategy WaitStrategy
@@ -211,7 +211,7 @@ func WithRequest(req ContainerRequest) Option {
 		// Exposed ports
 		for _, port := range req.ExposedPorts {
 			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
-			protocol := "tcp"
+			protocol := defaultProtocol
 			portNum := port
 
 			// Check if protocol is specified
@@ -233,7 +233,7 @@ func WithRequest(req ContainerRequest) Option {
 		// Port bindings
 		for containerPort, hostPort := range req.PortBindings {
 			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
-			protocol := "tcp"
+			protocol := defaultProtocol
 			portNum := containerPort
 
 			// Check if protocol is specified
@@ -350,7 +350,7 @@ func WithPorts(portMapping string) Option {
 	return func(c *config) error {
 		// Parse "containerPort:hostPort" or "containerPort:hostPort/protocol"
 		var containerPort, hostPort, protocol string
-		protocol = "tcp"
+		protocol = defaultProtocol
 
 		// Check for protocol suffix
 		for i := len(portMapping) - 1; i >= 0; i-- {

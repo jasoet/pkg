@@ -18,7 +18,8 @@ The `docker` package provides production-ready Docker container management with 
 - **Log Streaming**: Real-time log access with filtering and following
 - **Status Monitoring**: Container state, health checks, resource stats
 - **Network Helpers**: Easy access to host, ports, endpoints
-- **OpenTelemetry**: Built-in observability support
+- **OpenTelemetry v2**: Built-in observability with traces and metrics
+- **Production Ready**: 83.9% test coverage, zero lint issues
 - **Simple & Powerful**: Easy for simple cases, flexible for complex scenarios
 
 ## Installation
@@ -422,7 +423,7 @@ fmt.Println(health.FailingStreak)
 
 ```go
 inspect, err := exec.Inspect(ctx)
-// Returns *types.ContainerJSON with all details
+// Returns *container.InspectResponse with all details
 ```
 
 ### Resource Stats
@@ -671,10 +672,19 @@ if !running {
 
 ## OpenTelemetry Integration
 
-```go
-import "github.com/jasoet/pkg/v2/otel"
+The docker package includes full OpenTelemetry v2 instrumentation for observability.
 
-// Initialize OTel
+```go
+import (
+    "github.com/jasoet/pkg/v2/otel"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+)
+
+// Initialize OTel providers
+tp := sdktrace.NewTracerProvider(...)
+mp := sdkmetric.NewMeterProvider(...)
+
 otelCfg := &otel.Config{
     TracerProvider: tp,
     MeterProvider:  mp,
@@ -687,33 +697,55 @@ exec, _ := docker.New(
 )
 
 // Automatic instrumentation:
-// - Traces: Start, Stop, Terminate, Restart
-// - Metrics: containers_started, containers_stopped, etc.
-// - Errors: Recorded in traces and metrics
+// - Traces: docker.Start, docker.Stop, docker.Terminate, docker.Restart, docker.Wait
+// - Metrics:
+//   - docker.containers.started
+//   - docker.containers.stopped
+//   - docker.containers.terminated
+//   - docker.containers.restarted
+//   - docker.container.errors
+// - Error tracking: Errors recorded in both traces and metrics with attributes
 ```
 
 ## Testing
 
+The package has comprehensive test coverage (83.9%) with both unit and integration tests.
+
 ```bash
-# Run tests
+# Run all tests (requires Docker)
 go test ./docker -v
 
 # With coverage
 go test ./docker -cover
 
-# Integration tests (requires Docker)
-go test ./docker -tags=integration -v
+# Run specific test
+go test ./docker -run TestExecutor_FunctionalOptions -v
+
+# Run benchmarks
+go test ./docker -bench=. -benchmem
 ```
+
+**Test Requirements:**
+- Docker daemon running
+- Docker API accessible
+- Internet access (for pulling images)
 
 ## Examples
 
-See [examples/](./examples/) directory for:
-- Basic usage
-- Database containers
-- Multi-container setups
-- Custom wait strategies
-- Log streaming
-- Health monitoring
+See [examples/](./examples/) directory for complete, runnable examples:
+
+- **[basic.go](./examples/basic.go)** - Functional options, struct-based, and hybrid styles
+- **[database.go](./examples/database.go)** - PostgreSQL container with real database operations
+- **[logs.go](./examples/logs.go)** - Log streaming, filtering, and following
+- **[multi_container.go](./examples/multi_container.go)** - Running multiple containers (Nginx + Redis)
+
+Run examples:
+```bash
+go run -tags example ./docker/examples/basic.go
+go run -tags example ./docker/examples/database.go
+go run -tags example ./docker/examples/logs.go
+go run -tags example ./docker/examples/multi_container.go
+```
 
 ## Comparison with Testcontainers
 
@@ -723,15 +755,81 @@ See [examples/](./examples/) directory for:
 | Simplicity | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
 | Flexibility | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 | Dependencies | Minimal | Many |
-| OTel Support | Built-in | No |
+| OTel Support | Built-in v2 | No |
+| Test Coverage | 83.9% | N/A |
+| Code Quality | Zero lint issues | N/A |
 | Learning Curve | Low | Medium |
 | Use Case | General purpose | Testing focus |
 
+## Architecture
+
+### Key Components
+
+- **Executor** - Main container lifecycle manager
+- **Config** - Container configuration with functional options
+- **Wait Strategies** - Readiness checking mechanisms
+- **Network** - Port mapping and endpoint resolution
+- **Logs** - Log streaming and filtering
+- **Status** - Container state monitoring
+- **OTel** - OpenTelemetry v2 instrumentation
+
+### Design Principles
+
+1. **Simple by default, powerful when needed** - Easy basic usage, advanced features available
+2. **Two API styles** - Functional options for Go idioms, structs for testcontainers compatibility
+3. **Context-aware** - All operations respect context cancellation and timeouts
+4. **Observable** - Built-in OpenTelemetry v2 support for production monitoring
+5. **Well-tested** - 83.9% coverage with comprehensive integration tests
+
+## Troubleshooting
+
+### Container fails to start
+
+```go
+if err := exec.Start(ctx); err != nil {
+    // Check logs for startup errors
+    logs, _ := exec.GetStderr(ctx)
+    fmt.Println("Error logs:", logs)
+
+    // Check container status
+    status, _ := exec.Status(ctx)
+    fmt.Printf("State: %s, Error: %s\n", status.State, status.Error)
+}
+```
+
+### Port already in use
+
+```go
+// Use random port (0)
+docker.WithPorts("80:0")  // Host port auto-assigned
+```
+
+### Wait strategy timeout
+
+```go
+// Increase timeout
+docker.WithWaitStrategy(
+    docker.WaitForLog("ready").
+        WithStartupTimeout(120 * time.Second),  // 2 minutes
+)
+```
+
+### Image pull fails
+
+```go
+// Pull manually first
+exec, _ := docker.New(docker.WithImage("myregistry.com/image:tag"))
+
+// Or check pull errors
+if err := exec.Start(ctx); err != nil {
+    if strings.Contains(err.Error(), "pull") {
+        fmt.Println("Image pull failed - check registry credentials")
+    }
+}
+```
+
 ## Related Packages
 
-- **[otel](../otel/)** - OpenTelemetry configuration
-- **[config](../config/)** - Configuration management
-
-## License
-
-MIT License - see [LICENSE](../LICENSE) for details.
+- **[otel](../otel/)** - OpenTelemetry v2 configuration and utilities
+- **[config](../config/)** - Configuration management with validation
+- **[logging](../logging/)** - Structured logging with context

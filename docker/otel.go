@@ -17,11 +17,11 @@ type otelInstrumentation struct {
 	enabled bool
 
 	// Metrics
-	containersStarted   metric.Int64Counter
-	containersStopped   metric.Int64Counter
+	containersStarted    metric.Int64Counter
+	containersStopped    metric.Int64Counter
 	containersTerminated metric.Int64Counter
-	containersRestarted metric.Int64Counter
-	containerErrors     metric.Int64Counter
+	containersRestarted  metric.Int64Counter
+	containerErrors      metric.Int64Counter
 }
 
 // newOTelInstrumentation creates OpenTelemetry instrumentation.
@@ -50,32 +50,32 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 			metric.WithInstrumentationVersion("v2.0.0"),
 		)
 
-		// Create counters
-		inst.containersStarted, _ = inst.meter.Int64Counter(
+		// Create counters (errors intentionally ignored - metrics are optional)
+		inst.containersStarted, _ = inst.meter.Int64Counter( //nolint:errcheck
 			"docker.containers.started",
 			metric.WithDescription("Number of containers started"),
 			metric.WithUnit("{container}"),
 		)
 
-		inst.containersStopped, _ = inst.meter.Int64Counter(
+		inst.containersStopped, _ = inst.meter.Int64Counter( //nolint:errcheck
 			"docker.containers.stopped",
 			metric.WithDescription("Number of containers stopped"),
 			metric.WithUnit("{container}"),
 		)
 
-		inst.containersTerminated, _ = inst.meter.Int64Counter(
+		inst.containersTerminated, _ = inst.meter.Int64Counter( //nolint:errcheck
 			"docker.containers.terminated",
 			metric.WithDescription("Number of containers terminated"),
 			metric.WithUnit("{container}"),
 		)
 
-		inst.containersRestarted, _ = inst.meter.Int64Counter(
+		inst.containersRestarted, _ = inst.meter.Int64Counter( //nolint:errcheck
 			"docker.containers.restarted",
 			metric.WithDescription("Number of containers restarted"),
 			metric.WithUnit("{container}"),
 		)
 
-		inst.containerErrors, _ = inst.meter.Int64Counter(
+		inst.containerErrors, _ = inst.meter.Int64Counter( //nolint:errcheck
 			"docker.container.errors",
 			metric.WithDescription("Number of container operation errors"),
 			metric.WithUnit("{error}"),

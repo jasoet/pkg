@@ -149,7 +149,7 @@ func (e *Executor) Start(ctx context.Context) error {
 				e.otel.recordError(ctx, "wait_strategy_error", err)
 			}
 			// Container failed to become ready, clean up
-			_ = e.terminate(ctx)
+			_ = e.terminate(ctx) //nolint:errcheck // Best effort cleanup, original error is more important
 			return fmt.Errorf("container failed to become ready: %w", err)
 		}
 	}
@@ -323,7 +323,7 @@ func (e *Executor) Close() error {
 // pullImage pulls the container image if not already present.
 func (e *Executor) pullImage(ctx context.Context) error {
 	// Check if image exists locally
-	_, _, err := e.client.ImageInspectWithRaw(ctx, e.config.image)
+	_, err := e.client.ImageInspect(ctx, e.config.image)
 	if err == nil {
 		// Image already exists
 		return nil
@@ -344,7 +344,7 @@ func (e *Executor) pullImage(ctx context.Context) error {
 // createContainer creates the container with configured options.
 func (e *Executor) createContainer(ctx context.Context) (string, error) {
 	// Build environment variables slice
-	var env []string
+	env := make([]string, 0, len(e.config.env))
 	for k, v := range e.config.env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -447,7 +447,7 @@ func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) 
 }
 
 // StreamLogs streams container logs to a channel.
-// The channel is closed when streaming completes or context is cancelled.
+// The channel is closed when streaming completes or context is canceled.
 func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan LogEntry, <-chan error) {
 	logCh := make(chan LogEntry, 100)
 	errCh := make(chan error, 1)

@@ -166,7 +166,7 @@ func TestNetwork_ConnectionString(t *testing.T) {
 		docker.WithPorts("80:8892"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForPort("80").WithStartupTimeout(30 * time.Second),
+			docker.WaitForPort("80").WithStartupTimeout(30*time.Second),
 		),
 	)
 

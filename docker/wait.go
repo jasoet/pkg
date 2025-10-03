@@ -225,7 +225,11 @@ func (w *waitForHTTP) WaitUntilReady(ctx context.Context, cli *client.Client, co
 					hostPort := bindings[0].HostPort
 
 					url := fmt.Sprintf("http://%s:%s%s", host, hostPort, w.path)
-					resp, err := httpClient.Get(url)
+					req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+					if err != nil {
+						continue
+					}
+					resp, err := httpClient.Do(req)
 					if err == nil {
 						resp.Body.Close()
 						if resp.StatusCode == w.expectedStatus {

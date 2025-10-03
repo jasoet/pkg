@@ -20,7 +20,7 @@ func TestWaitStrategy_WaitForLog(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker processes").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -40,7 +40,7 @@ func TestWaitStrategy_WaitForPort(t *testing.T) {
 		docker.WithPorts("80:8889"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
-			docker.WaitForPort("80").WithStartupTimeout(30 * time.Second),
+			docker.WaitForPort("80").WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -61,7 +61,7 @@ func TestWaitStrategy_WaitForHTTP(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForHTTP("80", "/", 200).
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -82,7 +82,7 @@ func TestWaitStrategy_ForListeningPort(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.ForListeningPort("80/tcp").
-				WithStartupTimeout(30 * time.Second),
+				WithStartupTimeout(30*time.Second),
 		),
 	)
 
@@ -151,7 +151,7 @@ func TestWaitStrategy_Timeout(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("this-will-never-appear").
-				WithStartupTimeout(1 * time.Second),
+				WithStartupTimeout(1*time.Second),
 		),
 	)
 
@@ -170,7 +170,7 @@ func TestWaitStrategy_PortTimeout(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForPort("8888/tcp").
-				WithStartupTimeout(2 * time.Second),
+				WithStartupTimeout(2*time.Second),
 		),
 	)
 
@@ -189,7 +189,7 @@ func TestWaitStrategy_HTTPTimeout(t *testing.T) {
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForHTTP("8080", "/", 200).
-				WithStartupTimeout(2 * time.Second),
+				WithStartupTimeout(2*time.Second),
 		),
 	)
 
