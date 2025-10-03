@@ -489,6 +489,7 @@ func TestTarInvalidInputs(t *testing.T) {
 		// Should succeed as it will walk the file (0 regular files)
 		// or handle appropriately
 		// The function uses filepath.Walk which handles files
+		_ = err // Intentionally not checking - filepath.Walk handles files
 	})
 }
 

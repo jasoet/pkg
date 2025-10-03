@@ -216,13 +216,13 @@ func TestExtractOperationType(t *testing.T) {
 
 func TestConnectionConfig_collectPoolMetrics_NilOTelConfig(t *testing.T) {
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
-		Host:         "localhost",
-		Port:         5432,
-		Username:     "test",
-		Password:     "test",
-		DbName:       "test",
-		OTelConfig:   nil, // No OTel config
+		DbType:     Postgresql,
+		Host:       "localhost",
+		Port:       5432,
+		Username:   "test",
+		Password:   "test",
+		DbName:     "test",
+		OTelConfig: nil, // No OTel config
 	}
 
 	// Create a mock sql.DB - this won't actually connect
