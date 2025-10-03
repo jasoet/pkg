@@ -1,0 +1,53 @@
+version: '3'
+
+vars:
+  PROTO_FILE: proto/user.proto
+
+tasks:
+  proto:
+    desc: Generate protobuf files
+    cmds:
+      - |
+        protoc --go_out=. --go_opt=paths=source_relative \
+          --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+          {{.PROTO_FILE}}
+      - echo "✓ Proto files generated"
+    sources:
+      - proto/*.proto
+    generates:
+      - proto/*.pb.go
+    silent: true
+
+  run:
+    desc: Run the fullstack OTel example
+    deps: [proto]
+    cmds:
+      - go run -tags example main.go
+
+  docker:up:
+    desc: Start dependencies (Jaeger and PostgreSQL)
+    cmds:
+      - docker-compose up -d
+      - echo "✓ Jaeger UI - http://localhost:16686"
+      - echo "✓ OTLP endpoint - localhost:4318"
+      - echo "✓ PostgreSQL - localhost:5432"
+    silent: true
+
+  docker:down:
+    desc: Stop all Docker containers
+    cmds:
+      - docker-compose down
+    silent: true
+
+  clean:
+    desc: Remove generated protobuf files
+    cmds:
+      - find proto -name "*.pb.go" -delete
+      - echo "✓ Generated files removed"
+    silent: true
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+    silent: true
