@@ -29,8 +29,9 @@
 // Each pillar is independently controlled by setting its provider.
 // Nil providers result in no-op implementations with zero overhead.
 //
-// # Semantic Conventions
+// # Standard Logging Helper
 //
-// This package defines library-specific attributes (AttrServerPort, AttrGRPCMode, etc.)
-// that complement standard OpenTelemetry semantic conventions.
+// This package provides otel.LogHelper for OTel-aware logging that automatically
+// correlates logs with traces. It uses OTel LoggerProvider when available,
+// otherwise falls back to zerolog. See helper.go for details.
 package otel
