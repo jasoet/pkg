@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rs/zerolog/log"
+	"github.com/jasoet/pkg/v2/otel"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -15,19 +15,20 @@ type WorkerManager struct {
 }
 
 func NewWorkerManager(config *Config) (*WorkerManager, error) {
-	logger := log.With().Str("function", "temporal.NewWorkerManager").Logger()
-	logger.Debug().
-		Str("hostPort", config.HostPort).
-		Str("namespace", config.Namespace).
-		Msg("Creating new Worker Manager")
+	ctx := context.Background()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewWorkerManager")
+
+	logger.Debug("Creating new Worker Manager",
+		otel.F("hostPort", config.HostPort),
+		otel.F("namespace", config.Namespace))
 
 	temporalClient, err := NewClient(config)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create Temporal client for Worker Manager")
+		logger.Error(err, "Failed to create Temporal client for Worker Manager")
 		return nil, err
 	}
 
-	logger.Debug().Msg("Worker Manager created successfully")
+	logger.Debug("Worker Manager created successfully")
 	return &WorkerManager{
 		client:  temporalClient,
 		workers: make([]worker.Worker, 0),
@@ -35,50 +36,51 @@ func NewWorkerManager(config *Config) (*WorkerManager, error) {
 }
 
 func (wm *WorkerManager) Close() {
-	logger := log.With().Str("function", "WorkerManager.Close").Logger()
+	ctx := context.Background()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Close")
+
 	workerCount := len(wm.workers)
-	logger.Debug().Int("workerCount", workerCount).Msg("Closing Worker Manager")
+	logger.Debug("Closing Worker Manager", otel.F("workerCount", workerCount))
 
 	if workerCount > 0 {
-		logger.Debug().Msg("Stopping all workers")
+		logger.Debug("Stopping all workers")
 		for i, w := range wm.workers {
-			logger.Debug().Int("workerIndex", i).Msg("Stopping worker")
+			logger.Debug("Stopping worker", otel.F("workerIndex", i))
 			w.Stop()
 		}
-		logger.Debug().Msg("All workers stopped")
+		logger.Debug("All workers stopped")
 	} else {
-		logger.Debug().Msg("No workers to stop")
+		logger.Debug("No workers to stop")
 	}
 
 	if wm.client != nil {
-		logger.Debug().Msg("Closing Temporal client")
+		logger.Debug("Closing Temporal client")
 		wm.client.Close()
 	}
 
-	logger.Debug().Msg("Worker Manager closed")
+	logger.Debug("Worker Manager closed")
 }
 
 func (wm *WorkerManager) Register(taskQueue string, options worker.Options) worker.Worker {
-	logger := log.With().Str("function", "WorkerManager.Register").Logger()
-	logger.Debug().
-		Str("taskQueue", taskQueue).
-		Msg("Registering new Temporal worker")
+	ctx := context.Background()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Register")
 
-	logger.Debug().Msg("Creating worker instance")
+	logger.Debug("Registering new Temporal worker", otel.F("taskQueue", taskQueue))
+
+	logger.Debug("Creating worker instance")
 	w := worker.New(wm.client, taskQueue, options)
 
-	logger.Debug().Msg("Adding worker to manager's workers list")
+	logger.Debug("Adding worker to manager's workers list")
 	wm.workers = append(wm.workers, w)
 
-	logger.Debug().
-		Str("taskQueue", taskQueue).
-		Int("totalWorkers", len(wm.workers)).
-		Msg("Worker registered successfully")
+	logger.Debug("Worker registered successfully",
+		otel.F("taskQueue", taskQueue),
+		otel.F("totalWorkers", len(wm.workers)))
 	return w
 }
 
 func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
-	logger := log.With().Ctx(ctx).Str("function", "WorkerManager.Start").Logger()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Start")
 
 	// Try to get the task queue from the worker if possible
 	// This is a bit of a hack since the worker doesn't expose its task queue directly
@@ -91,43 +93,43 @@ func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
 	}
 
 	if taskQueue != "" {
-		logger.Debug().Str("taskQueue", taskQueue).Msg("Starting Temporal worker")
+		logger.Debug("Starting Temporal worker", otel.F("taskQueue", taskQueue))
 	} else {
-		logger.Debug().Msg("Starting Temporal worker")
+		logger.Debug("Starting Temporal worker")
 	}
 
 	err := w.Start()
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to start Temporal worker")
+		logger.Error(err, "Failed to start Temporal worker")
 		return err
 	}
 
-	logger.Debug().Msg("Temporal worker started successfully")
+	logger.Debug("Temporal worker started successfully")
 	return nil
 }
 
 func (wm *WorkerManager) StartAll(ctx context.Context) error {
-	logger := log.With().Ctx(ctx).Str("function", "WorkerManager.StartAll").Logger()
-	workerCount := len(wm.workers)
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.StartAll")
 
-	logger.Debug().Int("workerCount", workerCount).Msg("Starting all Temporal workers")
+	workerCount := len(wm.workers)
+	logger.Debug("Starting all Temporal workers", otel.F("workerCount", workerCount))
 
 	if workerCount == 0 {
-		logger.Warn().Msg("No workers to start")
+		logger.Warn("No workers to start")
 		return nil
 	}
 
 	for i, w := range wm.workers {
-		logger.Debug().Int("workerIndex", i).Msg("Starting worker")
+		logger.Debug("Starting worker", otel.F("workerIndex", i))
 		err := w.Start()
 		if err != nil {
-			logger.Error().Err(err).Int("workerIndex", i).Msg("Failed to start worker")
+			logger.Error(err, "Failed to start worker", otel.F("workerIndex", i))
 			return err
 		}
-		logger.Debug().Int("workerIndex", i).Msg("Worker started successfully")
+		logger.Debug("Worker started successfully", otel.F("workerIndex", i))
 	}
 
-	logger.Debug().Int("workerCount", workerCount).Msg("All Temporal workers started successfully")
+	logger.Debug("All Temporal workers started successfully", otel.F("workerCount", workerCount))
 	return nil
 }
 

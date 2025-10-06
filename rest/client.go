@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/jasoet/pkg/v2/otel"
-	"github.com/rs/zerolog/log"
 )
 
 type Client struct {
@@ -134,7 +133,11 @@ func (c *Client) GetMiddlewares() []Middleware {
 }
 
 func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url string, body string, headers map[string]string) (*resty.Response, error) {
-	_log := log.With().Ctx(ctx).Str("function", "MakeRequestWithTrace").Str("url", url).Logger()
+	var otelConfig *otel.Config
+	if c.restConfig != nil {
+		otelConfig = c.restConfig.OTelConfig
+	}
+	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/rest", "rest.MakeRequestWithTrace")
 
 	if c.restClient == nil {
 		return nil, errors.New("rest client is nil")
@@ -208,7 +211,7 @@ func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url st
 	}
 
 	if err != nil {
-		_log.Error().Err(err).Msg("Failed to make request")
+		logger.Error(err, "Failed to make request")
 		return response, NewExecutionError("Failed to make request", err)
 	}
 
@@ -221,7 +224,11 @@ func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url st
 }
 
 func (c *Client) MakeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) (*resty.Response, error) {
-	_log := log.With().Ctx(ctx).Str("function", "MakeRequest").Str("url", url).Logger()
+	var otelConfig *otel.Config
+	if c.restConfig != nil {
+		otelConfig = c.restConfig.OTelConfig
+	}
+	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/rest", "rest.MakeRequest")
 
 	if c.restClient == nil {
 		return nil, errors.New("rest client is nil")
@@ -291,7 +298,7 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 	}
 
 	if err != nil {
-		_log.Error().Err(err).Msg("Failed to make request")
+		logger.Error(err, "Failed to make request")
 		return response, NewExecutionError("Failed to make request", err)
 	}
 
