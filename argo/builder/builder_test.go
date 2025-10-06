@@ -7,13 +7,14 @@ import (
 	"github.com/jasoet/pkg/v2/argo/builder/template"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestWorkflowBuilder_Build(t *testing.T) {
 	tests := []struct {
-		name          string
-		setupBuilder  func() *WorkflowBuilder
-		wantErr       bool
+		name             string
+		setupBuilder     func() *WorkflowBuilder
+		wantErr          bool
 		validateWorkflow func(t *testing.T, wf *v1alpha1.Workflow)
 	}{
 		{
@@ -235,4 +236,52 @@ func TestNoop_Implementation(t *testing.T) {
 	tmpl := templates[0]
 	require.NotNil(t, tmpl.Container)
 	assert.Equal(t, "alpine:3.19", tmpl.Container.Image)
+}
+
+func TestWorkflowBuilder_AddTemplate(t *testing.T) {
+	// Create a raw Argo template
+	rawTemplate := v1alpha1.Template{
+		Name: "custom-template",
+		Container: &corev1.Container{
+			Image:   "busybox:latest",
+			Command: []string{"echo"},
+			Args:    []string{"custom"},
+		},
+	}
+
+	builder := NewWorkflowBuilder("test", "argo").
+		AddTemplate(rawTemplate).
+		Add(template.NewContainer("main-step", "alpine:latest"))
+
+	wf, err := builder.Build()
+	require.NoError(t, err)
+	require.NotNil(t, wf)
+
+	// Find the custom template - it should exist
+	var customTemplate *v1alpha1.Template
+	for i := range wf.Spec.Templates {
+		if wf.Spec.Templates[i].Name == "custom-template" {
+			customTemplate = &wf.Spec.Templates[i]
+			break
+		}
+	}
+	require.NotNil(t, customTemplate, "custom template should exist")
+	assert.Equal(t, "busybox:latest", customTemplate.Container.Image)
+}
+
+func TestWorkflowBuilder_WithMetrics_Error(t *testing.T) {
+	// Test error handling in WithMetrics
+	provider := &mockMetricsProvider{
+		metrics: nil,
+		err:     assert.AnError,
+	}
+
+	builder := NewWorkflowBuilder("test", "argo").
+		WithMetrics(provider).
+		Add(template.NewContainer("step", "alpine:latest"))
+
+	wf, err := builder.Build()
+	require.Error(t, err)
+	assert.Nil(t, wf)
+	assert.Contains(t, err.Error(), "failed to get metrics")
 }
