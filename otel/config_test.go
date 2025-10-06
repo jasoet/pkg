@@ -482,7 +482,7 @@ func TestShutdown(t *testing.T) {
 
 func TestDefaultLoggerProvider(t *testing.T) {
 	t.Run("creates a logger provider", func(t *testing.T) {
-		lp := defaultLoggerProvider()
+		lp := defaultLoggerProvider("test-service", false)
 
 		if lp == nil {
 			t.Error("expected defaultLoggerProvider to return a provider")
@@ -490,7 +490,7 @@ func TestDefaultLoggerProvider(t *testing.T) {
 	})
 
 	t.Run("created logger can emit logs", func(t *testing.T) {
-		lp := defaultLoggerProvider()
+		lp := defaultLoggerProvider("test-service", false)
 		logger := lp.Logger("test-scope")
 
 		// Should not panic

@@ -40,9 +40,9 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.NewClient")
 
 	logger.Debug("Creating Argo Workflows client",
-		"inCluster", config.InCluster,
-		"kubeConfigPath", config.KubeConfigPath,
-		"argoServerURL", config.ArgoServerOpts.URL,
+		otel.F("inCluster", config.InCluster),
+		otel.F("kubeConfigPath", config.KubeConfigPath),
+		otel.F("argoServerURL", config.ArgoServerOpts.URL),
 	)
 
 	// Build Argo client options
@@ -125,7 +125,7 @@ func buildClientConfig(config *Config) clientcmd.ClientConfig {
 
 	// Set explicit path if provided
 	if config.KubeConfigPath != "" {
-		logger.Debug("Using explicit kubeconfig path", "path", config.KubeConfigPath)
+		logger.Debug("Using explicit kubeconfig path", otel.F("path", config.KubeConfigPath))
 		loadingRules.ExplicitPath = config.KubeConfigPath
 	} else {
 		// Use default kubeconfig location
@@ -135,7 +135,7 @@ func buildClientConfig(config *Config) clientcmd.ClientConfig {
 	// Build config overrides
 	overrides := &clientcmd.ConfigOverrides{}
 	if config.Context != "" {
-		logger.Debug("Using explicit context", "context", config.Context)
+		logger.Debug("Using explicit context", otel.F("context", config.Context))
 		overrides.CurrentContext = config.Context
 	}
 
@@ -208,11 +208,11 @@ func GetRestConfig(inCluster bool) (*rest.Config, error) {
 	if !inCluster {
 		kubeConfig = filepath.Join(clientcmd.RecommendedConfigDir, clientcmd.RecommendedFileName)
 		logger.Debug("Using kubeconfig file",
-			"inCluster", inCluster,
-			"kubeConfigPath", kubeConfig,
+			otel.F("inCluster", inCluster),
+			otel.F("kubeConfigPath", kubeConfig),
 		)
 	} else {
-		logger.Debug("Using in-cluster config", "inCluster", inCluster)
+		logger.Debug("Using in-cluster config", otel.F("inCluster", inCluster))
 	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
