@@ -149,7 +149,7 @@ func TestArgoServerConfig_Integration(t *testing.T) {
 	serverURL := "https://argo-server:2746"
 	authToken := "Bearer test-token"
 
-	config := ArgoServerConfig(serverURL, authToken)
+	config := ServerConfig(serverURL, authToken)
 
 	assert.Equal(t, serverURL, config.ArgoServerOpts.URL)
 	assert.Equal(t, authToken, config.ArgoServerOpts.AuthToken)

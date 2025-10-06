@@ -33,7 +33,7 @@ import (
 //
 // Example (Argo Server):
 //
-//	cfg := argo.ArgoServerConfig("https://argo-server:2746", "Bearer token")
+//	cfg := argo.ServerConfig("https://argo-server:2746", "Bearer token")
 //	ctx, client, err := argo.NewClient(ctx, cfg)
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
 	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.NewClient")

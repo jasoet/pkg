@@ -27,15 +27,15 @@ type Config struct {
 
 	// ArgoServerOpts configures connection to Argo Server (alternative to direct k8s API).
 	// If URL is set, the client will connect via Argo Server instead of k8s API.
-	ArgoServerOpts ArgoServerOpts `yaml:"argoServer" mapstructure:"argoServer"`
+	ArgoServerOpts ServerOpts `yaml:"argoServer" mapstructure:"argoServer"`
 
 	// OTelConfig enables OpenTelemetry instrumentation (optional).
 	OTelConfig *otel.Config `yaml:"-"`
 }
 
-// ArgoServerOpts contains Argo Server connection options.
+// ServerOpts contains Argo Server connection options.
 // This is used when connecting via Argo Server HTTP API instead of direct Kubernetes API.
-type ArgoServerOpts struct {
+type ServerOpts struct {
 	// URL is the Argo Server base URL (e.g., "https://argo-server:2746")
 	URL string `yaml:"url" mapstructure:"url"`
 
@@ -57,7 +57,7 @@ type ArgoServerOpts struct {
 func DefaultConfig() *Config {
 	config := &Config{
 		InCluster: false,
-		ArgoServerOpts: ArgoServerOpts{
+		ArgoServerOpts: ServerOpts{
 			InsecureSkipVerify: false,
 			HTTP1:              false,
 		},
@@ -85,12 +85,12 @@ func InClusterConfig() *Config {
 	return config
 }
 
-// ArgoServerConfig returns a Config for connecting via Argo Server.
+// ServerConfig returns a Config for connecting via Argo Server.
 // This is an alternative to direct Kubernetes API access.
-func ArgoServerConfig(serverURL string, authToken string) *Config {
+func ServerConfig(serverURL string, authToken string) *Config {
 	config := &Config{
 		InCluster: false,
-		ArgoServerOpts: ArgoServerOpts{
+		ArgoServerOpts: ServerOpts{
 			URL:                serverURL,
 			AuthToken:          authToken,
 			InsecureSkipVerify: false,
@@ -98,7 +98,7 @@ func ArgoServerConfig(serverURL string, authToken string) *Config {
 		},
 	}
 
-	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.ArgoServerConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.ServerConfig")
 	logger.Debug("Created Argo Server configuration", otel.F("serverURL", serverURL))
 
 	return config
