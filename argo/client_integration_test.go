@@ -144,24 +144,6 @@ func TestInClusterClientConfig(t *testing.T) {
 	assert.NotNil(t, restConfig, "REST config should not be nil")
 }
 
-// TestGetRestConfig tests the deprecated GetRestConfig function.
-func TestGetRestConfig(t *testing.T) {
-	kubeconfigPath := os.Getenv("HOME") + "/.kube/config"
-	if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-		t.Skip("Skipping integration test: kubeconfig not found")
-	}
-
-	// Test out-of-cluster mode
-	config, err := GetRestConfig(false)
-	if err != nil {
-		t.Logf("Failed to get REST config (expected if no cluster access): %v", err)
-		return
-	}
-
-	assert.NotNil(t, config, "REST config should not be nil")
-	assert.NotEmpty(t, config.Host, "Host should not be empty")
-}
-
 // TestArgoServerConfig_Integration tests Argo Server configuration creation in integration context.
 func TestArgoServerConfig_Integration(t *testing.T) {
 	serverURL := "https://argo-server:2746"

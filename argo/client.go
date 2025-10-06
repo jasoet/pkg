@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient"
 	"github.com/jasoet/pkg/v2/otel"
@@ -179,48 +178,4 @@ func (c *inClusterClientConfig) ConfigAccess() clientcmd.ConfigAccess {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.ExplicitPath = ""
 	return loadingRules
-}
-
-// GetCmdConfig returns an interactive ClientConfig for use with command-line tools.
-// This is useful for tools that need to prompt users for input.
-//
-// Deprecated: Use NewClient or NewClientWithOptions instead for better control.
-func GetCmdConfig() clientcmd.ClientConfig {
-	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "argo.GetCmdConfig")
-	logger.Debug("Creating interactive client config")
-
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	return clientcmd.NewInteractiveDeferredLoadingClientConfig(
-		loadingRules,
-		&clientcmd.ConfigOverrides{},
-		os.Stdin,
-	)
-}
-
-// GetRestConfig returns a Kubernetes REST config for direct API access.
-// This is useful when you need to interact with Kubernetes API outside of Argo.
-//
-// Deprecated: Use NewClient with appropriate Config instead.
-func GetRestConfig(inCluster bool) (*rest.Config, error) {
-	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "argo.GetRestConfig")
-
-	var kubeConfig string
-	if !inCluster {
-		kubeConfig = filepath.Join(clientcmd.RecommendedConfigDir, clientcmd.RecommendedFileName)
-		logger.Debug("Using kubeconfig file",
-			otel.F("inCluster", inCluster),
-			otel.F("kubeConfigPath", kubeConfig),
-		)
-	} else {
-		logger.Debug("Using in-cluster config", otel.F("inCluster", inCluster))
-	}
-
-	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
-	if err != nil {
-		logger.Error(err, "Failed to create REST config")
-		return nil, fmt.Errorf("failed to create config from kubeconfig: %w", err)
-	}
-
-	logger.Debug("Successfully created REST config")
-	return config, nil
 }
