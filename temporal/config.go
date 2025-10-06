@@ -1,7 +1,9 @@
 package temporal
 
 import (
-	"github.com/rs/zerolog/log"
+	"context"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 type Config struct {
@@ -11,7 +13,8 @@ type Config struct {
 }
 
 func DefaultConfig() *Config {
-	logger := log.With().Str("function", "temporal.DefaultConfig").Logger()
+	ctx := context.Background()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.DefaultConfig")
 
 	config := &Config{
 		HostPort:             "localhost:7233",
@@ -19,11 +22,10 @@ func DefaultConfig() *Config {
 		MetricsListenAddress: "0.0.0.0:9090",
 	}
 
-	logger.Debug().
-		Str("hostPort", config.HostPort).
-		Str("namespace", config.Namespace).
-		Str("metricsAddress", config.MetricsListenAddress).
-		Msg("Created default Temporal configuration")
+	logger.Debug("Created default Temporal configuration",
+		otel.F("hostPort", config.HostPort),
+		otel.F("namespace", config.Namespace),
+		otel.F("metricsAddress", config.MetricsListenAddress))
 
 	return config
 }

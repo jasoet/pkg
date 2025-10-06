@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/rs/zerolog/log"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 type RequestInfo struct {
@@ -48,17 +48,20 @@ func (m *LoggingMiddleware) BeforeRequest(ctx context.Context, method string, ur
 
 // AfterRequest logs the completion of the request with timing information
 func (m *LoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
-	logger := log.With().Ctx(ctx).
-		Str("method", info.Method).
-		Str("url", info.URL).
-		Int("status_code", info.StatusCode).
-		Dur("duration", info.Duration).
-		Logger()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/rest", "LoggingMiddleware.AfterRequest")
 
 	if info.Error != nil {
-		logger.Error().Err(info.Error).Msg("Request failed")
+		logger.Error(info.Error, "Request failed",
+			otel.F("method", info.Method),
+			otel.F("url", info.URL),
+			otel.F("status_code", info.StatusCode),
+			otel.F("duration", info.Duration))
 	} else {
-		logger.Info().Msg("Request completed")
+		logger.Info("Request completed",
+			otel.F("method", info.Method),
+			otel.F("url", info.URL),
+			otel.F("status_code", info.StatusCode),
+			otel.F("duration", info.Duration))
 	}
 }
 
@@ -97,17 +100,21 @@ func (m *DatabaseLoggingMiddleware) BeforeRequest(ctx context.Context, method st
 func (m *DatabaseLoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
 	// TODO: Implement actual database logging
 	// For now, just log to console similar to LoggingMiddleware
-	logger := log.With().Ctx(ctx).
-		Str("middleware", "database").
-		Str("method", info.Method).
-		Str("url", info.URL).
-		Int("status_code", info.StatusCode).
-		Dur("duration", info.Duration).
-		Logger()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/rest", "DatabaseLoggingMiddleware.AfterRequest")
 
 	if info.Error != nil {
-		logger.Error().Err(info.Error).Msg("Request failed (would log to database)")
+		logger.Error(info.Error, "Request failed (would log to database)",
+			otel.F("middleware", "database"),
+			otel.F("method", info.Method),
+			otel.F("url", info.URL),
+			otel.F("status_code", info.StatusCode),
+			otel.F("duration", info.Duration))
 	} else {
-		logger.Info().Msg("Request completed (would log to database)")
+		logger.Info("Request completed (would log to database)",
+			otel.F("middleware", "database"),
+			otel.F("method", info.Method),
+			otel.F("url", info.URL),
+			otel.F("status_code", info.StatusCode),
+			otel.F("duration", info.Duration))
 	}
 }

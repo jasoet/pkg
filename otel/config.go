@@ -3,7 +3,7 @@ package otel
 import (
 	"context"
 
-	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
+	"github.com/jasoet/pkg/v2/logging"
 	"go.opentelemetry.io/otel/log"
 	noopl "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
@@ -15,7 +15,7 @@ import (
 
 // Config holds OpenTelemetry configuration for instrumentation.
 // TracerProvider and MeterProvider are optional - nil values result in no-op implementations.
-// LoggerProvider defaults to stdout exporter when using NewConfig().
+// LoggerProvider defaults to zerolog-based provider when using NewConfig().
 type Config struct {
 	// TracerProvider for distributed tracing
 	// If nil, tracing will be disabled (no-op tracer)
@@ -26,7 +26,7 @@ type Config struct {
 	MeterProvider metric.MeterProvider
 
 	// LoggerProvider for structured logging via OTel
-	// Defaults to stdout exporter when using NewConfig()
+	// Defaults to zerolog-based provider when using NewConfig()
 	// Set to nil explicitly to disable logging
 	LoggerProvider log.LoggerProvider
 
@@ -38,28 +38,27 @@ type Config struct {
 }
 
 // NewConfig creates a new OpenTelemetry configuration with default LoggerProvider.
-// The default LoggerProvider uses stdout exporter for easy debugging.
+// The default LoggerProvider uses zerolog with automatic log-span correlation for production use.
 // Use With* methods to add TracerProvider and MeterProvider.
 //
-// For production use with better formatting and automatic log-span correlation,
-// use logging.NewLoggerProvider() instead:
-//
-//	import "github.com/jasoet/pkg/v2/logging"
-//	cfg := &otel.Config{
-//	    ServiceName:    "my-service",
-//	    LoggerProvider: logging.NewLoggerProvider("my-service", false),
-//	}
-//	cfg.WithTracerProvider(tp).WithMeterProvider(mp)
-//
-// Example with default stdout logger:
+// Example:
 //
 //	cfg := otel.NewConfig("my-service").
 //	    WithTracerProvider(tp).
 //	    WithMeterProvider(mp)
+//
+// For custom logger configuration:
+//
+//	import "github.com/jasoet/pkg/v2/logging"
+//	cfg := &otel.Config{
+//	    ServiceName:    "my-service",
+//	    LoggerProvider: logging.NewLoggerProvider("my-service", true), // enable debug mode
+//	}
+//	cfg.WithTracerProvider(tp).WithMeterProvider(mp)
 func NewConfig(serviceName string) *Config {
 	return &Config{
 		ServiceName:    serviceName,
-		LoggerProvider: defaultLoggerProvider(),
+		LoggerProvider: defaultLoggerProvider(serviceName, false),
 	}
 }
 
@@ -93,20 +92,11 @@ func (c *Config) WithoutLogging() *Config {
 	return c
 }
 
-// defaultLoggerProvider creates a simple stdout-based LoggerProvider
-// This is used as the default to ensure logging works out of the box
-func defaultLoggerProvider() log.LoggerProvider {
-	exporter, err := stdoutlog.New()
-	if err != nil {
-		// If stdout exporter fails, return no-op
-		return noopl.NewLoggerProvider()
-	}
-
-	provider := sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
-	)
-
-	return provider
+// defaultLoggerProvider creates a zerolog-based LoggerProvider with OTel integration
+// This is used as the default to ensure logging works out of the box with proper formatting
+// and automatic log-span correlation when tracing is enabled.
+func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
+	return logging.NewLoggerProvider(serviceName, debug)
 }
 
 // Shutdown gracefully shuts down all configured providers
