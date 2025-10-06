@@ -63,7 +63,7 @@ func DefaultConfig() *Config {
 		},
 	}
 
-	logger := newLogHelper(context.Background(), config, "argo.DefaultConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.DefaultConfig")
 	logger.Debug("Created default Argo configuration",
 		"inCluster", config.InCluster,
 		"kubeConfigPath", config.KubeConfigPath,
@@ -79,7 +79,7 @@ func InClusterConfig() *Config {
 		InCluster: true,
 	}
 
-	logger := newLogHelper(context.Background(), config, "argo.InClusterConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.InClusterConfig")
 	logger.Debug("Created in-cluster Argo configuration")
 
 	return config
@@ -98,7 +98,7 @@ func ArgoServerConfig(serverURL string, authToken string) *Config {
 		},
 	}
 
-	logger := newLogHelper(context.Background(), config, "argo.ArgoServerConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.ArgoServerConfig")
 	logger.Debug("Created Argo Server configuration", "serverURL", serverURL)
 
 	return config

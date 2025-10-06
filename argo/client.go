@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient"
+	"github.com/jasoet/pkg/v2/otel"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -36,7 +37,7 @@ import (
 //	cfg := argo.ArgoServerConfig("https://argo-server:2746", "Bearer token")
 //	ctx, client, err := argo.NewClient(ctx, cfg)
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
-	logger := newLogHelper(ctx, config, "argo.NewClient")
+	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.NewClient")
 
 	logger.Debug("Creating Argo Workflows client",
 		"inCluster", config.InCluster,
@@ -111,7 +112,7 @@ func NewClientWithOptions(ctx context.Context, opts ...Option) (context.Context,
 func buildClientConfig(config *Config) clientcmd.ClientConfig {
 	// Note: context.Background() used here since we don't have access to the actual context
 	// This is acceptable as buildClientConfig is called from within NewClient which has the context
-	logger := newLogHelper(context.Background(), config, "argo.buildClientConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.buildClientConfig")
 
 	// For in-cluster mode, use in-cluster config
 	if config.InCluster {
@@ -152,7 +153,7 @@ func (c *inClusterClientConfig) RawConfig() (clientcmdapi.Config, error) {
 }
 
 func (c *inClusterClientConfig) ClientConfig() (*rest.Config, error) {
-	logger := newLogHelper(context.Background(), nil, "inClusterClientConfig.ClientConfig")
+	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "inClusterClientConfig.ClientConfig")
 	logger.Debug("Loading in-cluster config")
 
 	config, err := rest.InClusterConfig()
@@ -185,7 +186,7 @@ func (c *inClusterClientConfig) ConfigAccess() clientcmd.ConfigAccess {
 //
 // Deprecated: Use NewClient or NewClientWithOptions instead for better control.
 func GetCmdConfig() clientcmd.ClientConfig {
-	logger := newLogHelper(context.Background(), nil, "argo.GetCmdConfig")
+	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "argo.GetCmdConfig")
 	logger.Debug("Creating interactive client config")
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
@@ -201,7 +202,7 @@ func GetCmdConfig() clientcmd.ClientConfig {
 //
 // Deprecated: Use NewClient with appropriate Config instead.
 func GetRestConfig(inCluster bool) (*rest.Config, error) {
-	logger := newLogHelper(context.Background(), nil, "argo.GetRestConfig")
+	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "argo.GetRestConfig")
 
 	var kubeConfig string
 	if !inCluster {
