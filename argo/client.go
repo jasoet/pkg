@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient"
-	"github.com/rs/zerolog/log"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -37,14 +36,13 @@ import (
 //	cfg := argo.ArgoServerConfig("https://argo-server:2746", "Bearer token")
 //	ctx, client, err := argo.NewClient(ctx, cfg)
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
-	logger := log.With().
-		Str("function", "argo.NewClient").
-		Bool("inCluster", config.InCluster).
-		Str("kubeConfigPath", config.KubeConfigPath).
-		Str("argoServerURL", config.ArgoServerOpts.URL).
-		Logger()
+	logger := newLogHelper(ctx, config, "argo.NewClient")
 
-	logger.Debug().Msg("Creating Argo Workflows client")
+	logger.Debug("Creating Argo Workflows client",
+		"inCluster", config.InCluster,
+		"kubeConfigPath", config.KubeConfigPath,
+		"argoServerURL", config.ArgoServerOpts.URL,
+	)
 
 	// Build Argo client options
 	opts := apiclient.Opts{
@@ -53,7 +51,7 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 
 	// Configure Argo Server mode if URL is provided
 	if config.ArgoServerOpts.URL != "" {
-		logger.Debug().Msg("Using Argo Server connection mode")
+		logger.Debug("Using Argo Server connection mode")
 		opts.ArgoServerOpts = apiclient.ArgoServerOpts{
 			URL:                config.ArgoServerOpts.URL,
 			InsecureSkipVerify: config.ArgoServerOpts.InsecureSkipVerify,
@@ -68,7 +66,7 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 		}
 	} else {
 		// Use Kubernetes API mode
-		logger.Debug().Msg("Using Kubernetes API connection mode")
+		logger.Debug("Using Kubernetes API connection mode")
 		opts.ClientConfigSupplier = func() clientcmd.ClientConfig {
 			return buildClientConfig(config)
 		}
@@ -77,11 +75,11 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 	// Create the client
 	ctx, client, err := apiclient.NewClientFromOpts(opts)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create Argo Workflows client")
+		logger.Error(err, "Failed to create Argo Workflows client")
 		return nil, nil, fmt.Errorf("failed to create argo client: %w", err)
 	}
 
-	logger.Debug().Msg("Successfully created Argo Workflows client")
+	logger.Debug("Successfully created Argo Workflows client")
 	return ctx, client, nil
 }
 
@@ -111,11 +109,13 @@ func NewClientWithOptions(ctx context.Context, opts ...Option) (context.Context,
 // 2. Explicit kubeconfig path
 // 3. Default kubeconfig location (~/.kube/config)
 func buildClientConfig(config *Config) clientcmd.ClientConfig {
-	logger := log.With().Str("function", "argo.buildClientConfig").Logger()
+	// Note: context.Background() used here since we don't have access to the actual context
+	// This is acceptable as buildClientConfig is called from within NewClient which has the context
+	logger := newLogHelper(context.Background(), config, "argo.buildClientConfig")
 
 	// For in-cluster mode, use in-cluster config
 	if config.InCluster {
-		logger.Debug().Msg("Building in-cluster client config")
+		logger.Debug("Building in-cluster client config")
 		return &inClusterClientConfig{}
 	}
 
@@ -124,17 +124,17 @@ func buildClientConfig(config *Config) clientcmd.ClientConfig {
 
 	// Set explicit path if provided
 	if config.KubeConfigPath != "" {
-		logger.Debug().Str("path", config.KubeConfigPath).Msg("Using explicit kubeconfig path")
+		logger.Debug("Using explicit kubeconfig path", "path", config.KubeConfigPath)
 		loadingRules.ExplicitPath = config.KubeConfigPath
 	} else {
 		// Use default kubeconfig location
-		logger.Debug().Msg("Using default kubeconfig location")
+		logger.Debug("Using default kubeconfig location")
 	}
 
 	// Build config overrides
 	overrides := &clientcmd.ConfigOverrides{}
 	if config.Context != "" {
-		logger.Debug().Str("context", config.Context).Msg("Using explicit context")
+		logger.Debug("Using explicit context", "context", config.Context)
 		overrides.CurrentContext = config.Context
 	}
 
@@ -152,16 +152,16 @@ func (c *inClusterClientConfig) RawConfig() (clientcmdapi.Config, error) {
 }
 
 func (c *inClusterClientConfig) ClientConfig() (*rest.Config, error) {
-	logger := log.With().Str("function", "inClusterClientConfig.ClientConfig").Logger()
-	logger.Debug().Msg("Loading in-cluster config")
+	logger := newLogHelper(context.Background(), nil, "inClusterClientConfig.ClientConfig")
+	logger.Debug("Loading in-cluster config")
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to load in-cluster config")
+		logger.Error(err, "Failed to load in-cluster config")
 		return nil, fmt.Errorf("failed to load in-cluster config: %w", err)
 	}
 
-	logger.Debug().Msg("Successfully loaded in-cluster config")
+	logger.Debug("Successfully loaded in-cluster config")
 	return config, nil
 }
 
@@ -185,8 +185,8 @@ func (c *inClusterClientConfig) ConfigAccess() clientcmd.ConfigAccess {
 //
 // Deprecated: Use NewClient or NewClientWithOptions instead for better control.
 func GetCmdConfig() clientcmd.ClientConfig {
-	logger := log.With().Str("function", "argo.GetCmdConfig").Logger()
-	logger.Debug().Msg("Creating interactive client config")
+	logger := newLogHelper(context.Background(), nil, "argo.GetCmdConfig")
+	logger.Debug("Creating interactive client config")
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	return clientcmd.NewInteractiveDeferredLoadingClientConfig(
@@ -201,25 +201,25 @@ func GetCmdConfig() clientcmd.ClientConfig {
 //
 // Deprecated: Use NewClient with appropriate Config instead.
 func GetRestConfig(inCluster bool) (*rest.Config, error) {
-	logger := log.With().
-		Str("function", "argo.GetRestConfig").
-		Bool("inCluster", inCluster).
-		Logger()
+	logger := newLogHelper(context.Background(), nil, "argo.GetRestConfig")
 
 	var kubeConfig string
 	if !inCluster {
 		kubeConfig = filepath.Join(clientcmd.RecommendedConfigDir, clientcmd.RecommendedFileName)
-		logger.Debug().Str("kubeConfigPath", kubeConfig).Msg("Using kubeconfig file")
+		logger.Debug("Using kubeconfig file",
+			"inCluster", inCluster,
+			"kubeConfigPath", kubeConfig,
+		)
 	} else {
-		logger.Debug().Msg("Using in-cluster config")
+		logger.Debug("Using in-cluster config", "inCluster", inCluster)
 	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create REST config")
+		logger.Error(err, "Failed to create REST config")
 		return nil, fmt.Errorf("failed to create config from kubeconfig: %w", err)
 	}
 
-	logger.Debug().Msg("Successfully created REST config")
+	logger.Debug("Successfully created REST config")
 	return config, nil
 }

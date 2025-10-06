@@ -1,8 +1,9 @@
 package argo
 
 import (
+	"context"
+
 	"github.com/jasoet/pkg/v2/otel"
-	"github.com/rs/zerolog/log"
 )
 
 // Config represents the configuration for connecting to Argo Workflows.
@@ -54,8 +55,6 @@ type ArgoServerOpts struct {
 // - Default kubeconfig location (~/.kube/config)
 // - Current context from kubeconfig
 func DefaultConfig() *Config {
-	logger := log.With().Str("function", "argo.DefaultConfig").Logger()
-
 	config := &Config{
 		InCluster: false,
 		ArgoServerOpts: ArgoServerOpts{
@@ -64,10 +63,11 @@ func DefaultConfig() *Config {
 		},
 	}
 
-	logger.Debug().
-		Bool("inCluster", config.InCluster).
-		Str("kubeConfigPath", config.KubeConfigPath).
-		Msg("Created default Argo configuration")
+	logger := newLogHelper(context.Background(), config, "argo.DefaultConfig")
+	logger.Debug("Created default Argo configuration",
+		"inCluster", config.InCluster,
+		"kubeConfigPath", config.KubeConfigPath,
+	)
 
 	return config
 }
@@ -75,13 +75,12 @@ func DefaultConfig() *Config {
 // InClusterConfig returns a Config for in-cluster usage.
 // This is useful when the client runs inside a Kubernetes pod.
 func InClusterConfig() *Config {
-	logger := log.With().Str("function", "argo.InClusterConfig").Logger()
-
 	config := &Config{
 		InCluster: true,
 	}
 
-	logger.Debug().Msg("Created in-cluster Argo configuration")
+	logger := newLogHelper(context.Background(), config, "argo.InClusterConfig")
+	logger.Debug("Created in-cluster Argo configuration")
 
 	return config
 }
@@ -89,8 +88,6 @@ func InClusterConfig() *Config {
 // ArgoServerConfig returns a Config for connecting via Argo Server.
 // This is an alternative to direct Kubernetes API access.
 func ArgoServerConfig(serverURL string, authToken string) *Config {
-	logger := log.With().Str("function", "argo.ArgoServerConfig").Logger()
-
 	config := &Config{
 		InCluster: false,
 		ArgoServerOpts: ArgoServerOpts{
@@ -101,9 +98,8 @@ func ArgoServerConfig(serverURL string, authToken string) *Config {
 		},
 	}
 
-	logger.Debug().
-		Str("serverURL", serverURL).
-		Msg("Created Argo Server configuration")
+	logger := newLogHelper(context.Background(), config, "argo.ArgoServerConfig")
+	logger.Debug("Created Argo Server configuration", "serverURL", serverURL)
 
 	return config
 }
