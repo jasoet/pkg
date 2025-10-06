@@ -31,6 +31,7 @@ Production-ready components with comprehensive observability, testing, and examp
 | **[logging](./logging/)** | Structured logging with zerolog | Context-aware, OTel integration |
 | **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations, OTel |
 | **[docker](./docker/)** | Docker container executor | Lifecycle management, wait strategies, dual API |
+| **[argo](./argo/)** | Argo Workflows client | Kubernetes API, Argo Server, OTel, flexible config |
 | **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
 | **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, dual protocol, observability |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, OTel tracing |
@@ -351,6 +352,36 @@ exec, _ := docker.NewFromRequest(req)
 
 **Features:** Lifecycle management, wait strategies, log streaming, dual API (functional + struct)
 **Coverage:** 83.9% | **[Examples](./docker/examples/)** | **[Documentation](./docker/README.md)**
+
+#### [argo](./argo/) - Argo Workflows Client
+Production-ready Argo Workflows client with flexible configuration.
+
+```go
+// Default kubeconfig
+ctx, client, err := argo.NewClient(ctx, argo.DefaultConfig())
+if err != nil {
+    return err
+}
+defer client.Close()
+
+// Or with functional options
+ctx, client, err := argo.NewClientWithOptions(ctx,
+    argo.WithKubeConfig("/path/to/kubeconfig"),
+    argo.WithContext("production"),
+    argo.WithOTelConfig(otelConfig),
+)
+
+// In-cluster mode
+ctx, client, err := argo.NewClient(ctx, argo.InClusterConfig())
+
+// Argo Server mode
+ctx, client, err := argo.NewClientWithOptions(ctx,
+    argo.WithArgoServer("https://argo-server:2746", "Bearer token"),
+)
+```
+
+**Features:** Multiple connection modes, functional options, OTel support, proper error handling
+**[Examples](./argo/examples/)** | **[Documentation](./argo/README.md)**
 
 ### HTTP & gRPC
 
