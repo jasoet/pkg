@@ -121,12 +121,12 @@ func WithOTelConfig(otelConfig *otel.Config) Option {
 	}
 }
 
-// WithArgoServerOpts sets the complete ArgoServerOpts configuration.
+// WithArgoServerOpts sets the complete ServerOpts configuration.
 // This is useful when you want to configure all Argo Server options at once.
 //
 // Example:
 //
-//	serverOpts := argo.ArgoServerOpts{
+//	serverOpts := argo.ServerOpts{
 //	    URL:                "https://argo-server:2746",
 //	    AuthToken:          "Bearer token",
 //	    InsecureSkipVerify: false,
@@ -136,7 +136,7 @@ func WithOTelConfig(otelConfig *otel.Config) Option {
 //	ctx, client, err := argo.NewClientWithOptions(ctx,
 //	    argo.WithArgoServerOpts(serverOpts),
 //	)
-func WithArgoServerOpts(opts ArgoServerOpts) Option {
+func WithArgoServerOpts(opts ServerOpts) Option {
 	return func(c *Config) error {
 		c.ArgoServerOpts = opts
 		return nil

@@ -33,7 +33,7 @@ func TestArgoServerConfig(t *testing.T) {
 	serverURL := "https://argo-server.example.com:2746"
 	authToken := "Bearer test-token-123"
 
-	config := ArgoServerConfig(serverURL, authToken)
+	config := ServerConfig(serverURL, authToken)
 
 	assert.NotNil(t, config)
 	assert.False(t, config.InCluster)
@@ -44,7 +44,7 @@ func TestArgoServerConfig(t *testing.T) {
 }
 
 func TestArgoServerConfig_EmptyValues(t *testing.T) {
-	config := ArgoServerConfig("", "")
+	config := ServerConfig("", "")
 
 	assert.NotNil(t, config)
 	assert.Empty(t, config.ArgoServerOpts.URL)
