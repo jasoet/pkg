@@ -18,7 +18,7 @@ The `otel` package provides centralized OpenTelemetry configuration that enables
 - **Selective Enablement**: Enable only the telemetry you need
 - **No-op by Default**: Zero overhead when providers are not configured
 - **Method Chaining**: Fluent API for configuration
-- **Semantic Conventions**: Library-specific attributes for consistent instrumentation
+- **Standard Logging Helper**: OTel-aware logging with automatic trace correlation
 - **Graceful Shutdown**: Proper resource cleanup
 
 ## Installation
@@ -144,56 +144,29 @@ logger := cfg.GetLogger("scope-name")   // Returns no-op if disabled
 cfg.Shutdown(context.Background())
 ```
 
-## Semantic Conventions
+## Standard Logging Helper
 
-Library-specific attributes for consistent instrumentation:
+The `otel` package provides `LogHelper` for OTel-aware logging with automatic log-span correlation:
 
-### Server Package
 ```go
-otel.AttrServerPort         // "pkg.server.port"
+import "github.com/jasoet/pkg/v2/otel"
+
+// Create a logger (uses OTel when configured, falls back to zerolog otherwise)
+logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
+
+// Log with automatic trace_id/span_id injection (when OTel is enabled)
+logger.Debug("Starting work", "workerId", 123)
+logger.Info("Work completed", "duration", elapsed)
+logger.Error(err, "Work failed", "workerId", 123)
 ```
 
-### gRPC Package
-```go
-otel.AttrGRPCMode           // "pkg.grpc.mode"
-otel.AttrGRPCPort           // "pkg.grpc.port"
-otel.AttrGRPCHTTPPort       // "pkg.grpc.http_port"
-otel.AttrGRPCReflection     // "pkg.grpc.reflection_enabled"
-otel.AttrGRPCGatewayEnabled // "pkg.grpc.gateway_enabled"
+**Benefits:**
+- Automatic trace_id/span_id injection when OTel is configured
+- Graceful fallback to zerolog when OTel is not configured
+- Consistent API across all packages
+- Errors automatically recorded in active spans
 
-// Values
-otel.GRPCModeSeparate       // "separate"
-otel.GRPCModeH2C            // "h2c"
-```
-
-### REST Client Package
-```go
-otel.AttrRESTClientName     // "pkg.rest.client.name"
-otel.AttrRESTRetryCount     // "pkg.rest.retry.max_count"
-otel.AttrRESTRetryAttempt   // "pkg.rest.retry.attempt"
-otel.AttrRESTTimeout        // "pkg.rest.timeout_ms"
-```
-
-### Database Package
-```go
-otel.AttrDBConnectionPool   // "pkg.db.pool.name"
-otel.AttrDBType            // "pkg.db.type"
-otel.AttrDBMaxIdleConns    // "pkg.db.pool.max_idle"
-otel.AttrDBMaxOpenConns    // "pkg.db.pool.max_open"
-
-// Values
-otel.DBTypePostgreSQL      // "postgresql"
-otel.DBTypeMySQL           // "mysql"
-otel.DBTypeMSSQL           // "mssql"
-```
-
-### Concurrent Package
-```go
-otel.AttrConcurrentTaskCount   // "pkg.concurrent.task.count"
-otel.AttrConcurrentTaskSuccess // "pkg.concurrent.task.success"
-otel.AttrConcurrentTaskFailed  // "pkg.concurrent.task.failed"
-otel.AttrConcurrentMaxWorkers  // "pkg.concurrent.max_workers"
-```
+See [helper.go](./helper.go) for full documentation.
 
 ## Integration Examples
 
@@ -339,19 +312,7 @@ if err := otelConfig.Shutdown(ctx); err != nil {
 }
 ```
 
-### 3. Use Semantic Conventions
-
-```go
-// ✅ Good: Use defined attributes
-import "go.opentelemetry.io/otel/attribute"
-
-span.SetAttributes(
-    otel.AttrServerPort.Int(8080),
-    otel.AttrGRPCMode.String(otel.GRPCModeH2C),
-)
-```
-
-### 4. Check Before Using
+### 3. Check Before Using
 
 ```go
 // ✅ Good: Check enablement
@@ -361,14 +322,12 @@ if cfg.IsTracingEnabled() {
 }
 ```
 
-### 5. Production Logger Provider
+### 4. Use LogHelper for Consistent Logging
 
 ```go
-// ✅ Good: Use logging package for production
-import "github.com/jasoet/pkg/v2/logging"
-
-cfg := otel.NewConfig("my-service").
-    WithLoggerProvider(logging.NewLoggerProvider("my-service", false))
+// ✅ Good: Use otel.LogHelper for automatic log-span correlation
+logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
+logger.Info("Work completed", "duration", elapsed)
 ```
 
 ## Architecture
@@ -384,10 +343,11 @@ cfg := otel.NewConfig("my-service").
 
 ```
 otel/
-├── config.go       # Config struct and builder methods
-├── attributes.go   # Semantic conventions
-├── doc.go         # Package documentation
-└── config_test.go # Comprehensive tests (97.1% coverage)
+├── config.go        # Config struct and builder methods
+├── helper.go        # Standard logging helper with OTel integration
+├── helper_test.go   # LogHelper tests
+├── doc.go          # Package documentation
+└── config_test.go  # Config tests
 ```
 
 ## Troubleshooting
