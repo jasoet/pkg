@@ -103,6 +103,54 @@ tasks:
           echo "   For manual testing: task temporal:start"
         fi
 
+  # Infrastructure checks
+  k8s:check:
+    desc: Check Kubernetes cluster availability
+    silent: true
+    cmds:
+      - |
+        if ! command -v kubectl &> /dev/null; then
+          echo "❌ kubectl not installed"
+          exit 1
+        fi
+        if kubectl cluster-info &> /dev/null; then
+          echo "✅ Kubernetes cluster is available"
+          kubectl cluster-info | head -2
+          echo "   Context: $(kubectl config current-context)"
+        else
+          echo "❌ Kubernetes cluster not accessible"
+          echo "   Check your kubeconfig or cluster status"
+          exit 1
+        fi
+
+  argo:check:
+    desc: Check Argo Workflows availability in cluster
+    silent: true
+    cmds:
+      - |
+        if ! command -v kubectl &> /dev/null; then
+          echo "❌ kubectl not installed"
+          exit 1
+        fi
+        if ! kubectl cluster-info &> /dev/null; then
+          echo "❌ Kubernetes cluster not accessible"
+          exit 1
+        fi
+        if kubectl get namespace argo &> /dev/null; then
+          echo "✅ Argo namespace exists"
+          if kubectl get deployment -n argo 2> /dev/null | grep -q workflow-controller; then
+            echo "✅ Argo Workflows is installed"
+            kubectl get pods -n argo -l app=workflow-controller --no-headers 2>/dev/null | head -1
+          else
+            echo "⚠️  Argo namespace exists but Argo Workflows not detected"
+          fi
+        else
+          echo "❌ Argo namespace not found"
+          echo "   Install: kubectl create namespace argo"
+          echo "   Then install Argo Workflows from https://argo-workflows.readthedocs.io"
+          exit 1
+        fi
+
   # Utilities
   tools:
     desc: Install development tools
