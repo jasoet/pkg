@@ -116,7 +116,7 @@ func TestWithOTelConfig(t *testing.T) {
 
 func TestWithArgoServerOpts(t *testing.T) {
 	config := &Config{}
-	serverOpts := ArgoServerOpts{
+	serverOpts := ServerOpts{
 		URL:                "https://argo-server:2746",
 		AuthToken:          "Bearer token",
 		InsecureSkipVerify: true,
@@ -139,7 +139,7 @@ func TestWithConfig(t *testing.T) {
 		KubeConfigPath: "/path/to/kubeconfig",
 		Context:        "production",
 		InCluster:      true,
-		ArgoServerOpts: ArgoServerOpts{
+		ArgoServerOpts: ServerOpts{
 			URL:       "https://argo-server:2746",
 			AuthToken: "Bearer token",
 		},
