@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog/log"
+	"github.com/jasoet/pkg/v2/otel"
 	"go.temporal.io/sdk/client"
 )
 
@@ -22,7 +22,8 @@ type ScheduleManager struct {
 }
 
 func NewScheduleManager(clientOrConfig interface{}) *ScheduleManager {
-	logger := log.With().Str("function", "temporal.NewScheduleManager").Logger()
+	ctx := context.Background()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewScheduleManager")
 
 	var temporalClient client.Client
 
@@ -30,26 +31,25 @@ func NewScheduleManager(clientOrConfig interface{}) *ScheduleManager {
 	case client.Client:
 		// If passed a client directly, use it
 		temporalClient = v
-		logger.Debug().Msg("Using provided Temporal client for Schedule Manager")
+		logger.Debug("Using provided Temporal client for Schedule Manager")
 	case *Config:
 		// If passed a config, create a new client
-		logger.Debug().
-			Str("hostPort", v.HostPort).
-			Str("namespace", v.Namespace).
-			Msg("Creating new Schedule Manager with config")
+		logger.Debug("Creating new Schedule Manager with config",
+			otel.F("hostPort", v.HostPort),
+			otel.F("namespace", v.Namespace))
 
 		var err error
 		temporalClient, err = NewClientWithMetrics(v, false)
 		if err != nil {
-			logger.Error().Err(err).Msg("Failed to create Temporal client for Schedule Manager")
+			logger.Error(err, "Failed to create Temporal client for Schedule Manager")
 			return nil
 		}
 	default:
-		logger.Error().Msg("Invalid argument type for NewScheduleManager")
+		logger.Error(nil, "Invalid argument type for NewScheduleManager")
 		return nil
 	}
 
-	logger.Debug().Msg("Schedule Manager created successfully")
+	logger.Debug("Schedule Manager created successfully")
 	return &ScheduleManager{
 		client:           temporalClient,
 		scheduleHandlers: make(map[string]client.ScheduleHandle),
@@ -57,22 +57,23 @@ func NewScheduleManager(clientOrConfig interface{}) *ScheduleManager {
 }
 
 func (sm *ScheduleManager) Close() {
-	logger := log.With().Str("function", "ScheduleManager.Close").Logger()
-	logger.Debug().Msg("Closing Schedule Manager")
+	ctx := context.Background()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.Close")
+
+	logger.Debug("Closing Schedule Manager")
 
 	if sm.client != nil {
-		logger.Debug().Msg("Closing Temporal client")
+		logger.Debug("Closing Temporal client")
 		sm.client.Close()
 	}
 
-	logger.Debug().Msg("Schedule Manager closed")
+	logger.Debug("Schedule Manager closed")
 }
 
 func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) (client.ScheduleHandle, error) {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.CreateSchedule").Logger()
-	logger.Debug().
-		Str("scheduleID", scheduleID).
-		Msg("Creating schedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateSchedule")
+
+	logger.Debug("Creating schedule", otel.F("scheduleID", scheduleID))
 
 	options := client.ScheduleOptions{
 		ID:     scheduleID,
@@ -82,56 +83,43 @@ func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string
 
 	sh, err := sm.client.ScheduleClient().Create(ctx, options)
 	if err != nil {
-		logger.Error().Err(err).
-			Str("scheduleID", scheduleID).
-			Msg("Failed to create schedule")
+		logger.Error(err, "Failed to create schedule", otel.F("scheduleID", scheduleID))
 		return nil, err
 	}
 
-	logger.Debug().
-		Str("scheduleID", scheduleID).
-		Msg("Adding schedule to handlers map")
+	logger.Debug("Adding schedule to handlers map", otel.F("scheduleID", scheduleID))
 	sm.scheduleHandlers[scheduleID] = sh
 
-	logger.Debug().
-		Str("scheduleID", scheduleID).
-		Msg("Schedule created successfully")
+	logger.Debug("Schedule created successfully", otel.F("scheduleID", scheduleID))
 	return sh, nil
 }
 
 func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, options client.ScheduleOptions) (client.ScheduleHandle, error) {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.CreateSchedule").Logger()
-	logger.Debug().
-		Str("scheduleName", options.ID).
-		Msg("Creating schedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateScheduleWithOptions")
+
+	logger.Debug("Creating schedule", otel.F("scheduleName", options.ID))
 
 	sh, err := sm.client.ScheduleClient().Create(ctx, options)
 	if err != nil {
-		logger.Error().Err(err).
-			Str("scheduleName", options.ID).
-			Msg("Failed to create schedule")
+		logger.Error(err, "Failed to create schedule", otel.F("scheduleName", options.ID))
 		return nil, err
 	}
 
-	logger.Debug().
-		Str("scheduleName", options.ID).
-		Msg("Adding schedule to handlers map")
+	logger.Debug("Adding schedule to handlers map", otel.F("scheduleName", options.ID))
 	sm.scheduleHandlers[options.ID] = sh
 
-	logger.Debug().
-		Str("scheduleName", options.ID).
-		Msg("Schedule created successfully")
+	logger.Debug("Schedule created successfully", otel.F("scheduleName", options.ID))
 	return sh, nil
 }
 
 func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleName string, options WorkflowScheduleOptions) (client.ScheduleHandle, error) {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.CreateWorkflowSchedule").Logger()
-	logger.Debug().
-		Str("scheduleName", scheduleName).
-		Str("workflowID", options.WorkflowID).
-		Str("taskQueue", options.TaskQueue).
-		Dur("interval", options.Interval).
-		Msg("Creating workflow schedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateWorkflowSchedule")
+
+	logger.Debug("Creating workflow schedule",
+		otel.F("scheduleName", scheduleName),
+		otel.F("workflowID", options.WorkflowID),
+		otel.F("taskQueue", options.TaskQueue),
+		otel.F("interval", options.Interval))
 
 	scheduleOptions := client.ScheduleOptions{
 		ID: scheduleName,
@@ -152,45 +140,43 @@ func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleN
 
 	handle, err := sm.CreateScheduleWithOptions(ctx, scheduleOptions)
 	if err != nil {
-		logger.Error().Err(err).
-			Str("scheduleName", scheduleName).
-			Str("workflowID", options.WorkflowID).
-			Msg("Failed to create workflow schedule")
+		logger.Error(err, "Failed to create workflow schedule",
+			otel.F("scheduleName", scheduleName),
+			otel.F("workflowID", options.WorkflowID))
 		return nil, err
 	}
 
-	logger.Debug().
-		Str("scheduleName", scheduleName).
-		Str("workflowID", options.WorkflowID).
-		Msg("Workflow schedule created successfully")
+	logger.Debug("Workflow schedule created successfully",
+		otel.F("scheduleName", scheduleName),
+		otel.F("workflowID", options.WorkflowID))
 	return handle, nil
 }
 
 func (sm *ScheduleManager) DeleteSchedules(ctx context.Context) error {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.DeleteSchedules").Logger()
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.DeleteSchedules")
 
 	scheduleCount := len(sm.scheduleHandlers)
-	logger.Debug().Int("scheduleCount", scheduleCount).Msg("Deleting all Temporal schedules")
+	logger.Debug("Deleting all Temporal schedules", otel.F("scheduleCount", scheduleCount))
 
 	if scheduleCount == 0 {
-		logger.Debug().Msg("No schedules to delete")
+		logger.Debug("No schedules to delete")
 		return nil
 	}
 
 	for name, handle := range sm.scheduleHandlers {
-		logger.Debug().Str("scheduleName", name).Msg("Deleting schedule")
+		logger.Debug("Deleting schedule", otel.F("scheduleName", name))
 		err := handle.Delete(ctx)
 		if err != nil {
-			logger.Error().Err(err).Str("scheduleName", name).Msg("Failed to delete schedule")
+			logger.Error(err, "Failed to delete schedule", otel.F("scheduleName", name))
 			return err
 		}
-		logger.Debug().Str("scheduleName", name).Msg("Schedule deleted successfully")
+		logger.Debug("Schedule deleted successfully", otel.F("scheduleName", name))
 	}
 
-	logger.Debug().Msg("Clearing schedule handlers map")
+	logger.Debug("Clearing schedule handlers map")
 	sm.scheduleHandlers = make(map[string]client.ScheduleHandle)
 
-	logger.Debug().Int("deletedCount", scheduleCount).Msg("All schedules deleted successfully")
+	logger.Debug("All schedules deleted successfully", otel.F("deletedCount", scheduleCount))
 	return nil
 }
 
@@ -204,26 +190,28 @@ func (sm *ScheduleManager) GetScheduleHandlers() map[string]client.ScheduleHandl
 
 // GetSchedule retrieves a schedule handle by ID
 func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (client.ScheduleHandle, error) {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.GetSchedule").Logger()
-	logger.Debug().Str("scheduleID", scheduleID).Msg("Getting schedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.GetSchedule")
+
+	logger.Debug("Getting schedule", otel.F("scheduleID", scheduleID))
 
 	handle := sm.client.ScheduleClient().GetHandle(ctx, scheduleID)
 
 	// Test if the schedule exists by trying to describe it
 	_, err := handle.Describe(ctx)
 	if err != nil {
-		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to get schedule")
+		logger.Error(err, "Failed to get schedule", otel.F("scheduleID", scheduleID))
 		return nil, err
 	}
 
-	logger.Debug().Str("scheduleID", scheduleID).Msg("Schedule retrieved successfully")
+	logger.Debug("Schedule retrieved successfully", otel.F("scheduleID", scheduleID))
 	return handle, nil
 }
 
 // ListSchedules lists all schedules with a limit
 func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*client.ScheduleListEntry, error) {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.ListSchedules").Logger()
-	logger.Debug().Int("limit", limit).Msg("Listing schedules")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.ListSchedules")
+
+	logger.Debug("Listing schedules", otel.F("limit", limit))
 
 	scheduleClient := sm.client.ScheduleClient()
 
@@ -232,14 +220,14 @@ func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*cli
 		PageSize: limit,
 	})
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create schedule list iterator")
+		logger.Error(err, "Failed to create schedule list iterator")
 		return nil, err
 	}
 
 	for iter.HasNext() {
 		schedule, err := iter.Next()
 		if err != nil {
-			logger.Error().Err(err).Msg("Failed to get next schedule from iterator")
+			logger.Error(err, "Failed to get next schedule from iterator")
 			return nil, err
 		}
 		schedules = append(schedules, schedule)
@@ -249,14 +237,15 @@ func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*cli
 		}
 	}
 
-	logger.Debug().Int("count", len(schedules)).Msg("Schedules listed successfully")
+	logger.Debug("Schedules listed successfully", otel.F("count", len(schedules)))
 	return schedules, nil
 }
 
 // UpdateSchedule updates an existing schedule
 func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) error {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.UpdateSchedule").Logger()
-	logger.Debug().Str("scheduleID", scheduleID).Msg("Updating schedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.UpdateSchedule")
+
+	logger.Debug("Updating schedule", otel.F("scheduleID", scheduleID))
 
 	handle := sm.client.ScheduleClient().GetHandle(ctx, scheduleID)
 
@@ -279,29 +268,30 @@ func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string
 		},
 	})
 	if err != nil {
-		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to update schedule")
+		logger.Error(err, "Failed to update schedule", otel.F("scheduleID", scheduleID))
 		return err
 	}
 
-	logger.Debug().Str("scheduleID", scheduleID).Msg("Schedule updated successfully")
+	logger.Debug("Schedule updated successfully", otel.F("scheduleID", scheduleID))
 	return nil
 }
 
 // DeleteSchedule deletes a specific schedule by ID
 func (sm *ScheduleManager) DeleteSchedule(ctx context.Context, scheduleID string) error {
-	logger := log.With().Ctx(ctx).Str("function", "ScheduleManager.DeleteSchedule").Logger()
-	logger.Debug().Str("scheduleID", scheduleID).Msg("Deleting schedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.DeleteSchedule")
+
+	logger.Debug("Deleting schedule", otel.F("scheduleID", scheduleID))
 
 	handle := sm.client.ScheduleClient().GetHandle(ctx, scheduleID)
 	err := handle.Delete(ctx)
 	if err != nil {
-		logger.Error().Err(err).Str("scheduleID", scheduleID).Msg("Failed to delete schedule")
+		logger.Error(err, "Failed to delete schedule", otel.F("scheduleID", scheduleID))
 		return err
 	}
 
 	// Remove from local handlers map if it exists
 	delete(sm.scheduleHandlers, scheduleID)
 
-	logger.Debug().Str("scheduleID", scheduleID).Msg("Schedule deleted successfully")
+	logger.Debug("Schedule deleted successfully", otel.F("scheduleID", scheduleID))
 	return nil
 }

@@ -2,6 +2,8 @@ package otel
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -9,6 +11,23 @@ import (
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// Field represents a key-value pair for structured logging.
+// Use the F() function to create fields for type-safe logging.
+type Field struct {
+	Key   string
+	Value any
+}
+
+// F creates a Field for structured logging.
+// This provides a type-safe, readable way to add context to log messages.
+//
+// Example:
+//
+//	logger.Info("User logged in", F("user_id", 123), F("email", "user@example.com"))
+func F(key string, value any) Field {
+	return Field{Key: key, Value: value}
+}
 
 // LogHelper provides OTel-aware logging that automatically correlates logs with traces.
 
@@ -65,43 +84,61 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 	return h
 }
 
-// Debug logs a debug-level message with optional key-value pairs.
+// Debug logs a debug-level message with optional fields.
 // If OTel is enabled, automatically adds trace_id and span_id.
-func (h *LogHelper) Debug(msg string, keysAndValues ...interface{}) {
+//
+// Example:
+//
+//	logger.Debug("Processing request", F("request_id", reqID), F("user", userID))
+func (h *LogHelper) Debug(msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		h.emitOTel(otellog.SeverityDebug, msg, keysAndValues...)
+		h.emitOTel(otellog.SeverityDebug, msg, fields...)
 	} else {
 		event := h.logger.Debug()
-		h.addFields(event, keysAndValues...)
+		h.addFields(event, fields...)
 		event.Msg(msg)
 	}
 }
 
-// Info logs an info-level message with optional key-value pairs.
-func (h *LogHelper) Info(msg string, keysAndValues ...interface{}) {
+// Info logs an info-level message with optional fields.
+// If OTel is enabled, automatically adds trace_id and span_id.
+//
+// Example:
+//
+//	logger.Info("User logged in", F("user_id", 123), F("role", "admin"))
+func (h *LogHelper) Info(msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		h.emitOTel(otellog.SeverityInfo, msg, keysAndValues...)
+		h.emitOTel(otellog.SeverityInfo, msg, fields...)
 	} else {
 		event := h.logger.Info()
-		h.addFields(event, keysAndValues...)
+		h.addFields(event, fields...)
 		event.Msg(msg)
 	}
 }
 
-// Warn logs a warning-level message with optional key-value pairs.
-func (h *LogHelper) Warn(msg string, keysAndValues ...interface{}) {
+// Warn logs a warning-level message with optional fields.
+// If OTel is enabled, automatically adds trace_id and span_id.
+//
+// Example:
+//
+//	logger.Warn("Rate limit approaching", F("current", 95), F("limit", 100))
+func (h *LogHelper) Warn(msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		h.emitOTel(otellog.SeverityWarn, msg, keysAndValues...)
+		h.emitOTel(otellog.SeverityWarn, msg, fields...)
 	} else {
 		event := h.logger.Warn()
-		h.addFields(event, keysAndValues...)
+		h.addFields(event, fields...)
 		event.Msg(msg)
 	}
 }
 
-// Error logs an error-level message with optional key-value pairs.
+// Error logs an error-level message with optional fields.
 // Also sets span status to error if a span is active.
-func (h *LogHelper) Error(err error, msg string, keysAndValues ...interface{}) {
+//
+// Example:
+//
+//	logger.Error(err, "Failed to process request", F("request_id", reqID), F("attempt", 3))
+func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 	// Set span status to error if we have an active span
 	span := trace.SpanFromContext(h.ctx)
 	if span.IsRecording() {
@@ -110,17 +147,19 @@ func (h *LogHelper) Error(err error, msg string, keysAndValues ...interface{}) {
 	}
 
 	if h.otelLogger != nil {
-		kvs := append([]interface{}{"error", err.Error()}, keysAndValues...)
-		h.emitOTel(otellog.SeverityError, msg, kvs...)
+		// Add error field at the beginning
+		errorField := F("error", err.Error())
+		allFields := append([]Field{errorField}, fields...)
+		h.emitOTel(otellog.SeverityError, msg, allFields...)
 	} else {
 		event := h.logger.Error().Err(err)
-		h.addFields(event, keysAndValues...)
+		h.addFields(event, fields...)
 		event.Msg(msg)
 	}
 }
 
 // emitOTel emits a log via OpenTelemetry with automatic trace correlation.
-func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, keysAndValues ...interface{}) {
+func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Field) {
 	var record otellog.Record
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
@@ -128,55 +167,48 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, keysAndValue
 	// Add function name
 	record.AddAttributes(otellog.String("function", h.function))
 
-	// Add key-value pairs
-	for i := 0; i < len(keysAndValues); i += 2 {
-		if i+1 < len(keysAndValues) {
-			key, ok := keysAndValues[i].(string)
-			if !ok {
-				continue
-			}
-
-			switch v := keysAndValues[i+1].(type) {
-			case string:
-				record.AddAttributes(otellog.String(key, v))
-			case bool:
-				record.AddAttributes(otellog.Bool(key, v))
-			case int:
-				record.AddAttributes(otellog.Int64(key, int64(v)))
-			case int64:
-				record.AddAttributes(otellog.Int64(key, v))
-			case float64:
-				record.AddAttributes(otellog.Float64(key, v))
-			default:
-				record.AddAttributes(otellog.String(key, ""))
-			}
+	// Add fields
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			record.AddAttributes(otellog.String(field.Key, v))
+		case bool:
+			record.AddAttributes(otellog.Bool(field.Key, v))
+		case int:
+			record.AddAttributes(otellog.Int64(field.Key, int64(v)))
+		case int64:
+			record.AddAttributes(otellog.Int64(field.Key, v))
+		case float64:
+			record.AddAttributes(otellog.Float64(field.Key, v))
+		case time.Duration:
+			record.AddAttributes(otellog.String(field.Key, v.String()))
+		default:
+			// For other types, convert to string using fmt.Sprint
+			record.AddAttributes(otellog.String(field.Key, fmt.Sprint(v)))
 		}
 	}
 
 	h.otelLogger.Emit(h.ctx, record)
 }
 
-// addFields adds key-value pairs to a zerolog event.
-func (h *LogHelper) addFields(event *zerolog.Event, keysAndValues ...interface{}) *zerolog.Event {
-	for i := 0; i < len(keysAndValues); i += 2 {
-		if i+1 < len(keysAndValues) {
-			key, ok := keysAndValues[i].(string)
-			if !ok {
-				continue
-			}
-
-			switch v := keysAndValues[i+1].(type) {
-			case string:
-				event = event.Str(key, v)
-			case bool:
-				event = event.Bool(key, v)
-			case int:
-				event = event.Int(key, v)
-			case int64:
-				event = event.Int64(key, v)
-			case float64:
-				event = event.Float64(key, v)
-			}
+// addFields adds Field key-value pairs to a zerolog event.
+func (h *LogHelper) addFields(event *zerolog.Event, fields ...Field) *zerolog.Event {
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case string:
+			event = event.Str(field.Key, v)
+		case bool:
+			event = event.Bool(field.Key, v)
+		case int:
+			event = event.Int(field.Key, v)
+		case int64:
+			event = event.Int64(field.Key, v)
+		case float64:
+			event = event.Float64(field.Key, v)
+		case time.Duration:
+			event = event.Str(field.Key, v.String())
+		default:
+			event = event.Str(field.Key, fmt.Sprint(v))
 		}
 	}
 	return event

@@ -7,6 +7,13 @@ tasks:
     cmds:
       - task --list
 
+  vendor:
+    desc: Run go mod vendor
+    silent: true
+    cmds:
+      - go mod tidy
+      - go mod vendor
+
   test:
     desc: Run unit tests with coverage
     silent: true
