@@ -284,6 +284,463 @@ for {
 }
 ```
 
+## Workflow Builder API
+
+The workflow builder API provides a high-level, fluent interface for constructing Argo Workflows without needing to understand the low-level protobuf-generated structs. It includes template sources, pre-built patterns, and full OpenTelemetry instrumentation.
+
+### Quick Start with Builder
+
+```go
+import (
+    "github.com/jasoet/pkg/v2/argo/builder"
+    "github.com/jasoet/pkg/v2/argo/builder/template"
+)
+
+// Create workflow steps
+deploy := template.NewContainer("deploy", "myapp:v1",
+    template.WithCommand("deploy.sh"),
+    template.WithEnv("ENV", "production"))
+
+healthCheck := template.NewHTTP("health-check",
+    template.WithHTTPURL("https://myapp.com/health"),
+    template.WithHTTPMethod("GET"))
+
+// Build workflow
+wf, err := builder.NewWorkflowBuilder("deployment", "argo",
+    builder.WithServiceAccount("argo-workflow"),
+    builder.WithLabels(map[string]string{"app": "myapp"})).
+    Add(deploy).
+    Add(healthCheck).
+    Build()
+
+if err != nil {
+    return err
+}
+
+// Submit workflow
+created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+```
+
+### Template Sources
+
+Template sources are composable workflow components that implement the `WorkflowSource` interface.
+
+#### Container Template
+
+Execute commands in containers:
+
+```go
+container := template.NewContainer("build", "golang:1.25",
+    template.WithCommand("go", "build", "-o", "app"),
+    template.WithWorkingDir("/workspace"),
+    template.WithEnv("CGO_ENABLED", "0"),
+    template.WithCPU("1000m"),
+    template.WithMemory("2Gi"))
+```
+
+#### Script Template
+
+Run inline scripts in various languages:
+
+```go
+// Bash script
+bashScript := template.NewScript("backup", "bash",
+    template.WithScriptContent(`
+        echo "Creating backup..."
+        tar -czf backup.tar.gz /data
+        echo "Backup complete"
+    `),
+    template.WithScriptWorkingDir("/backup"))
+
+// Python script
+pythonScript := template.NewScript("process", "python",
+    template.WithScriptContent(`
+        import json
+        print("Processing data...")
+        # Your Python code here
+    `))
+
+// Custom image with specific command
+customScript := template.NewScript("custom", "bash",
+    template.WithScriptImage("myregistry/custom:v1"),
+    template.WithScriptCommand("bash", "-x"),
+    template.WithScriptContent("echo 'Custom script'"))
+```
+
+#### HTTP Template
+
+Make HTTP requests for health checks, webhooks, or API calls:
+
+```go
+healthCheck := template.NewHTTP("api-check",
+    template.WithHTTPURL("https://api.example.com/health"),
+    template.WithHTTPMethod("GET"),
+    template.WithHTTPSuccessCond("response.statusCode == 200"),
+    template.WithHTTPTimeout(30))
+
+webhook := template.NewHTTP("notify",
+    template.WithHTTPURL("https://hooks.slack.com/services/..."),
+    template.WithHTTPMethod("POST"),
+    template.WithHTTPHeader("Content-Type", "application/json"),
+    template.WithHTTPBody(`{"text": "Deployment complete"}`))
+```
+
+### Workflow Builder Options
+
+Configure workflows with functional options:
+
+```go
+wf, err := builder.NewWorkflowBuilder("myworkflow", "argo",
+    // Service Account
+    builder.WithServiceAccount("argo-workflow"),
+
+    // Labels and Annotations
+    builder.WithLabels(map[string]string{
+        "app": "myapp",
+        "env": "production",
+    }),
+    builder.WithAnnotations(map[string]string{
+        "description": "Production deployment",
+    }),
+
+    // Resource Management
+    builder.WithArchiveLogs(true),
+    builder.WithActiveDeadline(3600), // 1 hour timeout
+
+    // Retry Strategy
+    builder.WithRetryStrategy(&v1alpha1.RetryStrategy{
+        Limit:       intstr.FromInt(3),
+        RetryPolicy: "Always",
+    }),
+
+    // Volumes
+    builder.WithVolume(corev1.Volume{
+        Name: "data",
+        VolumeSource: corev1.VolumeSource{
+            EmptyDir: &corev1.EmptyDirVolumeSource{},
+        },
+    }),
+
+    // OpenTelemetry
+    builder.WithOTelConfig(otelConfig),
+).Build()
+```
+
+### Exit Handlers
+
+Add cleanup steps that always run, regardless of workflow success or failure:
+
+```go
+// Main workflow steps
+deploy := template.NewContainer("deploy", "myapp:v1",
+    template.WithCommand("deploy.sh"))
+
+// Cleanup step (always runs)
+cleanup := template.NewScript("cleanup", "bash",
+    template.WithScriptContent("echo 'Cleaning up resources...'"))
+
+// Notification (always runs)
+notify := template.NewScript("notify", "bash",
+    template.WithScriptContent(`
+        echo "Workflow Status: {{workflow.status}}"
+        echo "Duration: {{workflow.duration}}"
+    `))
+
+wf, err := builder.NewWorkflowBuilder("deployment", "argo").
+    Add(deploy).
+    AddExitHandler(cleanup).
+    AddExitHandler(notify).
+    Build()
+```
+
+### Pre-Built Workflow Patterns
+
+#### CI/CD Patterns
+
+##### Build-Test-Deploy
+
+```go
+import "github.com/jasoet/pkg/v2/argo/patterns"
+
+wf, err := patterns.BuildTestDeploy(
+    "myapp", "argo",
+    "golang:1.25",      // build image
+    "golang:1.25",      // test image
+    "deployer:v1",      // deploy image
+    builder.WithServiceAccount("argo-workflow"),
+)
+```
+
+##### Build-Test-Deploy with Cleanup
+
+```go
+wf, err := patterns.BuildTestDeployWithCleanup(
+    "myapp", "argo",
+    "golang:1.25",
+    "busybox:latest",
+    builder.WithArchiveLogs(true),
+)
+```
+
+##### Conditional Deployment
+
+Deploy only if tests pass, with automatic rollback on failure:
+
+```go
+wf, err := patterns.ConditionalDeploy(
+    "safe-deploy", "argo",
+    "golang:1.25",
+)
+```
+
+##### Multi-Environment Deployment
+
+Deploy sequentially to multiple environments:
+
+```go
+wf, err := patterns.MultiEnvironmentDeploy(
+    "multi-env", "argo",
+    "deployer:v1",
+    []string{"staging", "production"},
+)
+```
+
+#### Parallel Execution Patterns
+
+##### Fan-Out/Fan-In
+
+Execute multiple tasks in parallel, then aggregate results:
+
+```go
+wf, err := patterns.FanOutFanIn(
+    "parallel-tasks", "argo",
+    "busybox:latest",
+    []string{"task-1", "task-2", "task-3"},
+)
+```
+
+##### Parallel Data Processing
+
+Process multiple data items independently:
+
+```go
+wf, err := patterns.ParallelDataProcessing(
+    "batch-process", "argo",
+    "processor:v1",
+    []string{"data-1.csv", "data-2.csv", "data-3.csv"},
+    "process.sh",
+)
+```
+
+##### Map-Reduce
+
+Classic map-reduce pattern with parallel mapping and sequential reduction:
+
+```go
+wf, err := patterns.MapReduce(
+    "word-count", "argo",
+    "alpine:latest",
+    []string{"file1.txt", "file2.txt", "file3.txt"},
+    "wc -w",                          // map command
+    "awk '{sum+=$1} END {print sum}'", // reduce command
+)
+```
+
+##### Parallel Test Suites
+
+Run multiple test suites in parallel to speed up CI/CD:
+
+```go
+wf, err := patterns.ParallelTestSuite(
+    "tests", "argo",
+    "golang:1.25",
+    map[string]string{
+        "unit":        "go test ./internal/...",
+        "integration": "go test ./tests/integration/...",
+        "e2e":         "go test ./tests/e2e/...",
+    },
+)
+```
+
+##### Parallel Deployment
+
+Deploy to multiple regions/environments simultaneously:
+
+```go
+wf, err := patterns.ParallelDeployment(
+    "multi-region", "argo",
+    "deployer:v1",
+    []string{"us-west", "us-east", "eu-central"},
+)
+```
+
+### Enhanced Client Operations
+
+Higher-level operations with full OpenTelemetry instrumentation:
+
+#### Submit Workflow
+
+```go
+import "github.com/jasoet/pkg/v2/argo"
+
+wf, err := builder.NewWorkflowBuilder("deploy", "argo").
+    Add(deployStep).
+    Build()
+if err != nil {
+    return err
+}
+
+created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+if err != nil {
+    return err
+}
+
+fmt.Printf("Workflow %s submitted\n", created.Name)
+```
+
+#### Submit and Wait
+
+Submit a workflow and wait for completion with automatic polling:
+
+```go
+completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+if err != nil {
+    return err
+}
+
+if completed.Status.Phase == v1alpha1.WorkflowSucceeded {
+    fmt.Println("Workflow completed successfully")
+}
+```
+
+#### Get Workflow Status
+
+```go
+status, err := argo.GetWorkflowStatus(ctx, client, "argo", "my-workflow-abc123", otelConfig)
+if err != nil {
+    return err
+}
+
+fmt.Printf("Phase: %s\n", status.Phase)
+fmt.Printf("Progress: %s\n", status.Progress)
+```
+
+#### List Workflows
+
+```go
+// List all workflows
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "", otelConfig)
+
+// List with label selector
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp", otelConfig)
+```
+
+#### Delete Workflow
+
+```go
+err := argo.DeleteWorkflow(ctx, client, "argo", "my-workflow-abc123", otelConfig)
+if err != nil {
+    return err
+}
+```
+
+### Advanced: Custom Templates
+
+For advanced use cases, manually construct templates:
+
+```go
+import "github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
+
+// Create custom template
+customTemplate := v1alpha1.Template{
+    Name: "custom-step",
+    Steps: [][]v1alpha1.WorkflowStep{
+        {
+            {Name: "step-1", Template: "step-1-template"},
+            {Name: "step-2", Template: "step-2-template"},
+        },
+    },
+}
+
+// Add to builder
+wf, err := builder.NewWorkflowBuilder("advanced", "argo").
+    AddTemplate(customTemplate).
+    BuildWithEntrypoint("custom-step")
+```
+
+### Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/jasoet/pkg/v2/argo"
+    "github.com/jasoet/pkg/v2/argo/builder"
+    "github.com/jasoet/pkg/v2/argo/builder/template"
+    "github.com/jasoet/pkg/v2/otel"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Create OTel config
+    otelConfig := otel.NewConfig("workflow-manager")
+
+    // Create Argo client
+    ctx, client, err := argo.NewClientWithOptions(ctx,
+        argo.WithOTelConfig(otelConfig))
+    if err != nil {
+        panic(err)
+    }
+
+    // Build workflow
+    preCheck := template.NewContainer("pre-check", "alpine:latest",
+        template.WithCommand("sh", "-c", "echo 'Pre-flight checks...'"))
+
+    deploy := template.NewContainer("deploy", "myapp:v1",
+        template.WithCommand("deploy.sh"),
+        template.WithEnv("ENV", "production"),
+        template.WithCPU("500m"),
+        template.WithMemory("256Mi"))
+
+    healthCheck := template.NewHTTP("health-check",
+        template.WithHTTPURL("https://myapp.com/health"),
+        template.WithHTTPMethod("GET"),
+        template.WithHTTPSuccessCond("response.statusCode == 200"))
+
+    notify := template.NewScript("notify", "bash",
+        template.WithScriptContent(`
+            echo "Deployment Status: {{workflow.status}}"
+        `))
+
+    wf, err := builder.NewWorkflowBuilder("deployment", "argo",
+        builder.WithOTelConfig(otelConfig),
+        builder.WithServiceAccount("argo-workflow"),
+        builder.WithLabels(map[string]string{"app": "myapp"}),
+        builder.WithArchiveLogs(true)).
+        Add(preCheck).
+        Add(deploy).
+        Add(healthCheck).
+        AddExitHandler(notify).
+        Build()
+
+    if err != nil {
+        panic(err)
+    }
+
+    // Submit and wait
+    completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Printf("Workflow completed: %s\n", completed.Status.Phase)
+}
+```
+
 ## Error Handling
 
 The library uses proper error handling without fatal errors:
