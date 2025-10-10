@@ -17,7 +17,7 @@ import (
 //	    "myregistry/myapp:latest",
 //	    "myregistry/deployer:v1",
 //	)
-func BuildTestDeploy(name, namespace, buildImage, testImage, deployImage string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func BuildTestDeploy(name, namespace, buildImage, testImage, deployImage string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	// Build stage
 	build := template.NewContainer("build", buildImage,
 		template.WithCommand("sh", "-c"),
@@ -60,7 +60,7 @@ func BuildTestDeploy(name, namespace, buildImage, testImage, deployImage string,
 //	    "golang:1.25",
 //	    "busybox:latest",
 //	)
-func BuildTestDeployWithCleanup(name, namespace, buildImage, cleanupImage string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func BuildTestDeployWithCleanup(name, namespace, buildImage, cleanupImage string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	// Build stage
 	build := template.NewContainer("build", buildImage,
 		template.WithCommand("go", "build", "-o", "app"),
@@ -106,7 +106,7 @@ echo "Duration: {{workflow.duration}}"
 //	    "conditional-deploy", "argo",
 //	    "golang:1.25",
 //	)
-func ConditionalDeploy(name, namespace, image string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func ConditionalDeploy(name, namespace, image string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	// Test stage
 	test := template.NewContainer("test", image,
 		template.WithCommand("go", "test", "./..."))
@@ -137,7 +137,7 @@ func ConditionalDeploy(name, namespace, image string, opts ...builder.BuilderOpt
 //	    "myregistry/deployer:v1",
 //	    []string{"staging", "production"},
 //	)
-func MultiEnvironmentDeploy(name, namespace, deployImage string, environments []string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func MultiEnvironmentDeploy(name, namespace, deployImage string, environments []string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	wb := builder.NewWorkflowBuilder(name, namespace, opts...)
 
 	// Add deployment step for each environment
