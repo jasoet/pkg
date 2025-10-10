@@ -573,7 +573,7 @@ BenchmarkSecurityCheck-8 100000  ~10µs/op (path validation)
 
 ## Examples
 
-See [examples/](./examples/) directory for:
+See [examples/](.../examples/compress/compress/) directory for:
 - File compression and decompression
 - Directory archiving
 - Base64 encoding for APIs

@@ -546,7 +546,7 @@ func main() {
 
 ## Examples
 
-For complete, runnable examples, see the [examples directory](./examples/).
+For complete, runnable examples, see the [examples directory](../examples/server/).
 
 The examples demonstrate:
 - Basic server setup

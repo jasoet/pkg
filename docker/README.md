@@ -732,12 +732,12 @@ go test ./docker -bench=. -benchmem
 
 ## Examples
 
-See [examples/](./examples/) directory for complete, runnable examples:
+See [examples/](.../examples/docker/docker/) directory for complete, runnable examples:
 
-- **[basic.go](./examples/basic.go)** - Functional options, struct-based, and hybrid styles
-- **[database.go](./examples/database.go)** - PostgreSQL container with real database operations
-- **[logs.go](./examples/logs.go)** - Log streaming, filtering, and following
-- **[multi_container.go](./examples/multi_container.go)** - Running multiple containers (Nginx + Redis)
+- **[basic.go](../examples/docker/basic.go)** - Functional options, struct-based, and hybrid styles
+- **[database.go](../examples/docker/database.go)** - PostgreSQL container with real database operations
+- **[logs.go](../examples/docker/logs.go)** - Log streaming, filtering, and following
+- **[multi_container.go](../examples/docker/multi_container.go)** - Running multiple containers (Nginx + Redis)
 
 Run examples:
 ```bash

@@ -578,7 +578,7 @@ config := ssh.Config{
 
 ## Examples
 
-See [examples/](./examples/) directory for:
+See [examples/](.../examples/ssh/ssh/) directory for:
 - Basic SSH tunneling
 - Database access through tunnel
 - Multiple concurrent tunnels

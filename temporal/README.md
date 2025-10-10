@@ -1,6 +1,191 @@
-# Temporal Package Integration Tests
+# Temporal Package
 
-This directory contains comprehensive integration tests for the Temporal package. These tests use testcontainers to automatically manage Temporal server instances and test the full functionality of the Temporal client, worker manager, and schedule manager.
+A comprehensive Go library for working with Temporal workflows, providing high-level abstractions for client management, worker orchestration, scheduling, and workflow monitoring.
+
+## Features
+
+### 🔧 Core Components
+
+- **Client Management** (`client.go`) - Create and configure Temporal clients with metrics integration
+- **Worker Management** (`worker.go`) - Manage workflow workers with lifecycle controls
+- **Schedule Management** (`schedule.go`) - Create and manage workflow schedules (cron, intervals)
+- **Workflow Management** (`workflow.go`) - **NEW!** Query, monitor, and control workflow executions
+
+### 📊 Workflow Query & Monitoring
+
+The WorkflowManager provides powerful capabilities for monitoring and managing workflows:
+
+- **Query Operations**: List, search, and filter workflows by status, type, or custom criteria
+- **Workflow Details**: Get detailed execution information, history, and results
+- **Lifecycle Control**: Cancel, terminate, signal, and query running workflows
+- **Dashboard Support**: Aggregated statistics and real-time monitoring
+- **Search Capabilities**: Find workflows by ID prefix, type, or advanced queries
+
+### 🎯 Use Cases
+
+- Build custom workflow dashboards
+- Monitor production workflow health
+- Implement workflow automation and orchestration
+- Create admin tools for workflow management
+- Integrate workflow data with external systems
+
+## Quick Start
+
+### Installing
+
+```bash
+go get github.com/jasoet/pkg/v2/temporal
+```
+
+### Basic Usage
+
+#### 1. Create a Temporal Client
+
+```go
+package main
+
+import (
+    "github.com/jasoet/pkg/v2/temporal"
+)
+
+func main() {
+    config := &temporal.Config{
+        HostPort:  "localhost:7233",
+        Namespace: "default",
+        MetricsListenAddress: "0.0.0.0:9090",
+    }
+
+    client, err := temporal.NewClient(config)
+    if err != nil {
+        panic(err)
+    }
+    defer client.Close()
+}
+```
+
+#### 2. Manage Workers
+
+```go
+// Create worker manager
+wm, err := temporal.NewWorkerManager(config)
+if err != nil {
+    panic(err)
+}
+defer wm.Close()
+
+// Register a worker
+worker := wm.Register("my-task-queue", worker.Options{})
+worker.RegisterWorkflow(MyWorkflow)
+worker.RegisterActivity(MyActivity)
+
+// Start all workers
+err = wm.StartAll(ctx)
+```
+
+#### 3. Query and Monitor Workflows
+
+```go
+// Create workflow manager
+wfm, err := temporal.NewWorkflowManager(config)
+if err != nil {
+    panic(err)
+}
+defer wfm.Close()
+
+// Get dashboard statistics
+stats, err := wfm.GetDashboardStats(ctx)
+fmt.Printf("Running: %d, Completed: %d, Failed: %d\n",
+    stats.TotalRunning, stats.TotalCompleted, stats.TotalFailed)
+
+// List running workflows
+workflows, err := wfm.ListRunningWorkflows(ctx, 100)
+for _, wf := range workflows {
+    fmt.Printf("Workflow: %s (%s)\n", wf.WorkflowID, wf.WorkflowType)
+}
+
+// Search by workflow type
+orderWorkflows, err := wfm.SearchWorkflowsByType(ctx, "OrderProcessingWorkflow", 50)
+
+// Get specific workflow details
+details, err := wfm.DescribeWorkflow(ctx, "order-123", "")
+fmt.Printf("Status: %s, Duration: %v\n", details.Status, details.ExecutionTime)
+
+// Cancel a workflow
+err = wfm.CancelWorkflow(ctx, "problematic-workflow-id", "")
+```
+
+#### 4. Schedule Workflows
+
+```go
+// Create schedule manager
+sm := temporal.NewScheduleManager(config)
+defer sm.Close()
+
+// Schedule a workflow to run every hour
+handle, err := sm.CreateWorkflowSchedule(ctx, "hourly-report", temporal.WorkflowScheduleOptions{
+    WorkflowID: "report-workflow",
+    Workflow:   ReportWorkflow,
+    TaskQueue:  "reports",
+    Interval:   time.Hour,
+    Args:       []any{"daily-report"},
+})
+```
+
+## Examples
+
+Check out the [examples](../examples/temporal/) directory for complete, runnable examples:
+
+- **[Dashboard Example](../examples/temporal/dashboard/)** - HTTP dashboard for monitoring workflows
+- **[Basic Worker](../examples/temporal/worker/)** - Setting up workers
+- **[Workflow Examples](../examples/temporal/workflows/)** - Sample workflow implementations
+- **[Scheduler Example](../examples/temporal/scheduler/)** - Scheduling workflows
+
+### Running the Dashboard Example
+
+```bash
+cd examples/temporal/dashboard
+go run main.go
+
+# Or with custom configuration
+TEMPORAL_HOST=temporal.example.com:7233 \
+TEMPORAL_NAMESPACE=production \
+go run main.go
+```
+
+Then open http://localhost:8080 in your browser.
+
+## API Reference
+
+### WorkflowManager Methods
+
+#### Query Operations
+- `ListWorkflows(ctx, pageSize, query)` - List workflows with optional filtering
+- `ListRunningWorkflows(ctx, pageSize)` - Get all running workflows
+- `ListCompletedWorkflows(ctx, pageSize)` - Get completed workflows
+- `ListFailedWorkflows(ctx, pageSize)` - Get failed workflows
+- `DescribeWorkflow(ctx, workflowID, runID)` - Get detailed workflow information
+- `GetWorkflowStatus(ctx, workflowID, runID)` - Get current workflow status
+- `GetWorkflowHistory(ctx, workflowID, runID)` - Get workflow event history
+
+#### Search Operations
+- `SearchWorkflowsByType(ctx, workflowType, pageSize)` - Find workflows by type
+- `SearchWorkflowsByID(ctx, idPrefix, pageSize)` - Find workflows by ID prefix
+- `CountWorkflows(ctx, query)` - Count workflows matching a query
+
+#### Lifecycle Operations
+- `CancelWorkflow(ctx, workflowID, runID)` - Cancel a running workflow
+- `TerminateWorkflow(ctx, workflowID, runID, reason)` - Terminate a workflow
+- `SignalWorkflow(ctx, workflowID, runID, signalName, data)` - Send signal to workflow
+- `QueryWorkflow(ctx, workflowID, runID, queryType, args)` - Query workflow state
+
+#### Dashboard Operations
+- `GetDashboardStats(ctx)` - Get aggregated workflow statistics
+- `GetRecentWorkflows(ctx, limit)` - Get most recent workflows
+- `GetWorkflowResult(ctx, workflowID, runID, valuePtr)` - Get workflow result
+
+## Testing
+
+This package includes comprehensive integration tests using testcontainers to automatically manage Temporal server instances.
 
 ## Prerequisites
 
@@ -36,7 +221,17 @@ Tests the ScheduleManager functionality:
 - **Error Handling**: Tests various failure scenarios
 - **Schedule Types**: Tests different schedule configurations
 
-### 4. End-to-End Integration Tests (`e2e_integration_test.go`)
+### 4. Workflow Integration Tests (`workflow_integration_test.go`)
+
+Tests the WorkflowManager query and monitoring functionality:
+- **WorkflowManager Creation**: Tests manager initialization with client and config
+- **List Operations**: Tests listing workflows by status (running, completed, failed)
+- **Describe Operations**: Tests getting workflow details, status, and history
+- **Search Operations**: Tests searching workflows by type, ID prefix, and counting
+- **Lifecycle Operations**: Tests canceling, terminating, and signaling workflows
+- **Dashboard Operations**: Tests statistics aggregation and recent workflow retrieval
+
+### 5. End-to-End Integration Tests (`e2e_integration_test.go`)
 
 Tests complex, real-world scenarios:
 - **Order Processing Workflow**: Complete e-commerce order processing with compensation patterns
