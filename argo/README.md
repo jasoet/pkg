@@ -812,14 +812,14 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 
 ```bash
 # Run the comprehensive example
-go run -tags=example ./argo/examples
+go run -tags=example ./examples/argo
 
 # Or build and run
-go build -tags=example -o argo-example ./argo/examples
+go build -tags=example -o argo-example ./examples/argo
 ./argo-example
 ```
 
-See [examples/README.md](examples/README.md) for more details.
+See [examples/argo/README.md](../examples/argo/README.md) for more details.
 
 ## Comparison with Original Implementation
 

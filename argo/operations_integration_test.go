@@ -108,6 +108,9 @@ func TestIntegration_GetWorkflowStatus(t *testing.T) {
 		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
 	}()
 
+	// Wait a moment for workflow to initialize
+	time.Sleep(2 * time.Second)
+
 	// Get workflow status
 	status, err := GetWorkflowStatus(ctx, client, "argo", created.Name, cfg)
 	require.NoError(t, err, "should get workflow status")
