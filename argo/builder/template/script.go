@@ -18,23 +18,23 @@ import (
 //	    Script("tar -czf /backup/data.tar.gz /data").
 //	    Env("BACKUP_DIR", "/backup")
 type Script struct {
-	name           string
-	templateName   string
-	image          string
-	scriptContent  string
-	command        []string
-	source         string
-	env            []corev1.EnvVar
-	volumeMounts   []corev1.VolumeMount
-	workingDir     string
-	cpuRequest     string
-	cpuLimit       string
-	memoryRequest  string
-	memoryLimit    string
-	when           string
-	continueOn     *v1alpha1.ContinueOn
-	retryStrategy  *v1alpha1.RetryStrategy
-	otelConfig     *otel.Config
+	name          string
+	templateName  string
+	image         string
+	scriptContent string
+	command       []string
+	source        string
+	env           []corev1.EnvVar
+	volumeMounts  []corev1.VolumeMount
+	workingDir    string
+	cpuRequest    string
+	cpuLimit      string
+	memoryRequest string
+	memoryLimit   string
+	when          string
+	continueOn    *v1alpha1.ContinueOn
+	retryStrategy *v1alpha1.RetryStrategy
+	otelConfig    *otel.Config
 }
 
 // NewScript creates a new script workflow source.

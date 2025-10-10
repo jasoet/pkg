@@ -106,9 +106,9 @@ func exampleContainerEnvironment() {
 func exampleContainerVolumes() {
 	process := template.NewContainer("process-data", "python:3.11").
 		Command("python", "process.py").
-		VolumeMount("data", "/data", false).       // Read-write data volume
-		VolumeMount("config", "/config", true).    // Read-only config
-		VolumeMount("output", "/output", false).   // Write output
+		VolumeMount("data", "/data", false).     // Read-write data volume
+		VolumeMount("config", "/config", true).  // Read-only config
+		VolumeMount("output", "/output", false). // Write output
 		WorkingDir("/app")
 
 	fmt.Printf("Process step with volumes: %+v\n", process)
@@ -124,14 +124,14 @@ func exampleContainerResources() {
 
 	// Set different request and limit
 	compute2 := template.NewContainer("compute2", "myapp:v1").
-		CPU("500m", "2000m").     // Request 0.5, limit 2 cores
-		Memory("256Mi", "1Gi")    // Request 256MB, limit 1GB
+		CPU("500m", "2000m").  // Request 0.5, limit 2 cores
+		Memory("256Mi", "1Gi") // Request 256MB, limit 1GB
 
 	// Using fluent API for more readable configuration
 	compute3 := template.NewContainer("compute3", "ml-trainer:latest").
 		Command("python", "train.py").
-		CPU("2000m", "4000m").    // Request 2, limit 4 cores
-		Memory("4Gi", "8Gi").     // Request 4GB, limit 8GB
+		CPU("2000m", "4000m"). // Request 2, limit 4 cores
+		Memory("4Gi", "8Gi").  // Request 4GB, limit 8GB
 		Env("BATCH_SIZE", "128")
 
 	fmt.Printf("Compute1: %+v\n", compute1)

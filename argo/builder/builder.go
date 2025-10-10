@@ -41,16 +41,16 @@ import (
 //	    Build()
 type WorkflowBuilder struct {
 	// Workflow configuration
-	namePrefix      string
-	namespace       string
-	serviceAccount  string
-	archiveLogs     *bool
-	retryStrategy   *v1alpha1.RetryStrategy
-	podGC           *v1alpha1.PodGC
-	ttl             *v1alpha1.TTLStrategy
-	volumes         []corev1.Volume
-	labels          map[string]string
-	annotations     map[string]string
+	namePrefix            string
+	namespace             string
+	serviceAccount        string
+	archiveLogs           *bool
+	retryStrategy         *v1alpha1.RetryStrategy
+	podGC                 *v1alpha1.PodGC
+	ttl                   *v1alpha1.TTLStrategy
+	volumes               []corev1.Volume
+	labels                map[string]string
+	annotations           map[string]string
 	activeDeadlineSeconds *int64
 
 	// Workflow structure
@@ -80,7 +80,7 @@ type WorkflowBuilder struct {
 //	    WithOTelConfig(otelConfig),
 //	    WithServiceAccount("argo-workflow"),
 //	    WithArchiveLogs(true))
-func NewWorkflowBuilder(name, namespace string, opts ...BuilderOption) *WorkflowBuilder {
+func NewWorkflowBuilder(name, namespace string, opts ...Option) *WorkflowBuilder {
 	b := &WorkflowBuilder{
 		namePrefix:      name + "-",
 		namespace:       namespace,
