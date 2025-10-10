@@ -658,7 +658,7 @@ BenchmarkUpdate-8         8000    ~600 µs/op
 
 ## Examples
 
-See [examples/](./examples/) directory for:
+See [examples/](.../examples/db/db/) directory for:
 - Basic database connection
 - Multi-database setup
 - OpenTelemetry integration

@@ -263,3 +263,19 @@ func TestScriptWithRetryStrategy(t *testing.T) {
 	assert.NotNil(t, tmpl.RetryStrategy)
 	assert.Equal(t, 3, tmpl.RetryStrategy.Limit.IntValue())
 }
+
+func TestScriptSource(t *testing.T) {
+	t.Run("sets script source from artifact", func(t *testing.T) {
+		script := NewScript("artifact-test", "bash").
+			Source("{{inputs.artifacts.script}}")
+
+		assert.Equal(t, "{{inputs.artifacts.script}}", script.source)
+	})
+
+	t.Run("sets script source from configmap", func(t *testing.T) {
+		script := NewScript("configmap-test", "python").
+			Source("{{inputs.parameters.script-content}}")
+
+		assert.Equal(t, "{{inputs.parameters.script-content}}", script.source)
+	})
+}
