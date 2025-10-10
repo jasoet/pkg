@@ -552,3 +552,100 @@ func TestSetupEchoWithOTel(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 }
+
+func TestStartFunction(t *testing.T) {
+	t.Run("Start function with default config", func(t *testing.T) {
+		// Test that Start() function properly sets up configuration
+		// We can't fully test the blocking nature, but we can test that it creates valid config
+
+		var operationCalled atomic.Bool
+		operation := func(e *echo.Echo) {
+			operationCalled.Store(true)
+		}
+
+		var shutdownCalled atomic.Bool
+		shutdown := func(e *echo.Echo) {
+			shutdownCalled.Store(true)
+		}
+
+		middleware := func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				return next(c)
+			}
+		}
+
+		// Create server with the same config that Start() would create
+		config := DefaultConfig(0, operation, shutdown)
+		config.Middleware = []echo.MiddlewareFunc{middleware}
+
+		server := newHttpServer(config)
+		assert.NotNil(t, server)
+		assert.Equal(t, 0, server.config.Port)
+		assert.Len(t, server.config.Middleware, 1)
+
+		// Start and stop to verify callbacks work
+		server.start()
+		time.Sleep(100 * time.Millisecond)
+		assert.True(t, operationCalled.Load(), "Operation should be called")
+
+		_ = server.stop()
+		assert.True(t, shutdownCalled.Load(), "Shutdown should be called")
+	})
+}
+
+func TestStartWithConfigFunction(t *testing.T) {
+	t.Run("StartWithConfig creates server correctly", func(t *testing.T) {
+		// Test that StartWithConfig() function properly sets up the server
+		// We test the initialization without actually blocking on signals
+
+		var operationCalled atomic.Bool
+		operation := func(e *echo.Echo) {
+			operationCalled.Store(true)
+		}
+
+		var shutdownCalled atomic.Bool
+		shutdown := func(e *echo.Echo) {
+			shutdownCalled.Store(true)
+		}
+
+		config := DefaultConfig(0, operation, shutdown)
+		config.ShutdownTimeout = 5 * time.Second
+
+		// Create and start server (same as StartWithConfig does)
+		server := newHttpServer(config)
+		assert.NotNil(t, server)
+		assert.Equal(t, 0, server.config.Port)
+		assert.Equal(t, 5*time.Second, server.config.ShutdownTimeout)
+
+		// Test start/stop cycle
+		server.start()
+		time.Sleep(100 * time.Millisecond)
+		assert.True(t, operationCalled.Load(), "Operation should be called during start")
+
+		err := server.stop()
+		assert.NoError(t, err, "Stop should not error")
+		assert.True(t, shutdownCalled.Load(), "Shutdown should be called during stop")
+	})
+
+	t.Run("StartWithConfig with custom shutdown timeout", func(t *testing.T) {
+		customTimeout := 15 * time.Second
+		config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.ShutdownTimeout = customTimeout
+
+		server := newHttpServer(config)
+		assert.Equal(t, customTimeout, server.config.ShutdownTimeout)
+	})
+
+	t.Run("StartWithConfig with OTel configuration", func(t *testing.T) {
+		cfg := otel.NewConfig("test-server").
+			WithTracerProvider(noopt.NewTracerProvider()).
+			WithMeterProvider(noopm.NewMeterProvider())
+
+		config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+		config.OTelConfig = cfg
+
+		server := newHttpServer(config)
+		assert.NotNil(t, server.config.OTelConfig)
+		assert.Equal(t, "test-server", server.config.OTelConfig.ServiceName)
+	})
+}

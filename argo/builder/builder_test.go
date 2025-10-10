@@ -285,3 +285,181 @@ func TestWorkflowBuilder_WithMetrics_Error(t *testing.T) {
 	assert.Nil(t, wf)
 	assert.Contains(t, err.Error(), "failed to get metrics")
 }
+
+func TestWorkflowBuilder_AddParallel(t *testing.T) {
+	t.Run("adds parallel workflow source", func(t *testing.T) {
+		parallelSource := &mockParallelSource{
+			parallelSteps: []v1alpha1.ParallelSteps{
+				{
+					Steps: []v1alpha1.WorkflowStep{
+						{Name: "parallel-1", Template: "template-1"},
+						{Name: "parallel-2", Template: "template-2"},
+					},
+				},
+			},
+			templates: []v1alpha1.Template{
+				{
+					Name: "template-1",
+					Container: &corev1.Container{
+						Image: "alpine:latest",
+					},
+				},
+				{
+					Name: "template-2",
+					Container: &corev1.Container{
+						Image: "alpine:latest",
+					},
+				},
+			},
+		}
+
+		builder := NewWorkflowBuilder("test", "argo").
+			AddParallel(parallelSource)
+
+		wf, err := builder.Build()
+		require.NoError(t, err)
+		require.NotNil(t, wf)
+
+		// Find main template
+		var mainTemplate *v1alpha1.Template
+		for i := range wf.Spec.Templates {
+			if wf.Spec.Templates[i].Name == "main" {
+				mainTemplate = &wf.Spec.Templates[i]
+				break
+			}
+		}
+		require.NotNil(t, mainTemplate)
+
+		// Verify parallel steps are added
+		require.Len(t, mainTemplate.Steps, 1)
+		assert.Len(t, mainTemplate.Steps[0].Steps, 2) // Two parallel steps
+		assert.Equal(t, "parallel-1", mainTemplate.Steps[0].Steps[0].Name)
+		assert.Equal(t, "parallel-2", mainTemplate.Steps[0].Steps[1].Name)
+	})
+
+	t.Run("handles template errors", func(t *testing.T) {
+		parallelSource := &mockParallelSource{
+			templatesErr: assert.AnError,
+		}
+
+		builder := NewWorkflowBuilder("test", "argo").
+			AddParallel(parallelSource)
+
+		wf, err := builder.Build()
+		require.Error(t, err)
+		assert.Nil(t, wf)
+		assert.Contains(t, err.Error(), "failed to get templates")
+	})
+
+	t.Run("handles parallel steps errors", func(t *testing.T) {
+		parallelSource := &mockParallelSource{
+			templates: []v1alpha1.Template{
+				{Name: "test", Container: &corev1.Container{Image: "alpine"}},
+			},
+			parallelStepsErr: assert.AnError,
+		}
+
+		builder := NewWorkflowBuilder("test", "argo").
+			AddParallel(parallelSource)
+
+		wf, err := builder.Build()
+		require.Error(t, err)
+		assert.Nil(t, wf)
+		assert.Contains(t, err.Error(), "failed to get parallel steps")
+	})
+}
+
+func TestWorkflowBuilder_BuildWithEntrypoint(t *testing.T) {
+	t.Run("builds workflow with custom entrypoint", func(t *testing.T) {
+		customTemplate := v1alpha1.Template{
+			Name: "custom-main",
+			Steps: []v1alpha1.ParallelSteps{
+				{
+					Steps: []v1alpha1.WorkflowStep{
+						{Name: "step-1", Template: "template-1"},
+					},
+				},
+			},
+		}
+
+		stepTemplate := v1alpha1.Template{
+			Name: "template-1",
+			Container: &corev1.Container{
+				Image:   "alpine:latest",
+				Command: []string{"echo", "hello"},
+			},
+		}
+
+		builder := NewWorkflowBuilder("test", "argo").
+			AddTemplate(customTemplate).
+			AddTemplate(stepTemplate)
+
+		wf, err := builder.BuildWithEntrypoint("custom-main")
+		require.NoError(t, err)
+		require.NotNil(t, wf)
+
+		assert.Equal(t, "custom-main", wf.Spec.Entrypoint)
+
+		// Verify custom template exists
+		var customMain *v1alpha1.Template
+		for i := range wf.Spec.Templates {
+			if wf.Spec.Templates[i].Name == "custom-main" {
+				customMain = &wf.Spec.Templates[i]
+				break
+			}
+		}
+		require.NotNil(t, customMain, "custom entrypoint should exist")
+	})
+
+	t.Run("returns error when entrypoint not found", func(t *testing.T) {
+		builder := NewWorkflowBuilder("test", "argo").
+			AddTemplate(v1alpha1.Template{
+				Name:      "some-template",
+				Container: &corev1.Container{Image: "alpine"},
+			})
+
+		wf, err := builder.BuildWithEntrypoint("nonexistent")
+		require.Error(t, err)
+		assert.Nil(t, wf)
+		assert.Contains(t, err.Error(), "entrypoint template 'nonexistent' not found")
+	})
+
+	t.Run("builds with exit handler", func(t *testing.T) {
+		entryTemplate := v1alpha1.Template{
+			Name: "my-entry",
+			Steps: []v1alpha1.ParallelSteps{
+				{Steps: []v1alpha1.WorkflowStep{{Name: "main", Template: "main-tmpl"}}},
+			},
+		}
+
+		cleanup := template.NewContainer("cleanup", "alpine:latest",
+			template.WithCommand("echo", "cleanup"))
+
+		builder := NewWorkflowBuilder("test", "argo").
+			AddTemplate(entryTemplate).
+			AddExitHandler(cleanup)
+
+		wf, err := builder.BuildWithEntrypoint("my-entry")
+		require.NoError(t, err)
+		require.NotNil(t, wf)
+
+		assert.Equal(t, "my-entry", wf.Spec.Entrypoint)
+		assert.Equal(t, "exit-handler", wf.Spec.OnExit)
+	})
+}
+
+// mockParallelSource implements WorkflowSourceV2 for testing
+type mockParallelSource struct {
+	parallelSteps    []v1alpha1.ParallelSteps
+	templates        []v1alpha1.Template
+	parallelStepsErr error
+	templatesErr     error
+}
+
+func (m *mockParallelSource) ParallelSteps() ([]v1alpha1.ParallelSteps, error) {
+	return m.parallelSteps, m.parallelStepsErr
+}
+
+func (m *mockParallelSource) Templates() ([]v1alpha1.Template, error) {
+	return m.templates, m.templatesErr
+}
