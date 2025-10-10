@@ -509,7 +509,7 @@ BenchmarkTypedExecution-8         10000    ~105µs/op (includes builder)
 
 ## Examples
 
-See [examples/](./examples/) directory for:
+See [examples/](.../examples/concurrent/concurrent/) directory for:
 - Basic concurrent execution
 - Typed result building
 - Context handling

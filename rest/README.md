@@ -602,7 +602,7 @@ BenchmarkMiddleware-8     10000    ~5µs/op (middleware overhead)
 
 ## Examples
 
-See [examples/](./examples/) directory for:
+See [examples/](.../examples/rest/rest/) directory for:
 - Basic HTTP requests
 - OpenTelemetry integration
 - Custom middleware

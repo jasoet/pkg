@@ -509,7 +509,7 @@ cfg, err := config.LoadString[AppConfig](yamlString)
 
 ## Examples
 
-See [examples/](./examples/) directory for:
+See [examples/](.../examples/config/config/) directory for:
 - Basic configuration loading
 - Environment variable overrides
 - Custom Viper configuration
