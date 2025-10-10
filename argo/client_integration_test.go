@@ -78,7 +78,6 @@ func TestNewClientWithOptions_CustomPath(t *testing.T) {
 	ctx, client, err := NewClientWithOptions(ctx,
 		WithKubeConfig(kubeconfigPath),
 	)
-
 	if err != nil {
 		t.Logf("Failed to create client (expected if cluster not accessible): %v", err)
 		return
@@ -103,7 +102,6 @@ func TestNewClientWithOptions_MultipleOptions(t *testing.T) {
 		WithKubeConfig(kubeconfigPath),
 		WithContext(""), // Use current context
 	)
-
 	if err != nil {
 		t.Logf("Failed to create client (expected if cluster not accessible): %v", err)
 		return

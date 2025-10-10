@@ -169,8 +169,8 @@ func exampleSubmitAndWaitWithErrorHandling() {
 	wf, err := builder.NewWorkflowBuilder("data-process", "argo",
 		builder.WithServiceAccount("default"),
 		builder.WithLabels(map[string]string{
-			"app":  "data-pipeline",
-			"env":  "production",
+			"app": "data-pipeline",
+			"env": "production",
 		})).
 		Add(process).
 		Build()
@@ -181,7 +181,6 @@ func exampleSubmitAndWaitWithErrorHandling() {
 	// Submit and wait with longer timeout for data processing
 	fmt.Println("Starting data processing workflow...")
 	completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
-
 	if err != nil {
 		// Handle different failure scenarios
 		if completed != nil {

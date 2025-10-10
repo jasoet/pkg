@@ -174,4 +174,3 @@ func TestLogHelper_MixedTypes(t *testing.T) {
 		)
 	})
 }
-

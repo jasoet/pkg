@@ -35,12 +35,12 @@ type TimeRange struct {
 
 // WorkflowDetails contains detailed information about a workflow execution
 type WorkflowDetails struct {
-	WorkflowID   string
-	RunID        string
-	WorkflowType string
-	Status       enums.WorkflowExecutionStatus
-	StartTime    time.Time
-	CloseTime    time.Time
+	WorkflowID    string
+	RunID         string
+	WorkflowType  string
+	Status        enums.WorkflowExecutionStatus
+	StartTime     time.Time
+	CloseTime     time.Time
 	ExecutionTime time.Duration
 	HistoryLength int64
 }
