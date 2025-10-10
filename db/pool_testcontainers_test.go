@@ -68,10 +68,14 @@ func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig
 		mysql.WithPassword("testpass"),
 		mysql.WithScripts(filepath.Join("..", "scripts", "compose", "mariadb", "backup", "default.sql")),
 		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("3306/tcp").WithStartupTimeout(60*time.Second),
+			wait.ForLog("port: 3306  MySQL Community Server").
+				WithStartupTimeout(90*time.Second),
 		),
 	)
 	require.NoError(t, err, "Failed to start MySQL container")
+
+	// Wait a bit more for MySQL to be fully ready
+	time.Sleep(3 * time.Second)
 
 	host, err := mysqlContainer.Host(ctx)
 	require.NoError(t, err, "Failed to get host")

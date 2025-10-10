@@ -32,15 +32,49 @@ tasks:
       - go tool cover -html=output/coverage-integration.out -o output/coverage-integration.html
       - 'echo "✓ Integration coverage: output/coverage-integration.html"'
 
-  test:all:
-    desc: Run all tests with combined coverage (unit + integration, Docker required, excludes examples)
+  test:argo:
+    desc: Run Argo integration tests (requires k8s cluster with Argo Workflows)
     silent: true
     cmds:
+      - task: argo:check
       - mkdir -p output
-      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-all.out -covermode=atomic -tags=integration -timeout=15m
-      - go tool cover -html=output/coverage-all.out -o output/coverage-all.html
-      - 'echo "✓ Complete coverage: output/coverage-all.html"'
-      - go tool cover -func=output/coverage-all.out | grep total
+      - go test -race -count=1 -coverprofile=output/coverage-argo.out -covermode=atomic -tags=argo -timeout=15m ./argo/...
+      - go tool cover -html=output/coverage-argo.out -o output/coverage-argo.html
+      - 'echo "✓ Argo coverage: output/coverage-argo.html"'
+      - go tool cover -func=output/coverage-argo.out | grep total
+
+  test:complete:
+    desc: Run ALL tests (unit + integration + argo) with single comprehensive coverage report
+    silent: true
+    cmds:
+      - task: docker:check
+      - task: argo:check
+      - mkdir -p output
+      - echo "🧪 Running all tests (unit + integration + argo)..."
+      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-complete.out -covermode=atomic -tags=integration,argo -timeout=20m -v
+      - go tool cover -html=output/coverage-complete.out -o output/coverage-complete.html
+      - 'echo ""'
+      - 'echo "✅ Complete test coverage report:"'
+      - go tool cover -func=output/coverage-complete.out | grep total
+      - 'echo "📄 HTML Report: output/coverage-complete.html"'
+      - 'echo "📄 Coverage Data: output/coverage-complete.out"'
+
+  docker:check:
+    desc: Check Docker availability and daemon status
+    silent: true
+    cmds:
+      - |
+        if ! command -v docker &> /dev/null; then
+          echo "❌ Docker not installed"
+          exit 1
+        fi
+        if ! docker ps &> /dev/null; then
+          echo "❌ Docker daemon not running"
+          echo "   Start Docker and try again"
+          exit 1
+        fi
+        echo "✅ Docker is available and running"
+        docker --version
 
   lint:
     desc: Run golangci-lint
