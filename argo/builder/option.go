@@ -6,8 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// BuilderOption is a functional option for configuring WorkflowBuilder.
-type BuilderOption func(*WorkflowBuilder)
+// Option is a functional option for configuring WorkflowBuilder.
+type Option func(*WorkflowBuilder)
 
 // WithOTelConfig enables OpenTelemetry instrumentation for the workflow builder.
 // This adds distributed tracing, metrics collection, and structured logging to workflow build operations.
@@ -19,7 +19,7 @@ type BuilderOption func(*WorkflowBuilder)
 //	    WithMeterProvider(mp)
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithOTelConfig(otelConfig))
-func WithOTelConfig(cfg *otel.Config) BuilderOption {
+func WithOTelConfig(cfg *otel.Config) Option {
 	return func(b *WorkflowBuilder) {
 		b.otelConfig = cfg
 	}
@@ -32,7 +32,7 @@ func WithOTelConfig(cfg *otel.Config) BuilderOption {
 //
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithServiceAccount("argo-workflow"))
-func WithServiceAccount(sa string) BuilderOption {
+func WithServiceAccount(sa string) Option {
 	return func(b *WorkflowBuilder) {
 		b.serviceAccount = sa
 	}
@@ -54,7 +54,7 @@ func WithServiceAccount(sa string) BuilderOption {
 //	}
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithRetryStrategy(retryStrategy))
-func WithRetryStrategy(retry *v1alpha1.RetryStrategy) BuilderOption {
+func WithRetryStrategy(retry *v1alpha1.RetryStrategy) Option {
 	return func(b *WorkflowBuilder) {
 		b.retryStrategy = retry
 	}
@@ -77,7 +77,7 @@ func WithRetryStrategy(retry *v1alpha1.RetryStrategy) BuilderOption {
 //	}
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithVolume(volume))
-func WithVolume(volume corev1.Volume) BuilderOption {
+func WithVolume(volume corev1.Volume) Option {
 	return func(b *WorkflowBuilder) {
 		b.volumes = append(b.volumes, volume)
 	}
@@ -90,7 +90,7 @@ func WithVolume(volume corev1.Volume) BuilderOption {
 //
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithArchiveLogs(true))
-func WithArchiveLogs(archive bool) BuilderOption {
+func WithArchiveLogs(archive bool) Option {
 	return func(b *WorkflowBuilder) {
 		b.archiveLogs = &archive
 	}
@@ -106,7 +106,7 @@ func WithArchiveLogs(archive bool) BuilderOption {
 //	}
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithPodGC(podGC))
-func WithPodGC(podGC *v1alpha1.PodGC) BuilderOption {
+func WithPodGC(podGC *v1alpha1.PodGC) Option {
 	return func(b *WorkflowBuilder) {
 		b.podGC = podGC
 	}
@@ -122,7 +122,7 @@ func WithPodGC(podGC *v1alpha1.PodGC) BuilderOption {
 //	}
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithTTL(ttl))
-func WithTTL(ttl *v1alpha1.TTLStrategy) BuilderOption {
+func WithTTL(ttl *v1alpha1.TTLStrategy) Option {
 	return func(b *WorkflowBuilder) {
 		b.ttl = ttl
 	}
@@ -135,7 +135,7 @@ func WithTTL(ttl *v1alpha1.TTLStrategy) BuilderOption {
 //
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithActiveDeadlineSeconds(3600)) // 1 hour max
-func WithActiveDeadlineSeconds(seconds int64) BuilderOption {
+func WithActiveDeadlineSeconds(seconds int64) Option {
 	return func(b *WorkflowBuilder) {
 		b.activeDeadlineSeconds = &seconds
 	}
@@ -152,7 +152,7 @@ func WithActiveDeadlineSeconds(seconds int64) BuilderOption {
 //	}
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithLabels(labels))
-func WithLabels(labels map[string]string) BuilderOption {
+func WithLabels(labels map[string]string) Option {
 	return func(b *WorkflowBuilder) {
 		if b.labels == nil {
 			b.labels = make(map[string]string)
@@ -174,7 +174,7 @@ func WithLabels(labels map[string]string) BuilderOption {
 //	}
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithAnnotations(annotations))
-func WithAnnotations(annotations map[string]string) BuilderOption {
+func WithAnnotations(annotations map[string]string) Option {
 	return func(b *WorkflowBuilder) {
 		if b.annotations == nil {
 			b.annotations = make(map[string]string)

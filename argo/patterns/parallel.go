@@ -18,7 +18,7 @@ import (
 //	    "busybox:latest",
 //	    []string{"task-1", "task-2", "task-3"},
 //	)
-func FanOutFanIn(name, namespace, image string, tasks []string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func FanOutFanIn(name, namespace, image string, tasks []string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	if len(tasks) == 0 {
 		return nil, fmt.Errorf("at least one task is required for fan-out/fan-in pattern")
 	}
@@ -93,7 +93,7 @@ func FanOutFanIn(name, namespace, image string, tasks []string, opts ...builder.
 //	    []string{"data-1.csv", "data-2.csv", "data-3.csv"},
 //	    "process.sh",
 //	)
-func ParallelDataProcessing(name, namespace, image string, dataItems []string, processingCommand string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func ParallelDataProcessing(name, namespace, image string, dataItems []string, processingCommand string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	if len(dataItems) == 0 {
 		return nil, fmt.Errorf("at least one data item is required")
 	}
@@ -153,7 +153,7 @@ func ParallelDataProcessing(name, namespace, image string, dataItems []string, p
 //	    "wc -w", // map command
 //	    "awk '{sum+=$1} END {print sum}'", // reduce command
 //	)
-func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("at least one input is required for map-reduce")
 	}
@@ -232,7 +232,7 @@ func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd
 //	        "e2e": "go test ./tests/e2e/...",
 //	    },
 //	)
-func ParallelTestSuite(name, namespace, image string, testSuites map[string]string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func ParallelTestSuite(name, namespace, image string, testSuites map[string]string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	if len(testSuites) == 0 {
 		return nil, fmt.Errorf("at least one test suite is required")
 	}
@@ -287,7 +287,7 @@ func ParallelTestSuite(name, namespace, image string, testSuites map[string]stri
 //	    "myregistry/deployer:v1",
 //	    []string{"us-west", "us-east", "eu-central"},
 //	)
-func ParallelDeployment(name, namespace, deployImage string, environments []string, opts ...builder.BuilderOption) (*v1alpha1.Workflow, error) {
+func ParallelDeployment(name, namespace, deployImage string, environments []string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
 	if len(environments) == 0 {
 		return nil, fmt.Errorf("at least one environment is required")
 	}

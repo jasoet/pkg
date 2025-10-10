@@ -51,7 +51,6 @@ func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.W
 		Namespace: wf.Namespace,
 		Workflow:  wf,
 	})
-
 	if err != nil {
 		logger.Error(err, "Failed to submit workflow",
 			otel.F("workflow_name", wf.GenerateName))
@@ -208,7 +207,6 @@ func GetWorkflowStatus(ctx context.Context, client apiclient.Client, namespace, 
 		Namespace: namespace,
 		Name:      name,
 	})
-
 	if err != nil {
 		logger.Error(err, "Failed to get workflow",
 			otel.F("namespace", namespace),
@@ -249,7 +247,6 @@ func ListWorkflows(ctx context.Context, client apiclient.Client, namespace, labe
 		Namespace:   namespace,
 		ListOptions: listOpts,
 	})
-
 	if err != nil {
 		logger.Error(err, "Failed to list workflows",
 			otel.F("namespace", namespace))
@@ -282,7 +279,6 @@ func DeleteWorkflow(ctx context.Context, client apiclient.Client, namespace, nam
 		Namespace: namespace,
 		Name:      name,
 	})
-
 	if err != nil {
 		logger.Error(err, "Failed to delete workflow",
 			otel.F("namespace", namespace),

@@ -22,23 +22,23 @@ import (
 //	    CPU("1000m").
 //	    Memory("512Mi")
 type Container struct {
-	name           string
-	templateName   string
-	image          string
-	command        []string
-	args           []string
-	env            []corev1.EnvVar
-	volumeMounts   []corev1.VolumeMount
-	workingDir     string
+	name            string
+	templateName    string
+	image           string
+	command         []string
+	args            []string
+	env             []corev1.EnvVar
+	volumeMounts    []corev1.VolumeMount
+	workingDir      string
 	imagePullPolicy corev1.PullPolicy
-	cpuRequest     string
-	cpuLimit       string
-	memoryRequest  string
-	memoryLimit    string
-	when           string
-	continueOn     *v1alpha1.ContinueOn
-	retryStrategy  *v1alpha1.RetryStrategy
-	otelConfig     *otel.Config
+	cpuRequest      string
+	cpuLimit        string
+	memoryRequest   string
+	memoryLimit     string
+	when            string
+	continueOn      *v1alpha1.ContinueOn
+	retryStrategy   *v1alpha1.RetryStrategy
+	otelConfig      *otel.Config
 }
 
 // NewContainer creates a new container workflow source.
@@ -56,11 +56,11 @@ type Container struct {
 //	    template.WithOTelConfig(otelConfig))
 func NewContainer(name, image string, opts ...ContainerOption) *Container {
 	c := &Container{
-		name:          name,
-		templateName:  name + "-template",
-		image:         image,
-		env:           make([]corev1.EnvVar, 0),
-		volumeMounts:  make([]corev1.VolumeMount, 0),
+		name:            name,
+		templateName:    name + "-template",
+		image:           image,
+		env:             make([]corev1.EnvVar, 0),
+		volumeMounts:    make([]corev1.VolumeMount, 0),
 		imagePullPolicy: corev1.PullIfNotPresent,
 	}
 

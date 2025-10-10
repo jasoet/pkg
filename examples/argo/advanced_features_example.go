@@ -121,9 +121,9 @@ func exampleRetryStrategy() {
 			Limit:       &limit,
 			RetryPolicy: v1alpha1.RetryPolicyAlways,
 			Backoff: &v1alpha1.Backoff{
-				Duration:    "1m",                // Start with 1 minute
-				Factor:      &backoffFactor,      // Double each retry
-				MaxDuration: "10m",               // Cap at 10 minutes
+				Duration:    "1m",           // Start with 1 minute
+				Factor:      &backoffFactor, // Double each retry
+				MaxDuration: "10m",          // Cap at 10 minutes
 			},
 		})).
 		Add(flakyCall).
@@ -607,8 +607,8 @@ func (m *customMetricsProvider) Metrics() (*v1alpha1.Metrics, error) {
 	return &v1alpha1.Metrics{
 		Prometheus: []*v1alpha1.Prometheus{
 			{
-				Name:   "workflow_duration_seconds",
-				Help:   "Duration of workflow execution in seconds",
+				Name: "workflow_duration_seconds",
+				Help: "Duration of workflow execution in seconds",
 				Gauge: &v1alpha1.Gauge{
 					Value: "{{workflow.duration}}",
 				},
@@ -619,8 +619,8 @@ func (m *customMetricsProvider) Metrics() (*v1alpha1.Metrics, error) {
 				},
 			},
 			{
-				Name:   "workflow_step_duration_seconds",
-				Help:   "Duration of each workflow step",
+				Name: "workflow_step_duration_seconds",
+				Help: "Duration of each workflow step",
 				Gauge: &v1alpha1.Gauge{
 					Value: "{{workflow.steps.*.duration}}",
 				},

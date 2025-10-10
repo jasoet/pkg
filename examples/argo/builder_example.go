@@ -69,7 +69,6 @@ func example1SimpleWorkflow(ctx context.Context) error {
 		Add(test).
 		Add(deploy).
 		Build()
-
 	if err != nil {
 		return fmt.Errorf("failed to build workflow: %w", err)
 	}
@@ -100,7 +99,6 @@ func example2WithExitHandler(ctx context.Context) error {
 		Add(process).
 		AddExitHandler(cleanup).
 		Build()
-
 	if err != nil {
 		return fmt.Errorf("failed to build workflow: %w", err)
 	}
@@ -166,7 +164,6 @@ func example3WithOTel(ctx context.Context) error {
 		Add(healthCheck).
 		AddExitHandler(notify).
 		Build()
-
 	if err != nil {
 		return fmt.Errorf("failed to build workflow with OTel: %w", err)
 	}
