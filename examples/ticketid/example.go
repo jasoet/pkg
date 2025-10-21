@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== TicketID Package Examples ===\n")
+	fmt.Println("=== TicketID Package Examples ===")
 
 	// Example 1: Basic Generation
 	basicGeneration()
