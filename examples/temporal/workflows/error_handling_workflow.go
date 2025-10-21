@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jasoet/pkg/v2/temporal/examples/activities"
+	"github.com/jasoet/pkg/v2/examples/temporal/activities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )

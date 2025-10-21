@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc"
 
 	grpcserver "github.com/jasoet/pkg/v2/grpc"
-	calculatorv1 "github.com/jasoet/pkg/v2/grpc/examples/gen/calculator/v1"
-	"github.com/jasoet/pkg/v2/grpc/examples/internal/service"
+	calculatorv1 "github.com/jasoet/pkg/v2/examples/grpc/gen/calculator/v1"
+	"github.com/jasoet/pkg/v2/examples/grpc/internal/service"
 )
 
 func main() {
