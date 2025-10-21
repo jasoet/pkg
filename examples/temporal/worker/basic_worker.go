@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/jasoet/pkg/v2/temporal"
-	"github.com/jasoet/pkg/v2/temporal/examples/activities"
-	"github.com/jasoet/pkg/v2/temporal/examples/workflows"
+	"github.com/jasoet/pkg/v2/examples/temporal/activities"
+	"github.com/jasoet/pkg/v2/examples/temporal/workflows"
 	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/worker"
 )
