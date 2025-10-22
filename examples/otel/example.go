@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== OTel Package Examples ===\n")
+	fmt.Println("=== OTel Package Examples ===")
 
 	// Example 1: Basic Configuration
 	basicConfiguration()
