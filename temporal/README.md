@@ -187,6 +187,96 @@ Then open http://localhost:8080 in your browser.
 
 This package includes comprehensive integration tests using testcontainers to automatically manage Temporal server instances.
 
+### Testcontainer Package
+
+The `temporal/testcontainer` package provides reusable utilities for running Temporal server in Docker containers for integration testing. This package can be used in your own projects for testing Temporal workflows.
+
+#### Installing the Testcontainer Package
+
+```bash
+go get github.com/jasoet/pkg/v2/temporal/testcontainer
+```
+
+#### Quick Start with Testcontainer
+
+**Simple Setup (Recommended):**
+
+```go
+import (
+    "context"
+    "testing"
+    "github.com/jasoet/pkg/v2/temporal/testcontainer"
+)
+
+func TestMyWorkflow(t *testing.T) {
+    ctx := context.Background()
+
+    // Setup container and client with cleanup
+    _, client, cleanup, err := testcontainer.Setup(
+        ctx,
+        testcontainer.ClientConfig{
+            Namespace: "default",
+        },
+        testcontainer.Options{Logger: t},
+    )
+    if err != nil {
+        t.Fatalf("Setup failed: %v", err)
+    }
+    defer cleanup()
+
+    // Use client for your tests...
+}
+```
+
+**Advanced Setup:**
+
+```go
+import (
+    "go.temporal.io/sdk/client"
+)
+
+func TestAdvanced(t *testing.T) {
+    ctx := context.Background()
+
+    // Start container with custom options
+    container, err := testcontainer.Start(ctx, testcontainer.Options{
+        Image:          "temporalio/temporal:1.22.0",
+        StartupTimeout: 120 * time.Second,
+        Logger:         t,
+    })
+    if err != nil {
+        t.Fatalf("Failed to start: %v", err)
+    }
+    defer container.Terminate(ctx)
+
+    // Create client using Temporal SDK directly
+    temporalClient, err := client.Dial(client.Options{
+        HostPort:  container.HostPort(),
+        Namespace: "default",
+    })
+    if err != nil {
+        t.Fatalf("Failed to create client: %v", err)
+    }
+    defer temporalClient.Close()
+
+    // Run tests...
+}
+```
+
+#### Configuration Options
+
+```go
+testcontainer.Options{
+    Image:           "temporalio/temporal:latest", // Docker image
+    StartupTimeout:  60 * time.Second,            // Startup timeout
+    Logger:          t,                            // *testing.T or custom logger
+    ExtraPorts:      []string{"8080/tcp"},        // Additional ports
+    InitialWaitTime: 3 * time.Second,             // Wait after startup
+}
+```
+
+See the [testcontainer package documentation](./testcontainer/doc.go) and [examples](./testcontainer/example_test.go) for more details.
+
 ## Prerequisites
 
 - Docker (for testcontainers)
