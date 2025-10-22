@@ -477,7 +477,7 @@ When adding new integration tests:
 
 1. **Use the `//go:build integration` tag**
 2. **Create unique identifiers** (workflow IDs, task queues, etc.)
-3. **Use the testcontainer helper** (`setupTemporalContainerForTest`)
+3. **Use the testcontainer package** (`testcontainer.Setup()`)
 4. **Add realistic error scenarios** where appropriate
 5. **Document any new configuration requirements**
 

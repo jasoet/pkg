@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/api/enums/v1"
@@ -40,11 +41,16 @@ func TestWorkflowManagerCreation(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container
-	container, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	container, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	config := &Config{
-		HostPort:             container.HostPort,
+		HostPort:             container.HostPort(),
 		Namespace:            "default",
 		MetricsListenAddress: "0.0.0.0:0",
 	}
@@ -76,7 +82,12 @@ func TestWorkflowManagerListOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	// Create workflow manager
@@ -207,7 +218,12 @@ func TestWorkflowManagerDescribeOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	// Create workflow manager
@@ -310,7 +326,12 @@ func TestWorkflowManagerSearchOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	// Create workflow manager
@@ -416,7 +437,12 @@ func TestWorkflowManagerLifecycleOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	// Create workflow manager
@@ -517,7 +543,12 @@ func TestWorkflowManagerDashboardOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	// Create workflow manager
