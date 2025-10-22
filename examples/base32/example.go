@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Base32 Package Examples ===\n")
+	fmt.Println("=== Base32 Package Examples ===")
 
 	// Example 1: Basic Encoding and Decoding
 	basicEncodingDecoding()
