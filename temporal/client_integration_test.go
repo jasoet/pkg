@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"go.temporal.io/api/enums/v1"
-
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 )
 
@@ -18,12 +18,17 @@ func TestClientIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container once for all subtests
-	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	container, _, containerCleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer containerCleanup()
 
 	// Create config using container's address
 	config := &Config{
-		HostPort:             container.HostPort,
+		HostPort:             container.HostPort(),
 		Namespace:            "default",
 		MetricsListenAddress: "0.0.0.0:0", // Random port
 	}
@@ -84,7 +89,12 @@ func TestClientOperations(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	t.Run("DescribeTaskQueue", func(t *testing.T) {
@@ -117,7 +127,12 @@ func TestWorkflowExecution(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	t.Run("ExecuteSimpleWorkflow", func(t *testing.T) {
