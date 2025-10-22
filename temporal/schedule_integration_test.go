@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/client"
@@ -17,7 +18,12 @@ func TestScheduleManagerIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	scheduleManager := NewScheduleManager(temporalClient)
@@ -240,7 +246,12 @@ func TestScheduleManagerErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	_, temporalClient, cleanup := setupTemporalContainerForTest(ctx, t)
+	_, temporalClient, cleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer cleanup()
 
 	scheduleManager := NewScheduleManager(temporalClient)
@@ -322,12 +333,17 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get connection details
-	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	container, _, containerCleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer containerCleanup()
 
 	// Create config using container's address
 	config := DefaultConfig()
-	config.HostPort = container.HostPort
+	config.HostPort = container.HostPort()
 	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {

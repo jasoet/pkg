@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
@@ -92,12 +93,17 @@ func TestWorkerManager(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container once for all subtests
-	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	container, _, containerCleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer containerCleanup()
 
 	// Create config using container's address
 	config := DefaultConfig()
-	config.HostPort = container.HostPort
+	config.HostPort = container.HostPort()
 	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("CreateWorkerManager", func(t *testing.T) {
@@ -148,12 +154,17 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container once for all subtests
-	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	container, _, containerCleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer containerCleanup()
 
 	// Create config using container's address
 	config := DefaultConfig()
-	config.HostPort = container.HostPort
+	config.HostPort = container.HostPort()
 	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
@@ -276,12 +287,17 @@ func TestWorkerManagerLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container once for all subtests
-	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	container, _, containerCleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer containerCleanup()
 
 	// Create config using container's address
 	config := DefaultConfig()
-	config.HostPort = container.HostPort
+	config.HostPort = container.HostPort()
 	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("StartAll", func(t *testing.T) {
@@ -335,12 +351,17 @@ func TestWorkerConfiguration(t *testing.T) {
 	ctx := context.Background()
 
 	// Start Temporal container and get client
-	container, _, containerCleanup := setupTemporalContainerForTest(ctx, t)
+	container, _, containerCleanup, err := testcontainer.Setup(
+		ctx,
+		testcontainer.ClientConfig{Namespace: "default"},
+		testcontainer.Options{Logger: t},
+	)
+	require.NoError(t, err, "Failed to setup temporal container")
 	defer containerCleanup()
 
 	// Create config using container's address
 	config := DefaultConfig()
-	config.HostPort = container.HostPort
+	config.HostPort = container.HostPort()
 	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
