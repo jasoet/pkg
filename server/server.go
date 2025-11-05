@@ -244,7 +244,7 @@ func newHttpServer(config Config) *httpServer {
 }
 
 func (s *httpServer) start() {
-	go s.config.Operation(s.echo)
+	s.config.Operation(s.echo)
 
 	go func() {
 		fmt.Printf("Starting server on port %d\n", s.config.Port)
