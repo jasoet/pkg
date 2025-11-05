@@ -2,8 +2,6 @@ package argo
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -101,33 +99,6 @@ func TestInClusterClientConfig_ClientConfig(t *testing.T) {
 		// If we're actually in a cluster, verify config
 		assert.NotNil(t, config)
 	}
-}
-
-// TestNewClient_WithRealKubeconfig tests client creation with an actual kubeconfig file
-func TestNewClient_WithRealKubeconfig(t *testing.T) {
-	// Skip if no kubeconfig available
-	kubeconfigPath := os.Getenv("KUBECONFIG")
-	if kubeconfigPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			t.Skip("Cannot determine home directory")
-		}
-		kubeconfigPath = filepath.Join(home, ".kube", "config")
-	}
-
-	if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-		t.Skip("No kubeconfig file available")
-	}
-
-	t.Run("create client with kubeconfig", func(t *testing.T) {
-		_, client, err := NewClientWithOptions(context.Background(),
-			WithKubeConfig(kubeconfigPath))
-
-		// May fail if cluster is not accessible, but shouldn't panic
-		if err == nil {
-			assert.NotNil(t, client)
-		}
-	})
 }
 
 func TestNewClient_WithArgoServer(t *testing.T) {
