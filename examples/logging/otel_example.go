@@ -37,6 +37,10 @@ func main() {
 	fmt.Println("\n5. Different Severity Levels")
 	severityLevelsExample()
 
+	// Example 6: OTLP Log Export (commented out - requires OTLP collector)
+	fmt.Println("\n6. OTLP Log Export (see code for details)")
+	fmt.Println("  Uncomment otlpLogExportExample() to test with OTLP collector")
+
 	fmt.Println("\n✓ All examples completed!")
 }
 
@@ -186,4 +190,47 @@ func severityLevelsExample() {
 	fmt.Println("✓ Different severity levels demonstrated")
 	fmt.Println("  Debug, Info, Warn, and Error logs shown")
 	fmt.Println("  Notice the different colors and log levels in the output")
+}
+
+// otlpLogExportExample demonstrates using OTLP log export.
+// Uncomment this function call in main() to test with a running OTLP collector.
+// You can use Grafana, Jaeger, or any OTLP-compatible backend.
+//
+// To test locally:
+// 1. Start Grafana with OTLP receiver (docker-compose or local setup)
+// 2. Uncomment this function in main()
+// 3. Run the example
+// 4. Check Grafana Loki or your OTLP backend for the exported logs
+func otlpLogExportExample() {
+	// Create LoggerProvider with OTLP export
+	// This will send logs to localhost:4318 (standard OTLP HTTP port)
+	provider, err := otel.NewLoggerProviderWithOptions("otlp-example", false,
+		otel.WithOTLPEndpoint("localhost:4318", true), // insecure=true for local testing
+		otel.WithConsoleOutput(true),                  // also log to console
+	)
+	if err != nil {
+		fmt.Printf("✗ Failed to create OTLP logger provider: %v\n", err)
+		return
+	}
+
+	logger := provider.Logger("otlp-scope")
+
+	// Create and emit log records
+	for i := 0; i < 3; i++ {
+		var record log.Record
+		record.SetBody(log.StringValue(fmt.Sprintf("Log entry %d exported to OTLP", i+1)))
+		record.SetSeverity(log.SeverityInfo)
+		record.SetTimestamp(time.Now())
+		record.AddAttributes(
+			log.Int64("iteration", int64(i+1)),
+			log.String("destination", "otlp-collector"),
+		)
+
+		logger.Emit(context.Background(), record)
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	fmt.Println("✓ OTLP log export demonstrated")
+	fmt.Println("  Logs sent to OTLP collector at localhost:4318")
+	fmt.Println("  Check your OTLP backend (Grafana/Jaeger) to see the exported logs")
 }
