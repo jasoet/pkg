@@ -16,6 +16,18 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
+// LogLevel is an alias for logging.LogLevel for convenience
+type LogLevel = logging.LogLevel
+
+// Re-export LogLevel constants from logging package
+const (
+	LogLevelDebug = logging.LogLevelDebug
+	LogLevelInfo  = logging.LogLevelInfo
+	LogLevelWarn  = logging.LogLevelWarn
+	LogLevelError = logging.LogLevelError
+	LogLevelNone  = logging.LogLevelNone
+)
+
 // LoggerProviderOption configures LoggerProvider behavior
 type LoggerProviderOption func(*loggerProviderConfig)
 
@@ -26,6 +38,7 @@ type loggerProviderConfig struct {
 	consoleOutput bool
 	otlpEndpoint  string
 	otlpInsecure  bool
+	logLevel      LogLevel
 }
 
 // WithConsoleOutput enables console logging alongside OTLP
@@ -40,6 +53,15 @@ func WithOTLPEndpoint(endpoint string, insecure bool) LoggerProviderOption {
 	return func(cfg *loggerProviderConfig) {
 		cfg.otlpEndpoint = endpoint
 		cfg.otlpInsecure = insecure
+	}
+}
+
+// WithLogLevel sets the log level for console output
+// Valid levels: "debug", "info", "warn", "error", "none"
+// If not specified, defaults to "info" (or "debug" if debug parameter is true)
+func WithLogLevel(level LogLevel) LoggerProviderOption {
+	return func(cfg *loggerProviderConfig) {
+		cfg.logLevel = level
 	}
 }
 
@@ -71,14 +93,25 @@ func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...Logger
 		opt(cfg)
 	}
 
+	// Determine the effective log level
+	// Priority: explicit logLevel > debug flag > default (info)
+	effectiveLevel := cfg.logLevel
+	if effectiveLevel == "" {
+		if debug {
+			effectiveLevel = LogLevelDebug
+		} else {
+			effectiveLevel = LogLevelInfo
+		}
+	}
+
 	// If no OTLP endpoint, fall back to console-only (existing behavior)
 	if cfg.otlpEndpoint == "" {
-		return logging.NewLoggerProvider(serviceName, debug), nil
+		return logging.NewLoggerProviderWithLevel(serviceName, effectiveLevel), nil
 	}
 
 	// Setup console logging if enabled (for local development)
 	if cfg.consoleOutput {
-		setupZerologConsole(serviceName, debug)
+		setupZerologConsole(serviceName, effectiveLevel)
 	}
 
 	// Create OTLP log exporter
@@ -114,11 +147,22 @@ func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...Logger
 	return provider, nil
 }
 
-// setupZerologConsole configures zerolog for console output
-func setupZerologConsole(serviceName string, debug bool) {
-	lvl := zerolog.InfoLevel
-	if debug {
+// setupZerologConsole configures zerolog for console output with specified log level
+func setupZerologConsole(serviceName string, logLevel LogLevel) {
+	var lvl zerolog.Level
+	switch logLevel {
+	case LogLevelDebug:
 		lvl = zerolog.DebugLevel
+	case LogLevelInfo:
+		lvl = zerolog.InfoLevel
+	case LogLevelWarn:
+		lvl = zerolog.WarnLevel
+	case LogLevelError:
+		lvl = zerolog.ErrorLevel
+	case LogLevelNone:
+		lvl = zerolog.Disabled
+	default:
+		lvl = zerolog.InfoLevel
 	}
 
 	zlog.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).

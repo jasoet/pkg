@@ -59,6 +59,17 @@ func ContextLogger(ctx context.Context, component string) zerolog.Logger {
 		Logger()
 }
 
+// LogLevel represents the logging level
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
+	LogLevelNone  LogLevel = "none"
+)
+
 // NewLoggerProvider creates an OpenTelemetry LoggerProvider that writes to zerolog.
 // This allows using zerolog as the backend for OpenTelemetry logging.
 //
@@ -72,6 +83,44 @@ func NewLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
 	lvl := zerolog.InfoLevel
 	if debug {
 		lvl = zerolog.DebugLevel
+	}
+
+	zlog.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+		With().
+		Timestamp().
+		Str("service", serviceName).
+		Int("pid", os.Getpid()).
+		Logger().Level(lvl)
+
+	return &zerologLoggerProvider{
+		logger: zlog.Logger,
+	}
+}
+
+// NewLoggerProviderWithLevel creates an OpenTelemetry LoggerProvider with specified log level.
+// This allows granular control over log levels beyond the binary debug flag.
+//
+// Parameters:
+//   - serviceName: Name of the service, added as a field to all log entries
+//   - logLevel: The log level ("debug", "info", "warn", "error", "none")
+//
+// Returns:
+//   - A log.LoggerProvider that bridges OTel logging to zerolog
+func NewLoggerProviderWithLevel(serviceName string, logLevel LogLevel) log.LoggerProvider {
+	var lvl zerolog.Level
+	switch logLevel {
+	case LogLevelDebug:
+		lvl = zerolog.DebugLevel
+	case LogLevelInfo:
+		lvl = zerolog.InfoLevel
+	case LogLevelWarn:
+		lvl = zerolog.WarnLevel
+	case LogLevelError:
+		lvl = zerolog.ErrorLevel
+	case LogLevelNone:
+		lvl = zerolog.Disabled
+	default:
+		lvl = zerolog.InfoLevel
 	}
 
 	zlog.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
