@@ -92,7 +92,10 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 //	logger.Debug("Processing request", F("request_id", reqID), F("user", userID))
 func (h *LogHelper) Debug(msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		h.emitOTel(otellog.SeverityDebug, msg, fields...)
+		params := otellog.EnabledParameters{Severity: otellog.SeverityDebug}
+		if h.otelLogger.Enabled(h.ctx, params) {
+			h.emitOTel(otellog.SeverityDebug, msg, fields...)
+		}
 	} else {
 		event := h.logger.Debug()
 		h.addFields(event, fields...)
@@ -108,7 +111,10 @@ func (h *LogHelper) Debug(msg string, fields ...Field) {
 //	logger.Info("User logged in", F("user_id", 123), F("role", "admin"))
 func (h *LogHelper) Info(msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		h.emitOTel(otellog.SeverityInfo, msg, fields...)
+		params := otellog.EnabledParameters{Severity: otellog.SeverityInfo}
+		if h.otelLogger.Enabled(h.ctx, params) {
+			h.emitOTel(otellog.SeverityInfo, msg, fields...)
+		}
 	} else {
 		event := h.logger.Info()
 		h.addFields(event, fields...)
@@ -124,7 +130,10 @@ func (h *LogHelper) Info(msg string, fields ...Field) {
 //	logger.Warn("Rate limit approaching", F("current", 95), F("limit", 100))
 func (h *LogHelper) Warn(msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		h.emitOTel(otellog.SeverityWarn, msg, fields...)
+		params := otellog.EnabledParameters{Severity: otellog.SeverityWarn}
+		if h.otelLogger.Enabled(h.ctx, params) {
+			h.emitOTel(otellog.SeverityWarn, msg, fields...)
+		}
 	} else {
 		event := h.logger.Warn()
 		h.addFields(event, fields...)
@@ -147,10 +156,13 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 	}
 
 	if h.otelLogger != nil {
-		// Add error field at the beginning
-		errorField := F("error", err.Error())
-		allFields := append([]Field{errorField}, fields...)
-		h.emitOTel(otellog.SeverityError, msg, allFields...)
+		params := otellog.EnabledParameters{Severity: otellog.SeverityError}
+		if h.otelLogger.Enabled(h.ctx, params) {
+			// Add error field at the beginning
+			errorField := F("error", err.Error())
+			allFields := append([]Field{errorField}, fields...)
+			h.emitOTel(otellog.SeverityError, msg, allFields...)
+		}
 	} else {
 		event := h.logger.Error().Err(err)
 		h.addFields(event, fields...)

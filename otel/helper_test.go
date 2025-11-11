@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jasoet/pkg/v2/logging"
 	"go.opentelemetry.io/otel/log/noop"
 )
 
@@ -172,5 +173,68 @@ func TestLogHelper_MixedTypes(t *testing.T) {
 			F("bool", true),
 			F("float64", 3.14),
 		)
+	})
+}
+
+// TestLogHelper_LogLevelFiltering tests that logs are filtered based on configured level
+func TestLogHelper_LogLevelFiltering(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("warn level filters info and debug", func(t *testing.T) {
+		// Create logger provider with WARN level
+		loggerProvider := logging.NewLoggerProviderWithLevel("test-service", logging.LogLevelWarn)
+
+		cfg := &Config{
+			ServiceName:    "test-service",
+			LoggerProvider: loggerProvider,
+		}
+
+		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
+
+		// These should be filtered (not panic, but not emit)
+		helper.Debug("This debug should be filtered")
+		helper.Info("This info should be filtered")
+
+		// These should be emitted
+		helper.Warn("This warning should appear")
+		helper.Error(errors.New("test error"), "This error should appear")
+	})
+
+	t.Run("info level filters debug only", func(t *testing.T) {
+		loggerProvider := logging.NewLoggerProviderWithLevel("test-service", logging.LogLevelInfo)
+
+		cfg := &Config{
+			ServiceName:    "test-service",
+			LoggerProvider: loggerProvider,
+		}
+
+		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
+
+		// This should be filtered
+		helper.Debug("This debug should be filtered")
+
+		// These should be emitted
+		helper.Info("This info should appear")
+		helper.Warn("This warning should appear")
+		helper.Error(errors.New("test error"), "This error should appear")
+	})
+
+	t.Run("error level filters all except errors", func(t *testing.T) {
+		loggerProvider := logging.NewLoggerProviderWithLevel("test-service", logging.LogLevelError)
+
+		cfg := &Config{
+			ServiceName:    "test-service",
+			LoggerProvider: loggerProvider,
+		}
+
+		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
+
+		// These should be filtered
+		helper.Debug("This debug should be filtered")
+		helper.Info("This info should be filtered")
+		helper.Warn("This warning should be filtered")
+
+		// This should be emitted
+		helper.Error(errors.New("test error"), "This error should appear")
 	})
 }
