@@ -35,6 +35,7 @@ Production-ready components with comprehensive observability, testing, and examp
 | **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
 | **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, dual protocol, observability |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, OTel tracing |
+| **[retry](./retry/)** | Retry with exponential backoff | Reusable operations, context-aware, OTel support |
 | **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation |
 | **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring |
 | **[ssh](./ssh/)** | SSH tunneling utilities | Secure connections, port forwarding |
