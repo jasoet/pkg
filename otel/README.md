@@ -19,6 +19,8 @@ The `otel` package provides centralized OpenTelemetry configuration that enables
 - **No-op by Default**: Zero overhead when providers are not configured
 - **Method Chaining**: Fluent API for configuration
 - **Standard Logging Helper**: OTel-aware logging with automatic trace correlation
+- **OTLP Logging Support**: Export logs to OpenTelemetry collectors with flexible options
+- **Granular Log Levels**: Fine-grained control over log verbosity (debug, info, warn, error, none)
 - **Graceful Shutdown**: Proper resource cleanup
 
 ## Installation
@@ -102,6 +104,43 @@ cfg := otel.NewConfig("my-service").
     WithLoggerProvider(loggerProvider)
 ```
 
+### OTLP Logging with Flexible Options
+
+Create a logger provider with OTLP export and granular control:
+
+```go
+import "github.com/jasoet/pkg/v2/otel"
+
+// Console-only logging (default, no OTLP)
+loggerProvider, err := otel.NewLoggerProviderWithOptions(
+    "my-service",
+    false, // debug mode
+)
+
+// OTLP logging with console output (local development)
+loggerProvider, err := otel.NewLoggerProviderWithOptions(
+    "my-service",
+    false,
+    otel.WithOTLPEndpoint("localhost:4318", true), // insecure for local
+    otel.WithConsoleOutput(true),
+    otel.WithLogLevel(logging.LogLevelInfo),
+)
+
+// OTLP-only logging (production)
+loggerProvider, err := otel.NewLoggerProviderWithOptions(
+    "my-service",
+    false,
+    otel.WithOTLPEndpoint("otel-collector.prod:4318", false), // secure
+    otel.WithConsoleOutput(false), // disable console in prod
+    otel.WithLogLevel(logging.LogLevelWarn),
+)
+
+// Use with OTel config
+cfg := otel.NewConfig("my-service").
+    WithTracerProvider(tracerProvider).
+    WithLoggerProvider(loggerProvider)
+```
+
 ## Configuration API
 
 ### Config Struct
@@ -142,6 +181,46 @@ logger := cfg.GetLogger("scope-name")   // Returns no-op if disabled
 
 // Cleanup
 cfg.Shutdown(context.Background())
+```
+
+### Logger Provider Options
+
+Create flexible logger providers with `NewLoggerProviderWithOptions`:
+
+| Option | Description |
+|--------|-------------|
+| `WithOTLPEndpoint(endpoint, insecure)` | Enable OTLP log export to collector |
+| `WithConsoleOutput(enabled)` | Enable/disable console logging (default: true) |
+| `WithLogLevel(level)` | Set log level: `LogLevelDebug`, `LogLevelInfo`, `LogLevelWarn`, `LogLevelError`, `LogLevelNone` |
+
+**Log Level Priority:**
+1. Explicit `WithLogLevel()` (highest priority)
+2. `debug` parameter value
+3. Default to `info` level
+
+**Examples:**
+
+```go
+import "github.com/jasoet/pkg/v2/logging"
+
+// Debug mode (all logs)
+provider, _ := otel.NewLoggerProviderWithOptions("service", true)
+
+// Specific log level
+provider, _ := otel.NewLoggerProviderWithOptions("service", false,
+    otel.WithLogLevel(logging.LogLevelWarn))
+
+// OTLP + console for development
+provider, _ := otel.NewLoggerProviderWithOptions("service", false,
+    otel.WithOTLPEndpoint("localhost:4318", true),
+    otel.WithConsoleOutput(true),
+    otel.WithLogLevel(logging.LogLevelDebug))
+
+// OTLP-only for production
+provider, _ := otel.NewLoggerProviderWithOptions("service", false,
+    otel.WithOTLPEndpoint("collector:4318", false),
+    otel.WithConsoleOutput(false),
+    otel.WithLogLevel(logging.LogLevelInfo))
 ```
 
 ## Standard Logging Helper
@@ -344,10 +423,14 @@ logger.Info("Work completed", "duration", elapsed)
 ```
 otel/
 ├── config.go        # Config struct and builder methods
+├── config_test.go   # Config tests
+├── logging.go       # OTLP logger provider with flexible options
+├── logging_test.go  # Logger provider tests
 ├── helper.go        # Standard logging helper with OTel integration
 ├── helper_test.go   # LogHelper tests
-├── doc.go          # Package documentation
-└── config_test.go  # Config tests
+├── instrumentation.go        # Instrumentation utilities
+├── instrumentation_test.go   # Instrumentation tests
+└── doc.go          # Package documentation
 ```
 
 ## Troubleshooting
