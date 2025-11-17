@@ -4,6 +4,8 @@
 //   - Centralized configuration for traces, metrics, and logs
 //   - Library-specific semantic conventions
 //   - No-op implementations when telemetry is disabled
+//   - Integrated span and logging with automatic correlation
+//   - Layer-aware instrumentation (Handler, Operations, Service, Repository)
 //
 // # Configuration
 //
@@ -29,9 +31,27 @@
 // Each pillar is independently controlled by setting its provider.
 // Nil providers result in no-op implementations with zero overhead.
 //
+// # Unified Layer Instrumentation
+//
+// Use LayerContext for simplified span + logging with automatic correlation:
+//
+//	// Service layer example
+//	lc := otel.Layers.StartService(ctx, cfg, "user", "CreateUser",
+//	    "user.id", userID)
+//	defer lc.End()
+//
+//	lc.Logger.Info("Creating user", otel.F("email", email))
+//	if err := repo.Save(lc.Context(), data); err != nil {
+//	    return lc.Error(err, "save failed")
+//	}
+//	return lc.Success("User created")
+//
+// Available layers: StartHandler, StartOperations, StartService, StartRepository
+//
 // # Standard Logging Helper
 //
 // This package provides otel.LogHelper for OTel-aware logging that automatically
 // correlates logs with traces. It uses OTel LoggerProvider when available,
-// otherwise falls back to zerolog. See helper.go for details.
+// otherwise falls back to zerolog. Logs automatically include trace_id and span_id
+// when a span is active. See helper.go for details.
 package otel

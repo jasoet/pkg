@@ -58,13 +58,17 @@ type LogHelper struct {
 //   - ctx: Context for trace correlation
 //   - config: OTel configuration (can be nil for zerolog-only mode)
 //   - scopeName: OpenTelemetry scope name (e.g., "github.com/jasoet/pkg/v2/argo")
-//   - function: Function name to include in logs (e.g., "argo.NewClient")
+//   - function: Function name to include in logs (optional, can be empty string)
 //
 // Example:
 //
-//	// With OTel configured
+//	// With OTel configured and function name
 //	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
-//	logger.Debug("Starting work", "workerId", 123)
+//	logger.Debug("Starting work", F("workerId", 123))
+//
+//	// Without function name (when used with spans)
+//	logger := otel.NewLogHelper(ctx, otelConfig, "service.user", "")
+//	logger.Info("Work completed")
 //
 //	// Without OTel (falls back to zerolog)
 //	logger := otel.NewLogHelper(ctx, nil, "", "mypackage.DoWork")
@@ -73,7 +77,13 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 	h := &LogHelper{
 		ctx:      ctx,
 		function: function,
-		logger:   log.With().Str("function", function).Logger(),
+	}
+
+	// Only add function field if provided
+	if function != "" {
+		h.logger = log.With().Str("function", function).Logger()
+	} else {
+		h.logger = log.Logger
 	}
 
 	// Use OTel logger if available
@@ -141,6 +151,19 @@ func (h *LogHelper) Warn(msg string, fields ...Field) {
 	}
 }
 
+// Span returns the active span from the logger's context.
+// Returns a non-nil span even if no span is active (use span.IsRecording() to check).
+//
+// Example:
+//
+//	span := logger.Span()
+//	if span.IsRecording() {
+//	    span.AddEvent("custom.event")
+//	}
+func (h *LogHelper) Span() trace.Span {
+	return trace.SpanFromContext(h.ctx)
+}
+
 // Error logs an error-level message with optional fields.
 // Also sets span status to error if a span is active.
 //
@@ -149,7 +172,7 @@ func (h *LogHelper) Warn(msg string, fields ...Field) {
 //	logger.Error(err, "Failed to process request", F("request_id", reqID), F("attempt", 3))
 func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 	// Set span status to error if we have an active span
-	span := trace.SpanFromContext(h.ctx)
+	span := h.Span()
 	if span.IsRecording() {
 		span.SetStatus(codes.Error, msg)
 		span.RecordError(err)
@@ -176,8 +199,10 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
 
-	// Add function name
-	record.AddAttributes(otellog.String("function", h.function))
+	// Add function name if provided
+	if h.function != "" {
+		record.AddAttributes(otellog.String("function", h.function))
+	}
 
 	// Add fields
 	for _, field := range fields {
