@@ -627,6 +627,10 @@ github.com/uber-go/tally/v4 v4.1.17 h1:C+U4BKtVDXTszuzU+WH8JVQvRVnaVKxzZrROFyDrv
 github.com/uber-go/tally/v4 v4.1.17/go.mod h1:ZdpiHRGSa3z4NIAc1VlEH4SiknR885fOIF08xmS0gaU=
 github.com/upper/db/v4 v4.10.0 h1:u5fdqcFZAOwUZWtkS0ueQttecKcSpVF8qmBwZesS9nc=
 github.com/upper/db/v4 v4.10.0/go.mod h1:s3qHxKIKvqZNZBG5jrAPufMUXqCBmMdIHa7buGfR+OU=
+github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.2 h1:Jjn3zoRz13f8b1bR6LrXWglx93Sbh4kYfwgmPju3E2k=
+github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.2/go.mod h1:wocb5pNrj/sjhWB9J5jctnC0K2eisSdz/nJJBNFHo+A=
+github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 h1:ZjUj9BLYf9PEqBn8W/OapxhPjVRdC6CsXTdULHsyk5c=
+github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2/go.mod h1:O8bHQfyinKwTXKkiKNGmLQS7vRsqRxIQTFZpYpHK3IQ=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasttemplate v1.2.2 h1:lxLXG0uE3Qnshl9QyaK6XJxMXlQZELvChBOCmQD0Loo=
