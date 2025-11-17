@@ -179,6 +179,10 @@ tracer := cfg.GetTracer("scope-name")   // Returns no-op if disabled
 meter := cfg.GetMeter("scope-name")     // Returns no-op if disabled
 logger := cfg.GetLogger("scope-name")   // Returns no-op if disabled
 
+// Context management (recommended)
+ctx = otel.ContextWithConfig(ctx, cfg)  // Store config in context
+cfg = otel.ConfigFromContext(ctx)       // Retrieve config from context
+
 // Cleanup
 cfg.Shutdown(context.Background())
 ```
@@ -246,6 +250,72 @@ logger.Error(err, "Work failed", "workerId", 123)
 - Errors automatically recorded in active spans
 
 See [helper.go](./helper.go) for full documentation.
+
+## Context-Based Config Propagation
+
+The recommended pattern for passing OTel config through your application layers is to store it in the context once at the entry point:
+
+```go
+import "github.com/jasoet/pkg/v2/otel"
+
+// At the HTTP handler entry point
+func (h *Handler) HandleRequest(c echo.Context) error {
+    // Store config in context once
+    ctx := otel.ContextWithConfig(c.Request().Context(), h.otelConfig)
+
+    // Config automatically available to all nested operations
+    return h.service.ProcessRequest(ctx, req)
+}
+
+// In service layer - no need to pass config explicitly
+func (s *Service) ProcessRequest(ctx context.Context, req Request) error {
+    // Config retrieved from context automatically
+    lc := otel.Layers.StartService(ctx, "user", "ProcessRequest")
+    defer lc.End()
+
+    // Logger available if config in context
+    if lc.Logger != nil {
+        lc.Logger.Info("Processing request")
+    }
+
+    return s.repo.Save(lc.Context(), data)
+}
+
+// In repository layer - config still available
+func (r *Repository) Save(ctx context.Context, data Data) error {
+    lc := otel.Layers.StartRepository(ctx, "user", "Save")
+    defer lc.End()
+
+    // Config flows through naturally
+    if lc.Logger != nil {
+        lc.Logger.Debug("Saving to database")
+    }
+
+    return lc.Success("Data saved")
+}
+```
+
+**Benefits:**
+- Set config once at entry point, available everywhere
+- No need to pass config as parameter through all layers
+- Natural propagation through context (like span data)
+- Clean API - fewer parameters
+
+**API Pattern:**
+```go
+// Store config in context (once at entry point)
+ctx = otel.ContextWithConfig(ctx, cfg)
+
+// Create layer contexts (config retrieved automatically)
+lc := otel.Layers.StartHandler(ctx, "user", "GetUser")
+lc := otel.Layers.StartService(ctx, "user", "CreateUser")
+lc := otel.Layers.StartRepository(ctx, "user", "FindByID")
+lc := otel.Layers.StartOperations(ctx, "user", "ProcessQueue")
+
+// Get logger from span (config retrieved automatically)
+span := otel.StartSpan(ctx, "service.user", "DoWork")
+logger := span.Logger("service.user") // No config parameter needed
+```
 
 ## Integration Examples
 
