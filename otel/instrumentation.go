@@ -296,7 +296,9 @@ func (lc *LayerContext) End() {
 //	    return lc.Error(err, "failed to save", F("id", id))
 //	}
 func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
-	lc.Logger.Error(err, msg, fields...)
+	if lc.Logger != nil {
+		lc.Logger.Error(err, msg, fields...)
+	}
 	return lc.Span.Error(err, msg)
 }
 
@@ -307,7 +309,9 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 //	lc.Success("User created successfully", F("user_id", userID))
 //	return nil
 func (lc *LayerContext) Success(msg string, fields ...Field) error {
-	lc.Logger.Info(msg, fields...)
+	if lc.Logger != nil {
+		lc.Logger.Info(msg, fields...)
+	}
 	return lc.Span.Success()
 }
 
@@ -438,7 +442,11 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindServer))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
@@ -472,7 +480,11 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindInternal))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
@@ -506,7 +518,11 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindInternal))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
@@ -543,7 +559,11 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindClient))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
