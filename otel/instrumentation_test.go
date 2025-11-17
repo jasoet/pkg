@@ -6,79 +6,77 @@ import (
 	"testing"
 )
 
-// TestLayerContext_WithNilConfig verifies that LayerContext works with nil config (zerolog fallback)
-func TestLayerContext_WithNilConfig(t *testing.T) {
+// TestLayerContext_WithoutConfig verifies that LayerContext works without config in context
+func TestLayerContext_WithoutConfig(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("StartService with nil config uses zerolog", func(t *testing.T) {
-		lc := Layers.StartService(ctx, nil, "user", "CreateUser",
+	t.Run("StartService without config has nil logger", func(t *testing.T) {
+		lc := Layers.StartService(ctx, "user", "CreateUser",
 			"user.id", "123")
 		defer lc.End()
 
-		// Should not panic
-		lc.Logger.Info("Creating user", F("email", "test@example.com"))
-		lc.Logger.Debug("Debug message")
-		lc.Logger.Warn("Warning message")
-
-		err := errors.New("test error")
-		_ = lc.Error(err, "Test error", F("code", 500))
-
-		// Should not panic
-		_ = lc.Success("Success message", F("result", "ok"))
+		if lc.Logger != nil {
+			t.Error("Expected Logger to be nil when no config in context")
+		}
 	})
 
-	t.Run("StartRepository with nil config uses zerolog", func(t *testing.T) {
-		lc := Layers.StartRepository(ctx, nil, "user", "FindByID",
+	t.Run("StartRepository without config has nil logger", func(t *testing.T) {
+		lc := Layers.StartRepository(ctx, "user", "FindByID",
 			"user.id", "123")
 		defer lc.End()
 
-		lc.Logger.Debug("Querying database")
-		_ = lc.Success("Found user")
+		if lc.Logger != nil {
+			t.Error("Expected Logger to be nil when no config in context")
+		}
 	})
 
-	t.Run("StartHandler with nil config uses zerolog", func(t *testing.T) {
-		lc := Layers.StartHandler(ctx, nil, "user", "GetUser",
+	t.Run("StartHandler without config has nil logger", func(t *testing.T) {
+		lc := Layers.StartHandler(ctx, "user", "GetUser",
 			"http.method", "GET")
 		defer lc.End()
 
-		lc.Logger.Info("Handling request")
-		_ = lc.Success("Request handled")
+		if lc.Logger != nil {
+			t.Error("Expected Logger to be nil when no config in context")
+		}
 	})
 
-	t.Run("StartOperations with nil config uses zerolog", func(t *testing.T) {
-		lc := Layers.StartOperations(ctx, nil, "user", "ProcessQueue",
+	t.Run("StartOperations without config has nil logger", func(t *testing.T) {
+		lc := Layers.StartOperations(ctx, "user", "ProcessQueue",
 			"queue.name", "user-events")
 		defer lc.End()
 
-		lc.Logger.Info("Processing queue")
-		_ = lc.Success("Queue processed")
+		if lc.Logger != nil {
+			t.Error("Expected Logger to be nil when no config in context")
+		}
 	})
 }
 
 // TestLayerContext_WithConfig verifies LayerContext works with proper OTel config
 func TestLayerContext_WithConfig(t *testing.T) {
-	ctx := context.Background()
 	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
 
 	t.Run("StartService with config uses OTel logging", func(t *testing.T) {
-		lc := Layers.StartService(ctx, cfg, "user", "CreateUser",
+		lc := Layers.StartService(ctx, "user", "CreateUser",
 			"user.id", "123")
 		defer lc.End()
 
 		// Should not panic
-		lc.Logger.Info("Creating user", F("email", "test@example.com"))
+		if lc.Logger != nil {
+			lc.Logger.Info("Creating user", F("email", "test@example.com"))
+		}
 
 		if lc.Span == nil {
 			t.Error("Expected Span to be set")
 		}
 
 		if lc.Logger == nil {
-			t.Error("Expected Logger to be set")
+			t.Error("Expected Logger to be set when config in context")
 		}
 	})
 
 	t.Run("Context returns span context", func(t *testing.T) {
-		lc := Layers.StartService(ctx, cfg, "user", "CreateUser")
+		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
 
 		spanCtx := lc.Context()
@@ -88,7 +86,7 @@ func TestLayerContext_WithConfig(t *testing.T) {
 	})
 
 	t.Run("Error records to both span and log", func(t *testing.T) {
-		lc := Layers.StartService(ctx, cfg, "user", "CreateUser")
+		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
 
 		err := errors.New("test error")
@@ -100,7 +98,7 @@ func TestLayerContext_WithConfig(t *testing.T) {
 	})
 
 	t.Run("Success returns nil", func(t *testing.T) {
-		lc := Layers.StartService(ctx, cfg, "user", "CreateUser")
+		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
 
 		err := lc.Success("User created", F("user.id", "123"))
@@ -112,32 +110,40 @@ func TestLayerContext_WithConfig(t *testing.T) {
 
 // TestLayerContext_NestedCalls verifies context propagation through layers
 func TestLayerContext_NestedCalls(t *testing.T) {
-	ctx := context.Background()
 	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
 
 	// Handler layer
-	handlerCtx := Layers.StartHandler(ctx, cfg, "user", "GetUser")
+	handlerCtx := Layers.StartHandler(ctx, "user", "GetUser")
 	defer handlerCtx.End()
 
-	handlerCtx.Logger.Info("Handler started")
+	if handlerCtx.Logger != nil {
+		handlerCtx.Logger.Info("Handler started")
+	}
 
-	// Operations layer (uses handler context)
-	opsCtx := Layers.StartOperations(handlerCtx.Context(), cfg, "user", "ProcessRequest")
+	// Operations layer (uses handler context - config is propagated via context)
+	opsCtx := Layers.StartOperations(handlerCtx.Context(), "user", "ProcessRequest")
 	defer opsCtx.End()
 
-	opsCtx.Logger.Info("Operations started")
+	if opsCtx.Logger != nil {
+		opsCtx.Logger.Info("Operations started")
+	}
 
-	// Service layer (uses operations context)
-	serviceCtx := Layers.StartService(opsCtx.Context(), cfg, "user", "GetUser")
+	// Service layer (uses operations context - config is still there)
+	serviceCtx := Layers.StartService(opsCtx.Context(), "user", "GetUser")
 	defer serviceCtx.End()
 
-	serviceCtx.Logger.Info("Service started")
+	if serviceCtx.Logger != nil {
+		serviceCtx.Logger.Info("Service started")
+	}
 
-	// Repository layer (uses service context)
-	repoCtx := Layers.StartRepository(serviceCtx.Context(), cfg, "user", "FindByID")
+	// Repository layer (uses service context - config is still there)
+	repoCtx := Layers.StartRepository(serviceCtx.Context(), "user", "FindByID")
 	defer repoCtx.End()
 
-	repoCtx.Logger.Info("Repository query")
+	if repoCtx.Logger != nil {
+		repoCtx.Logger.Info("Repository query")
+	}
 	_ = repoCtx.Success("User found")
 
 	// All layers should complete without panic
@@ -151,31 +157,50 @@ func TestLayerContext_AllLayersWithoutConfig(t *testing.T) {
 		name string
 		lc   *LayerContext
 	}{
-		{"Handler", Layers.StartHandler(ctx, nil, "test", "Operation")},
-		{"Operations", Layers.StartOperations(ctx, nil, "test", "Operation")},
-		{"Service", Layers.StartService(ctx, nil, "test", "Operation")},
-		{"Repository", Layers.StartRepository(ctx, nil, "test", "Operation")},
+		{"Handler", Layers.StartHandler(ctx, "test", "Operation")},
+		{"Operations", Layers.StartOperations(ctx, "test", "Operation")},
+		{"Service", Layers.StartService(ctx, "test", "Operation")},
+		{"Repository", Layers.StartRepository(ctx, "test", "Operation")},
 	}
 
 	for _, layer := range layers {
 		t.Run(layer.name+" works without config", func(t *testing.T) {
 			defer layer.lc.End()
 
-			// Should not panic
-			layer.lc.Logger.Info("Test message", F("key", "value"))
-
-			err := errors.New("test error")
-			_ = layer.lc.Error(err, "Test error")
-
-			_ = layer.lc.Success("Test success")
+			// Logger should be nil without config
+			if layer.lc.Logger != nil {
+				t.Errorf("%s: Expected Logger to be nil without config in context", layer.name)
+			}
 
 			if layer.lc.Span == nil {
 				t.Errorf("%s: Expected Span to be set", layer.name)
 			}
-
-			if layer.lc.Logger == nil {
-				t.Errorf("%s: Expected Logger to be set", layer.name)
-			}
 		})
 	}
+}
+
+// TestConfigContext verifies config context management
+func TestConfigContext(t *testing.T) {
+	t.Run("ContextWithConfig stores config", func(t *testing.T) {
+		cfg := NewConfig("test-service")
+		ctx := ContextWithConfig(context.Background(), cfg)
+
+		retrieved := ConfigFromContext(ctx)
+		if retrieved == nil {
+			t.Error("Expected config to be retrieved from context")
+		}
+
+		if retrieved.ServiceName != "test-service" {
+			t.Errorf("Expected service name 'test-service', got '%s'", retrieved.ServiceName)
+		}
+	})
+
+	t.Run("ConfigFromContext returns nil without config", func(t *testing.T) {
+		ctx := context.Background()
+		retrieved := ConfigFromContext(ctx)
+
+		if retrieved != nil {
+			t.Error("Expected nil when no config in context")
+		}
+	})
 }

@@ -13,15 +13,18 @@ func Example_layerContextIntegration() {
 	// Setup OTel config
 	cfg := otel.NewConfig("example-service")
 
-	ctx := context.Background()
+	// Store config in context for automatic propagation
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	// Example 1: Using LayerContext for simplified span + logging
 	fmt.Println("=== Example 1: LayerContext ===")
-	lc := otel.Layers.StartService(ctx, cfg, "user", "CreateUser",
+	lc := otel.Layers.StartService(ctx, "user", "CreateUser",
 		"user.id", "12345")
 	defer lc.End()
 
-	lc.Logger.Info("Creating user", otel.F("email", "user@example.com"))
+	if lc.Logger != nil {
+		lc.Logger.Info("Creating user", otel.F("email", "user@example.com"))
+	}
 	// Simulate success
 	_ = lc.Success("User created successfully", otel.F("user.id", "12345"))
 
@@ -31,8 +34,10 @@ func Example_layerContextIntegration() {
 		otel.WithAttribute("order.id", "ORD-123"))
 	defer span.End()
 
-	logger := span.Logger(cfg, "service.order")
-	logger.Info("Processing order", otel.F("items", 3))
+	logger := span.Logger("service.order")
+	if logger != nil {
+		logger.Info("Processing order", otel.F("items", 3))
+	}
 
 	// Example 3: LogEvent for dual span events + logs
 	fmt.Println("\n=== Example 3: LogEvent ===")
@@ -40,14 +45,14 @@ func Example_layerContextIntegration() {
 		otel.WithAttribute("cache.key", "user:123"))
 	defer span2.End()
 
-	logger2 := span2.Logger(cfg, "service.cache")
+	logger2 := span2.Logger("service.cache")
 	span2.LogEvent(logger2, "cache.miss",
 		otel.F("key", "user:123"),
 		otel.F("reason", "expired"))
 
 	// Example 4: Error handling with LayerContext
 	fmt.Println("\n=== Example 4: Error Handling ===")
-	lc2 := otel.Layers.StartRepository(ctx, cfg, "user", "FindByID",
+	lc2 := otel.Layers.StartRepository(ctx, "user", "FindByID",
 		"user.id", "999")
 	defer lc2.End()
 
@@ -55,31 +60,39 @@ func Example_layerContextIntegration() {
 	err := errors.New("user not found")
 	_ = lc2.Error(err, "failed to find user", otel.F("user.id", "999"))
 
-	// Example 5: All four layers
+	// Example 5: All four layers (config propagates automatically via context)
 	fmt.Println("\n=== Example 5: All Layers ===")
 
 	// Handler layer
-	handlerCtx := otel.Layers.StartHandler(ctx, cfg, "user", "GetUser",
+	handlerCtx := otel.Layers.StartHandler(ctx, "user", "GetUser",
 		"http.method", "GET")
 	defer handlerCtx.End()
-	handlerCtx.Logger.Info("Handling request")
+	if handlerCtx.Logger != nil {
+		handlerCtx.Logger.Info("Handling request")
+	}
 
-	// Operations layer
-	opsCtx := otel.Layers.StartOperations(handlerCtx.Context(), cfg, "user", "ProcessUserRequest")
+	// Operations layer (config available from handler.Context())
+	opsCtx := otel.Layers.StartOperations(handlerCtx.Context(), "user", "ProcessUserRequest")
 	defer opsCtx.End()
-	opsCtx.Logger.Info("Orchestrating user request")
+	if opsCtx.Logger != nil {
+		opsCtx.Logger.Info("Orchestrating user request")
+	}
 
 	// Service layer
-	serviceCtx := otel.Layers.StartService(opsCtx.Context(), cfg, "user", "GetUser",
+	serviceCtx := otel.Layers.StartService(opsCtx.Context(), "user", "GetUser",
 		"user.id", "123")
 	defer serviceCtx.End()
-	serviceCtx.Logger.Info("Fetching user data")
+	if serviceCtx.Logger != nil {
+		serviceCtx.Logger.Info("Fetching user data")
+	}
 
 	// Repository layer
-	repoCtx := otel.Layers.StartRepository(serviceCtx.Context(), cfg, "user", "FindByID",
+	repoCtx := otel.Layers.StartRepository(serviceCtx.Context(), "user", "FindByID",
 		"user.id", "123", "db.operation", "select")
 	defer repoCtx.End()
-	repoCtx.Logger.Debug("Querying database")
+	if repoCtx.Logger != nil {
+		repoCtx.Logger.Debug("Querying database")
+	}
 	_ = repoCtx.Success("User found")
 
 	fmt.Println("\nAll examples completed successfully")
@@ -117,15 +130,15 @@ func Example_optionalFunctionParameter() {
 // Example showing LogHelper.Span() accessor
 func Example_logHelperSpanAccessor() {
 	cfg := otel.NewConfig("test-service")
-	ctx := context.Background()
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	span := otel.StartSpan(ctx, "service.test", "Operation")
 	defer span.End()
 
-	logger := span.Logger(cfg, "service.test")
+	logger := span.Logger("service.test")
 
 	// Access span from logger
-	if logger.Span().IsRecording() {
+	if logger != nil && logger.Span().IsRecording() {
 		logger.Info("Span is active")
 	}
 

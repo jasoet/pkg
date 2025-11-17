@@ -114,17 +114,25 @@ func (h *SpanHelper) Span() trace.Span {
 }
 
 // Logger creates a LogHelper that is automatically correlated with this span.
-// This is the recommended way to get a logger when working with spans.
+// Returns nil if no config is stored in the context.
+// Use ContextWithConfig() to store config in context before creating spans.
 //
 // Example:
 //
+//	ctx = otel.ContextWithConfig(ctx, cfg)
 //	span := otel.StartSpan(ctx, "service.user", "CreateUser",
 //	    otel.WithAttribute("user.id", userID))
 //	defer span.End()
 //
-//	logger := span.Logger(cfg, "service.user")
-//	logger.Info("Creating user", F("email", email))
-func (h *SpanHelper) Logger(config *Config, scopeName string) *LogHelper {
+//	logger := span.Logger("service.user")
+//	if logger != nil {
+//	    logger.Info("Creating user", F("email", email))
+//	}
+func (h *SpanHelper) Logger(scopeName string) *LogHelper {
+	config := ConfigFromContext(h.ctx)
+	if config == nil {
+		return nil
+	}
 	return NewLogHelper(h.ctx, config, scopeName, "")
 }
 
@@ -405,7 +413,7 @@ func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation
 //	    }
 //	    return lc.Success("Event created")
 //	}
-func (l *LayeredSpanHelper) StartHandler(ctx context.Context, cfg *Config, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
 	tracerName := "handler." + component
 	operationName := component + "." + operation
 
@@ -416,9 +424,10 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, cfg *Config, compo
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindServer))
 
+	logger := span.Logger(tracerName)
 	return &LayerContext{
 		Span:   span,
-		Logger: span.Logger(cfg, tracerName),
+		Logger: logger,
 	}
 }
 
@@ -438,7 +447,7 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, cfg *Config, compo
 //	    }
 //	    return lc.Success("Event cancelled")
 //	}
-func (l *LayeredSpanHelper) StartService(ctx context.Context, cfg *Config, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
 	tracerName := "service." + component
 	operationName := component + "." + operation
 
@@ -449,9 +458,10 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, cfg *Config, compo
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindInternal))
 
+	logger := span.Logger(tracerName)
 	return &LayerContext{
 		Span:   span,
-		Logger: span.Logger(cfg, tracerName),
+		Logger: logger,
 	}
 }
 
@@ -471,7 +481,7 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, cfg *Config, compo
 //	    }
 //	    return lc.Success("Queue processed")
 //	}
-func (l *LayeredSpanHelper) StartOperations(ctx context.Context, cfg *Config, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
 	tracerName := "operations." + component
 	operationName := component + "." + operation
 
@@ -482,9 +492,10 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, cfg *Config, co
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindInternal))
 
+	logger := span.Logger(tracerName)
 	return &LayerContext{
 		Span:   span,
-		Logger: span.Logger(cfg, tracerName),
+		Logger: logger,
 	}
 }
 
@@ -507,7 +518,7 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, cfg *Config, co
 //	    lc.Success("Event found")
 //	    return event, nil
 //	}
-func (l *LayeredSpanHelper) StartRepository(ctx context.Context, cfg *Config, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
 	tracerName := "repository." + component
 	operationName := component + "." + operation
 
@@ -518,9 +529,10 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, cfg *Config, co
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindClient))
 
+	logger := span.Logger(tracerName)
 	return &LayerContext{
 		Span:   span,
-		Logger: span.Logger(cfg, tracerName),
+		Logger: logger,
 	}
 }
 
