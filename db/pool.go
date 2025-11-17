@@ -7,10 +7,10 @@ import (
 	"time"
 
 	pkgotel "github.com/jasoet/pkg/v2/otel"
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
-	"go.opentelemetry.io/otel/trace"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlserver"
@@ -24,9 +24,6 @@ const (
 	Mysql      DatabaseType = "MYSQL"
 	Postgresql DatabaseType = "POSTGRES"
 	MSSQL      DatabaseType = "MSSQL"
-
-	// Default database operation name for tracing
-	defaultDBOperation = "db.query"
 )
 
 type ConnectionConfig struct {
@@ -98,12 +95,33 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	}
 
 	// Install OpenTelemetry instrumentation if configured
-	if c.OTelConfig != nil {
-		if err := c.installOTelCallbacks(db); err != nil {
-			return nil, fmt.Errorf("failed to install OTel callbacks: %w", err)
+	if c.OTelConfig != nil && c.OTelConfig.IsTracingEnabled() {
+		// Configure otelgorm plugin options
+		opts := []otelgorm.Option{
+			otelgorm.WithDBName(c.DbName),
+			otelgorm.WithAttributes(
+				semconv.DBSystemKey.String(string(c.DbType)),
+				semconv.ServerAddressKey.String(c.Host),
+				semconv.ServerPortKey.Int(c.Port),
+			),
 		}
 
-		// Start connection pool metrics collection in background
+		// Use the TracerProvider from OTelConfig
+		if c.OTelConfig.TracerProvider != nil {
+			opts = append(opts, otelgorm.WithTracerProvider(c.OTelConfig.TracerProvider))
+		}
+
+		// Disable metrics if not enabled in config
+		if !c.OTelConfig.IsMetricsEnabled() {
+			opts = append(opts, otelgorm.WithoutMetrics())
+		}
+
+		// Install the uptrace otelgorm plugin
+		if err := db.Use(otelgorm.NewPlugin(opts...)); err != nil {
+			return nil, fmt.Errorf("failed to install otelgorm plugin: %w", err)
+		}
+
+		// Start custom connection pool metrics collection in background if metrics enabled
 		if c.OTelConfig.IsMetricsEnabled() {
 			go c.collectPoolMetrics(sqlDB)
 		}
@@ -119,157 +137,6 @@ func (c *ConnectionConfig) SQLDB() (*sql.DB, error) {
 	}
 
 	return gormDB.DB()
-}
-
-// installOTelCallbacks installs GORM callbacks for OpenTelemetry tracing
-// nolint:gocyclo // Complexity is due to registering callbacks for 6 GORM operations with proper error handling
-func (c *ConnectionConfig) installOTelCallbacks(db *gorm.DB) error {
-	if c.OTelConfig == nil || !c.OTelConfig.IsTracingEnabled() {
-		return nil
-	}
-
-	tracer := c.OTelConfig.GetTracer("db.gorm")
-
-	// Callback for before query
-	beforeCallback := func(db *gorm.DB) {
-		ctx := db.Statement.Context
-		if ctx == nil {
-			return
-		}
-
-		// Start a new span
-		operation := defaultDBOperation
-		if db.Statement.SQL.String() != "" {
-			operation = extractOperationType(db.Statement.SQL.String())
-		}
-
-		ctx, span := tracer.Start(ctx, operation,
-			trace.WithSpanKind(trace.SpanKindClient),
-			trace.WithAttributes(
-				semconv.DBSystemKey.String(string(c.DbType)),
-				attribute.String("db.name", c.DbName),
-				semconv.ServerAddressKey.String(c.Host),
-				semconv.ServerPortKey.Int(c.Port),
-			),
-		)
-
-		// Store span in statement context
-		db.Statement.Context = ctx
-		db.InstanceSet("otel:span", span)
-		db.InstanceSet("otel:start_time", time.Now())
-	}
-
-	// Callback for after query
-	afterCallback := func(db *gorm.DB) {
-		spanVal, ok := db.InstanceGet("otel:span")
-		if !ok {
-			return
-		}
-
-		span, ok := spanVal.(trace.Span)
-		if !ok {
-			return
-		}
-		defer span.End()
-
-		// Add query details
-		if db.Statement.SQL.String() != "" {
-			span.SetAttributes(
-				attribute.String("db.statement", db.Statement.SQL.String()),
-			)
-		}
-
-		if db.Statement.Table != "" {
-			span.SetAttributes(
-				semconv.DBCollectionNameKey.String(db.Statement.Table),
-			)
-		}
-
-		// Record rows affected
-		span.SetAttributes(
-			attribute.Int64("db.rows_affected", db.Statement.RowsAffected),
-		)
-
-		// Record error if any
-		if db.Error != nil && db.Error != gorm.ErrRecordNotFound {
-			span.RecordError(db.Error)
-			span.SetAttributes(
-				attribute.String("db.error", db.Error.Error()),
-			)
-		}
-
-		// Calculate duration
-		if startTime, ok := db.InstanceGet("otel:start_time"); ok {
-			if t, ok := startTime.(time.Time); ok {
-				duration := time.Since(t)
-				span.SetAttributes(
-					attribute.Int64("db.duration_ms", duration.Milliseconds()),
-				)
-			}
-		}
-	}
-
-	// Register callbacks
-	if err := db.Callback().Create().Before("gorm:create").Register("otel:before_create", beforeCallback); err != nil {
-		return err
-	}
-	if err := db.Callback().Create().After("gorm:create").Register("otel:after_create", afterCallback); err != nil {
-		return err
-	}
-
-	if err := db.Callback().Query().Before("gorm:query").Register("otel:before_query", beforeCallback); err != nil {
-		return err
-	}
-	if err := db.Callback().Query().After("gorm:query").Register("otel:after_query", afterCallback); err != nil {
-		return err
-	}
-
-	if err := db.Callback().Update().Before("gorm:update").Register("otel:before_update", beforeCallback); err != nil {
-		return err
-	}
-	if err := db.Callback().Update().After("gorm:update").Register("otel:after_update", afterCallback); err != nil {
-		return err
-	}
-
-	if err := db.Callback().Delete().Before("gorm:delete").Register("otel:before_delete", beforeCallback); err != nil {
-		return err
-	}
-	if err := db.Callback().Delete().After("gorm:delete").Register("otel:after_delete", afterCallback); err != nil {
-		return err
-	}
-
-	if err := db.Callback().Row().Before("gorm:row").Register("otel:before_row", beforeCallback); err != nil {
-		return err
-	}
-	if err := db.Callback().Row().After("gorm:row").Register("otel:after_row", afterCallback); err != nil {
-		return err
-	}
-
-	if err := db.Callback().Raw().Before("gorm:raw").Register("otel:before_raw", beforeCallback); err != nil {
-		return err
-	}
-	if err := db.Callback().Raw().After("gorm:raw").Register("otel:after_raw", afterCallback); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// extractOperationType extracts the operation type from SQL query
-func extractOperationType(sql string) string {
-	if len(sql) == 0 {
-		return defaultDBOperation
-	}
-
-	// Simple extraction of first word (operation type)
-	for i, c := range sql {
-		if c == ' ' || c == '\n' || c == '\t' {
-			operation := sql[:i]
-			return "db." + operation
-		}
-	}
-
-	return defaultDBOperation
 }
 
 // collectPoolMetrics periodically collects connection pool metrics

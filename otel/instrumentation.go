@@ -114,7 +114,7 @@ func (h *SpanHelper) Span() trace.Span {
 }
 
 // Logger creates a LogHelper that is automatically correlated with this span.
-// Returns nil if no config is stored in the context.
+// Returns a LogHelper with the default zerolog logger if no config is stored in the context.
 // Use ContextWithConfig() to store config in context before creating spans.
 //
 // Example:
@@ -125,15 +125,29 @@ func (h *SpanHelper) Span() trace.Span {
 //	defer span.End()
 //
 //	logger := span.Logger("service.user")
-//	if logger != nil {
-//	    logger.Info("Creating user", F("email", email))
-//	}
+//
+//	logger.Info("Creating user", F("email", email))
 func (h *SpanHelper) Logger(scopeName string) *LogHelper {
 	config := ConfigFromContext(h.ctx)
-	if config == nil {
-		return nil
-	}
 	return NewLogHelper(h.ctx, config, scopeName, "")
+}
+
+// FunctionLogger creates a LogHelper that is automatically correlated with this span.
+// Returns a LogHelper with the default zerolog logger if no config is stored in the context.
+// Use ContextWithConfig() to store config in context before creating spans.
+//
+// Example:
+//
+//	ctx = otel.ContextWithConfig(ctx, cfg)
+//	span := otel.StartSpan(ctx, "service.user", "CreateUser",
+//	    otel.WithAttribute("user.id", userID))
+//	defer span.End()
+//
+//	logger := span.FunctionLogger("service.user","function.name")
+//	logger.Info("Creating user", F("email", email))
+func (h *SpanHelper) FunctionLogger(scopeName string, function string) *LogHelper {
+	config := ConfigFromContext(h.ctx)
+	return NewLogHelper(h.ctx, config, scopeName, function)
 }
 
 // AddAttribute adds a single attribute to the span.
@@ -282,7 +296,9 @@ func (lc *LayerContext) End() {
 //	    return lc.Error(err, "failed to save", F("id", id))
 //	}
 func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
-	lc.Logger.Error(err, msg, fields...)
+	if lc.Logger != nil {
+		lc.Logger.Error(err, msg, fields...)
+	}
 	return lc.Span.Error(err, msg)
 }
 
@@ -293,7 +309,9 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 //	lc.Success("User created successfully", F("user_id", userID))
 //	return nil
 func (lc *LayerContext) Success(msg string, fields ...Field) error {
-	lc.Logger.Info(msg, fields...)
+	if lc.Logger != nil {
+		lc.Logger.Info(msg, fields...)
+	}
 	return lc.Span.Success()
 }
 
@@ -424,7 +442,11 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindServer))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
@@ -458,7 +480,11 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindInternal))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
@@ -492,7 +518,11 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindInternal))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
@@ -529,7 +559,11 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 		WithAttributes(attrs),
 		WithSpanKind(trace.SpanKindClient))
 
-	logger := span.Logger(tracerName)
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
 	return &LayerContext{
 		Span:   span,
 		Logger: logger,
