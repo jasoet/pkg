@@ -141,78 +141,8 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 	}
 }
 
-func TestExtractOperationType(t *testing.T) {
-	tests := []struct {
-		name     string
-		sql      string
-		expected string
-	}{
-		{
-			name:     "SELECT query",
-			sql:      "SELECT * FROM users",
-			expected: "db.SELECT",
-		},
-		{
-			name:     "INSERT query",
-			sql:      "INSERT INTO users (name) VALUES ('John')",
-			expected: "db.INSERT",
-		},
-		{
-			name:     "UPDATE query",
-			sql:      "UPDATE users SET name='Jane' WHERE id=1",
-			expected: "db.UPDATE",
-		},
-		{
-			name:     "DELETE query",
-			sql:      "DELETE FROM users WHERE id=1",
-			expected: "db.DELETE",
-		},
-		{
-			name:     "CREATE query",
-			sql:      "CREATE TABLE users (id INT)",
-			expected: "db.CREATE",
-		},
-		{
-			name:     "DROP query",
-			sql:      "DROP TABLE users",
-			expected: "db.DROP",
-		},
-		{
-			name:     "query with newline",
-			sql:      "SELECT\n* FROM users",
-			expected: "db.SELECT",
-		},
-		{
-			name:     "query with tab",
-			sql:      "SELECT\t* FROM users",
-			expected: "db.SELECT",
-		},
-		{
-			name:     "empty SQL",
-			sql:      "",
-			expected: "db.query",
-		},
-		{
-			name:     "single word SQL",
-			sql:      "COMMIT",
-			expected: "db.query",
-		},
-		{
-			name:     "lowercase query",
-			sql:      "select * from users",
-			expected: "db.select",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := extractOperationType(tt.sql)
-			if result != tt.expected {
-				t.Errorf("extractOperationType() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
+// TestExtractOperationType removed - extractOperationType is no longer used
+// The uptrace otelgorm library handles operation type extraction internally
 
 func TestConnectionConfig_collectPoolMetrics_NilOTelConfig(t *testing.T) {
 	config := &ConnectionConfig{
@@ -285,41 +215,8 @@ func TestConnectionConfig_collectPoolMetrics_WithValidConfig(t *testing.T) {
 	// If we get here, metrics were collected successfully
 }
 
-func TestConnectionConfig_installOTelCallbacks_NilOTelConfig(t *testing.T) {
-	config := &ConnectionConfig{
-		DbType:     Postgresql,
-		Host:       "localhost",
-		Port:       5432,
-		Username:   "test",
-		Password:   "test",
-		DbName:     "test",
-		OTelConfig: nil, // No OTel config
-	}
-
-	// Create a nil GORM DB - the function should return early before using it
-	config.installOTelCallbacks(nil)
-	// If we get here without panic, the nil check worked
-}
-
-func TestConnectionConfig_installOTelCallbacks_TracingDisabled(t *testing.T) {
-	// OTel config with only metrics enabled (no TracerProvider = tracing disabled)
-	otelConfig := pkgotel.NewConfig("test").
-		WithMeterProvider(noopm.NewMeterProvider())
-
-	config := &ConnectionConfig{
-		DbType:     Postgresql,
-		Host:       "localhost",
-		Port:       5432,
-		Username:   "test",
-		Password:   "test",
-		DbName:     "test",
-		OTelConfig: otelConfig,
-	}
-
-	// Should return early when tracing is disabled
-	config.installOTelCallbacks(nil)
-	// If we get here without panic, the tracing disabled check worked
-}
+// TestConnectionConfig_installOTelCallbacks tests removed
+// The uptrace otelgorm plugin is now used instead of custom callbacks
 
 func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
 	config := &ConnectionConfig{

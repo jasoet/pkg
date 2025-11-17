@@ -30,7 +30,6 @@ func F(key string, value any) Field {
 }
 
 // LogHelper provides OTel-aware logging that automatically correlates logs with traces.
-
 // It uses OTel logging when available (with automatic trace_id/span_id injection),
 // otherwise falls back to plain zerolog.
 //
@@ -79,14 +78,12 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 		function: function,
 	}
 
-	// Only add function field if provided
 	if function != "" {
-		h.logger = log.With().Str("function", function).Logger()
+		h.logger = log.With().Str("scopeName", scopeName).Str("function", function).Logger()
 	} else {
 		h.logger = log.Logger
 	}
 
-	// Use OTel logger if available
 	if config != nil && config.IsLoggingEnabled() {
 		h.otelLogger = config.GetLogger(scopeName)
 	}
@@ -181,7 +178,6 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: otellog.SeverityError}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			// Add error field at the beginning
 			errorField := F("error", err.Error())
 			allFields := append([]Field{errorField}, fields...)
 			h.emitOTel(otellog.SeverityError, msg, allFields...)
