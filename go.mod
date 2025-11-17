@@ -4,6 +4,7 @@ go 1.24.7
 
 require (
 	github.com/argoproj/argo-workflows/v3 v3.7.3
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/docker/go-connections v0.6.0
 	github.com/go-playground/validator/v10 v10.27.0
@@ -60,7 +61,6 @@ require (
 	github.com/argoproj/argo-events v1.9.7 // indirect
 	github.com/argoproj/pkg v0.13.7-0.20250123033407-65f2d4777bfd // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colinmarc/hdfs/v2 v2.4.0 // indirect
