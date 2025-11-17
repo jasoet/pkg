@@ -13,6 +13,10 @@ import (
 	noopt "go.opentelemetry.io/otel/trace/noop"
 )
 
+type contextKey string
+
+const configContextKey contextKey = "otel.config"
+
 // Config holds OpenTelemetry configuration for instrumentation.
 // TracerProvider and MeterProvider are optional - nil values result in no-op implementations.
 // LoggerProvider defaults to zerolog-based provider when using NewConfig().
@@ -90,6 +94,40 @@ func (c *Config) WithServiceVersion(version string) *Config {
 func (c *Config) WithoutLogging() *Config {
 	c.LoggerProvider = nil
 	return c
+}
+
+// ContextWithConfig stores the OTel config in the context.
+// This allows nested layers to access the config without explicit parameter passing.
+//
+// Example:
+//
+//	func (h *Handler) Handle(c echo.Context) error {
+//	    ctx := otel.ContextWithConfig(c.Request().Context(), cfg)
+//	    return h.service.DoWork(ctx) // Service can now access config
+//	}
+func ContextWithConfig(ctx context.Context, cfg *Config) context.Context {
+	return context.WithValue(ctx, configContextKey, cfg)
+}
+
+// ConfigFromContext retrieves the OTel config from context.
+// Returns nil if no config is stored in the context.
+//
+// Example:
+//
+//	func (s *Service) DoWork(ctx context.Context) error {
+//	    cfg := otel.ConfigFromContext(ctx)
+//	    if cfg != nil {
+//	        span := otel.StartSpan(ctx, "service", "DoWork")
+//	        defer span.End()
+//	        logger := span.Logger("service")
+//	        // ... use logger
+//	    }
+//	}
+func ConfigFromContext(ctx context.Context) *Config {
+	if cfg, ok := ctx.Value(configContextKey).(*Config); ok {
+		return cfg
+	}
+	return nil
 }
 
 // defaultLoggerProvider creates a zerolog-based LoggerProvider with OTel integration

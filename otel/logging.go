@@ -16,17 +16,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-// LogLevel is an alias for logging.LogLevel for convenience
+// LogLevel is an alias for logging.LogLevel for convenience.
+// Use logging.LogLevel constants directly (logging.LogLevelDebug, etc.)
 type LogLevel = logging.LogLevel
-
-// Re-export LogLevel constants from logging package
-const (
-	LogLevelDebug = logging.LogLevelDebug
-	LogLevelInfo  = logging.LogLevelInfo
-	LogLevelWarn  = logging.LogLevelWarn
-	LogLevelError = logging.LogLevelError
-	LogLevelNone  = logging.LogLevelNone
-)
 
 // LoggerProviderOption configures LoggerProvider behavior
 type LoggerProviderOption func(*loggerProviderConfig)
@@ -98,9 +90,9 @@ func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...Logger
 	effectiveLevel := cfg.logLevel
 	if effectiveLevel == "" {
 		if debug {
-			effectiveLevel = LogLevelDebug
+			effectiveLevel = logging.LogLevelDebug
 		} else {
-			effectiveLevel = LogLevelInfo
+			effectiveLevel = logging.LogLevelInfo
 		}
 	}
 
@@ -151,15 +143,15 @@ func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...Logger
 func setupZerologConsole(serviceName string, logLevel LogLevel) {
 	var lvl zerolog.Level
 	switch logLevel {
-	case LogLevelDebug:
+	case logging.LogLevelDebug:
 		lvl = zerolog.DebugLevel
-	case LogLevelInfo:
+	case logging.LogLevelInfo:
 		lvl = zerolog.InfoLevel
-	case LogLevelWarn:
+	case logging.LogLevelWarn:
 		lvl = zerolog.WarnLevel
-	case LogLevelError:
+	case logging.LogLevelError:
 		lvl = zerolog.ErrorLevel
-	case LogLevelNone:
+	case logging.LogLevelNone:
 		lvl = zerolog.Disabled
 	default:
 		lvl = zerolog.InfoLevel
