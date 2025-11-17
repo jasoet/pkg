@@ -114,7 +114,7 @@ func (h *SpanHelper) Span() trace.Span {
 }
 
 // Logger creates a LogHelper that is automatically correlated with this span.
-// Returns nil if no config is stored in the context.
+// Returns a LogHelper with the default zerolog logger if no config is stored in the context.
 // Use ContextWithConfig() to store config in context before creating spans.
 //
 // Example:
@@ -125,15 +125,29 @@ func (h *SpanHelper) Span() trace.Span {
 //	defer span.End()
 //
 //	logger := span.Logger("service.user")
-//	if logger != nil {
-//	    logger.Info("Creating user", F("email", email))
-//	}
+//
+//	logger.Info("Creating user", F("email", email))
 func (h *SpanHelper) Logger(scopeName string) *LogHelper {
 	config := ConfigFromContext(h.ctx)
-	if config == nil {
-		return nil
-	}
 	return NewLogHelper(h.ctx, config, scopeName, "")
+}
+
+// FunctionLogger creates a LogHelper that is automatically correlated with this span.
+// Returns a LogHelper with the default zerolog logger if no config is stored in the context.
+// Use ContextWithConfig() to store config in context before creating spans.
+//
+// Example:
+//
+//	ctx = otel.ContextWithConfig(ctx, cfg)
+//	span := otel.StartSpan(ctx, "service.user", "CreateUser",
+//	    otel.WithAttribute("user.id", userID))
+//	defer span.End()
+//
+//	logger := span.FunctionLogger("service.user","function.name")
+//	logger.Info("Creating user", F("email", email))
+func (h *SpanHelper) FunctionLogger(scopeName string, function string) *LogHelper {
+	config := ConfigFromContext(h.ctx)
+	return NewLogHelper(h.ctx, config, scopeName, function)
 }
 
 // AddAttribute adds a single attribute to the span.
