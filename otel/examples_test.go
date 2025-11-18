@@ -15,7 +15,7 @@ func Example_withoutOTelConfig() {
 
 	// No config in context - spans work, but logger is nil
 	lc := otel.Layers.StartService(ctx, "user", "CreateUser",
-		"user.id", "12345")
+		otel.F("user.id", "12345"))
 	defer lc.End()
 
 	// lc.Logger is nil - only spans are created
@@ -50,7 +50,7 @@ func Example_withOTelConfig() {
 	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	lc := otel.Layers.StartService(ctx, "user", "CreateUser",
-		"user.id", "12345")
+		otel.F("user.id", "12345"))
 	defer lc.End()
 
 	// Logs will include trace_id and span_id automatically when spans are active
@@ -72,8 +72,8 @@ func Example_layerPropagation() {
 
 	// Handler layer - receives HTTP request
 	handler := otel.Layers.StartHandler(ctx, "user", "CreateUser",
-		"http.method", "POST",
-		"http.path", "/users")
+		otel.F("http.method", "POST"),
+		otel.F("http.path", "/users"))
 	defer handler.End()
 
 	if handler.Logger != nil {
@@ -90,7 +90,7 @@ func Example_layerPropagation() {
 
 	// Service layer - config still available
 	service := otel.Layers.StartService(ops.Context(), "user", "CreateUser",
-		"user.email", "user@example.com")
+		otel.F("user.email", "user@example.com"))
 	defer service.End()
 
 	if service.Logger != nil {
@@ -99,8 +99,8 @@ func Example_layerPropagation() {
 
 	// Repository layer - config still available
 	repo := otel.Layers.StartRepository(service.Context(), "user", "Insert",
-		"db.operation", "insert",
-		"db.table", "users")
+		otel.F("db.operation", "insert"),
+		otel.F("db.table", "users"))
 	defer repo.End()
 
 	if repo.Logger != nil {

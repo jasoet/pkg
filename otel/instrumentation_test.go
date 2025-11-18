@@ -12,7 +12,7 @@ func TestLayerContext_WithoutConfig(t *testing.T) {
 
 	t.Run("StartService without config has nil logger", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser",
-			"user.id", "123")
+			F("user.id", "123"))
 		defer lc.End()
 
 		if lc.Logger != nil {
@@ -22,7 +22,7 @@ func TestLayerContext_WithoutConfig(t *testing.T) {
 
 	t.Run("StartRepository without config has nil logger", func(t *testing.T) {
 		lc := Layers.StartRepository(ctx, "user", "FindByID",
-			"user.id", "123")
+			F("user.id", "123"))
 		defer lc.End()
 
 		if lc.Logger != nil {
@@ -32,7 +32,7 @@ func TestLayerContext_WithoutConfig(t *testing.T) {
 
 	t.Run("StartHandler without config has nil logger", func(t *testing.T) {
 		lc := Layers.StartHandler(ctx, "user", "GetUser",
-			"http.method", "GET")
+			F("http.method", "GET"))
 		defer lc.End()
 
 		if lc.Logger != nil {
@@ -42,7 +42,7 @@ func TestLayerContext_WithoutConfig(t *testing.T) {
 
 	t.Run("StartOperations without config has nil logger", func(t *testing.T) {
 		lc := Layers.StartOperations(ctx, "user", "ProcessQueue",
-			"queue.name", "user-events")
+			F("queue.name", "user-events"))
 		defer lc.End()
 
 		if lc.Logger != nil {
@@ -58,7 +58,7 @@ func TestLayerContext_WithConfig(t *testing.T) {
 
 	t.Run("StartService with config uses OTel logging", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser",
-			"user.id", "123")
+			F("user.id", "123"))
 		defer lc.End()
 
 		// Should not panic
