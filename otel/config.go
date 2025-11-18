@@ -96,6 +96,24 @@ func (c *Config) WithoutLogging() *Config {
 	return c
 }
 
+// DisableTracing disables tracing by setting TracerProvider to nil
+func (c *Config) DisableTracing() *Config {
+	c.TracerProvider = nil
+	return c
+}
+
+// DisableMetrics disables metrics by setting MeterProvider to nil
+func (c *Config) DisableMetrics() *Config {
+	c.MeterProvider = nil
+	return c
+}
+
+// DisableLogging disables logging by setting LoggerProvider to nil
+func (c *Config) DisableLogging() *Config {
+	c.LoggerProvider = nil
+	return c
+}
+
 // ContextWithConfig stores the OTel config in the context.
 // This allows nested layers to access the config without explicit parameter passing.
 //

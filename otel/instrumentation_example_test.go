@@ -19,7 +19,7 @@ func Example_layerContextIntegration() {
 	// Example 1: Using LayerContext for simplified span + logging
 	fmt.Println("=== Example 1: LayerContext ===")
 	lc := otel.Layers.StartService(ctx, "user", "CreateUser",
-		"user.id", "12345")
+		otel.F("user.id", "12345"))
 	defer lc.End()
 
 	if lc.Logger != nil {
@@ -53,7 +53,7 @@ func Example_layerContextIntegration() {
 	// Example 4: Error handling with LayerContext
 	fmt.Println("\n=== Example 4: Error Handling ===")
 	lc2 := otel.Layers.StartRepository(ctx, "user", "FindByID",
-		"user.id", "999")
+		otel.F("user.id", "999"))
 	defer lc2.End()
 
 	// Simulate error
@@ -65,7 +65,7 @@ func Example_layerContextIntegration() {
 
 	// Handler layer
 	handlerCtx := otel.Layers.StartHandler(ctx, "user", "GetUser",
-		"http.method", "GET")
+		otel.F("http.method", "GET"))
 	defer handlerCtx.End()
 	if handlerCtx.Logger != nil {
 		handlerCtx.Logger.Info("Handling request")
@@ -80,7 +80,7 @@ func Example_layerContextIntegration() {
 
 	// Service layer
 	serviceCtx := otel.Layers.StartService(opsCtx.Context(), "user", "GetUser",
-		"user.id", "123")
+		otel.F("user.id", "123"))
 	defer serviceCtx.End()
 	if serviceCtx.Logger != nil {
 		serviceCtx.Logger.Info("Fetching user data")
@@ -88,7 +88,8 @@ func Example_layerContextIntegration() {
 
 	// Repository layer
 	repoCtx := otel.Layers.StartRepository(serviceCtx.Context(), "user", "FindByID",
-		"user.id", "123", "db.operation", "select")
+		otel.F("user.id", "123"),
+		otel.F("db.operation", "select"))
 	defer repoCtx.End()
 	if repoCtx.Logger != nil {
 		repoCtx.Logger.Debug("Querying database")
