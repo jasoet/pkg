@@ -47,10 +47,10 @@ func WithAttribute(key string, value any) SpanOption {
 }
 
 // WithAttributes adds multiple attributes to the span
-func WithAttributes(attrs map[string]any) SpanOption {
+func WithAttributes(fields ...Field) SpanOption {
 	return func(cfg *spanConfig) {
-		for k, v := range attrs {
-			cfg.attributes = append(cfg.attributes, toAttribute(k, v))
+		for _, field := range fields {
+			cfg.attributes = append(cfg.attributes, toAttribute(field.Key, field.Value))
 		}
 	}
 }
@@ -157,10 +157,10 @@ func (h *SpanHelper) AddAttribute(key string, value any) *SpanHelper {
 }
 
 // AddAttributes adds multiple attributes to the span.
-func (h *SpanHelper) AddAttributes(attrs map[string]any) *SpanHelper {
-	attributes := make([]attribute.KeyValue, 0, len(attrs))
-	for k, v := range attrs {
-		attributes = append(attributes, toAttribute(k, v))
+func (h *SpanHelper) AddAttributes(fields ...Field) *SpanHelper {
+	attributes := make([]attribute.KeyValue, 0, len(fields))
+	for _, field := range fields {
+		attributes = append(attributes, toAttribute(field.Key, field.Value))
 	}
 	h.span.SetAttributes(attributes...)
 	return h
@@ -170,11 +170,11 @@ func (h *SpanHelper) AddAttributes(attrs map[string]any) *SpanHelper {
 //
 // Example:
 //
-//	span.AddEvent("cache.hit", map[string]any{"key": cacheKey, "ttl": ttl})
-func (h *SpanHelper) AddEvent(name string, attrs map[string]any) *SpanHelper {
-	attributes := make([]attribute.KeyValue, 0, len(attrs))
-	for k, v := range attrs {
-		attributes = append(attributes, toAttribute(k, v))
+//	span.AddEvent("cache.hit", F("key", cacheKey), F("ttl", ttl))
+func (h *SpanHelper) AddEvent(name string, fields ...Field) *SpanHelper {
+	attributes := make([]attribute.KeyValue, 0, len(fields))
+	for _, field := range fields {
+		attributes = append(attributes, toAttribute(field.Key, field.Value))
 	}
 	h.span.AddEvent(name, trace.WithAttributes(attributes...))
 	return h
@@ -185,17 +185,13 @@ func (h *SpanHelper) AddEvent(name string, attrs map[string]any) *SpanHelper {
 //
 // Example:
 //
-//	logger := span.Logger(cfg, "service.cache")
+//	logger := span.Logger("service.cache")
 //	span.LogEvent(logger, "cache.miss",
 //	    F("key", cacheKey),
 //	    F("reason", "expired"))
 func (h *SpanHelper) LogEvent(logger *LogHelper, eventName string, fields ...Field) *SpanHelper {
 	// Add span event
-	attrs := make(map[string]any, len(fields))
-	for _, field := range fields {
-		attrs[field.Key] = field.Value
-	}
-	h.AddEvent(eventName, attrs)
+	h.AddEvent(eventName, fields...)
 
 	// Add log entry if logger provided
 	if logger != nil {
@@ -327,19 +323,18 @@ type LayeredSpanHelper struct{}
 //	func (h *EventHandler) Create(c echo.Context) error {
 //	    ctx := c.Request().Context()
 //	    span := otel.Layers.Handler(ctx, "admin.event", "Create",
-//	        "event.id", req.EventID)
+//	        F("event.id", req.EventID))
 //	    defer span.End()
 //	    // ... handler logic
 //	}
-func (l *LayeredSpanHelper) Handler(ctx context.Context, component, operation string, keyValues ...any) *SpanHelper {
+func (l *LayeredSpanHelper) Handler(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
 	tracerName := "handler." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "handler"
+	allFields := append([]Field{F("layer", "handler")}, fields...)
 
 	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindServer))
 }
 
@@ -350,19 +345,18 @@ func (l *LayeredSpanHelper) Handler(ctx context.Context, component, operation st
 //
 //	func (s *EventService) CancelEvent(ctx context.Context, eventID string) error {
 //	    span := otel.Layers.Service(ctx, "event", "CancelEvent",
-//	        "event.id", eventID)
+//	        F("event.id", eventID))
 //	    defer span.End()
 //	    // ... service logic
 //	}
-func (l *LayeredSpanHelper) Service(ctx context.Context, component, operation string, keyValues ...any) *SpanHelper {
+func (l *LayeredSpanHelper) Service(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
 	tracerName := "service." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "service"
+	allFields := append([]Field{F("layer", "service")}, fields...)
 
 	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 }
 
@@ -373,20 +367,19 @@ func (l *LayeredSpanHelper) Service(ctx context.Context, component, operation st
 //
 //	func (r *EventRepository) FindByID(ctx context.Context, eventID string) (*Event, error) {
 //	    span := otel.Layers.Repository(ctx, "event", "FindByID",
-//	        "event.id", eventID,
-//	        "db.operation", "select")
+//	        F("event.id", eventID),
+//	        F("db.operation", "select"))
 //	    defer span.End()
 //	    // ... repository logic
 //	}
-func (l *LayeredSpanHelper) Repository(ctx context.Context, component, operation string, keyValues ...any) *SpanHelper {
+func (l *LayeredSpanHelper) Repository(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
 	tracerName := "repository." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "repository"
+	allFields := append([]Field{F("layer", "repository")}, fields...)
 
 	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindClient))
 }
 
@@ -399,19 +392,18 @@ func (l *LayeredSpanHelper) Repository(ctx context.Context, component, operation
 //
 //	func (o *EventOps) ProcessEventQueue(ctx context.Context, queueName string) error {
 //	    span := otel.Layers.Operations(ctx, "event", "ProcessEventQueue",
-//	        "queue.name", queueName)
+//	        F("queue.name", queueName))
 //	    defer span.End()
 //	    // ... operations logic coordinating services
 //	}
-func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation string, keyValues ...any) *SpanHelper {
+func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
 	tracerName := "operations." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "operations"
+	allFields := append([]Field{F("layer", "operations")}, fields...)
 
 	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 }
 
@@ -421,8 +413,8 @@ func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation
 // Example:
 //
 //	func (h *EventHandler) Create(c echo.Context) error {
-//	    lc := otel.Layers.StartHandler(c.Request().Context(), cfg, "event", "Create",
-//	        "event.type", eventType)
+//	    lc := otel.Layers.StartHandler(c.Request().Context(), "event", "Create",
+//	        F("event.type", eventType))
 //	    defer lc.End()
 //
 //	    lc.Logger.Info("Creating event", F("user_id", userID))
@@ -431,15 +423,14 @@ func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation
 //	    }
 //	    return lc.Success("Event created")
 //	}
-func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "handler." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "handler"
+	allFields := append([]Field{F("layer", "handler")}, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindServer))
 
 	var logger *LogHelper
@@ -459,8 +450,8 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 // Example:
 //
 //	func (s *EventService) CancelEvent(ctx context.Context, eventID string) error {
-//	    lc := otel.Layers.StartService(ctx, cfg, "event", "CancelEvent",
-//	        "event.id", eventID)
+//	    lc := otel.Layers.StartService(ctx, "event", "CancelEvent",
+//	        F("event.id", eventID))
 //	    defer lc.End()
 //
 //	    lc.Logger.Info("Canceling event")
@@ -469,15 +460,14 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 //	    }
 //	    return lc.Success("Event cancelled")
 //	}
-func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "service." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "service"
+	allFields := append([]Field{F("layer", "service")}, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 
 	var logger *LogHelper
@@ -497,8 +487,8 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 // Example:
 //
 //	func (o *EventOps) ProcessQueue(ctx context.Context, queueName string) error {
-//	    lc := otel.Layers.StartOperations(ctx, cfg, "event", "ProcessQueue",
-//	        "queue.name", queueName)
+//	    lc := otel.Layers.StartOperations(ctx, "event", "ProcessQueue",
+//	        F("queue.name", queueName))
 //	    defer lc.End()
 //
 //	    lc.Logger.Info("Processing queue")
@@ -507,15 +497,14 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 //	    }
 //	    return lc.Success("Queue processed")
 //	}
-func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "operations." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "operations"
+	allFields := append([]Field{F("layer", "operations")}, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 
 	var logger *LogHelper
@@ -535,9 +524,9 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 // Example:
 //
 //	func (r *EventRepository) FindByID(ctx context.Context, eventID string) (*Event, error) {
-//	    lc := otel.Layers.StartRepository(ctx, cfg, "event", "FindByID",
-//	        "event.id", eventID,
-//	        "db.operation", "select")
+//	    lc := otel.Layers.StartRepository(ctx, "event", "FindByID",
+//	        F("event.id", eventID),
+//	        F("db.operation", "select"))
 //	    defer lc.End()
 //
 //	    lc.Logger.Debug("Querying database")
@@ -548,15 +537,14 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 //	    lc.Success("Event found")
 //	    return event, nil
 //	}
-func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, operation string, keyValues ...any) *LayerContext {
+func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "repository." + component
 	operationName := component + "." + operation
 
-	attrs := kvToMap(keyValues...)
-	attrs["layer"] = "repository"
+	allFields := append([]Field{F("layer", "repository")}, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
-		WithAttributes(attrs),
+		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindClient))
 
 	var logger *LogHelper
@@ -572,14 +560,3 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 
 // Layers provides convenience methods for creating layer-specific spans
 var Layers = &LayeredSpanHelper{}
-
-// kvToMap converts variadic key-value pairs to a map
-func kvToMap(keyValues ...any) map[string]any {
-	m := make(map[string]any)
-	for i := 0; i < len(keyValues)-1; i += 2 {
-		if key, ok := keyValues[i].(string); ok {
-			m[key] = keyValues[i+1]
-		}
-	}
-	return m
-}
