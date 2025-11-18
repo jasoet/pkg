@@ -407,6 +407,34 @@ func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation
 		WithSpanKind(trace.SpanKindInternal))
 }
 
+// Middleware creates a span for middleware layer operations.
+// This layer is used for HTTP middleware that intercepts requests/responses,
+// authentication, authorization, rate limiting, and other cross-cutting concerns.
+// Automatically adds middleware-specific attributes.
+//
+// Example:
+//
+//	func AuthMiddleware(next http.Handler) http.Handler {
+//	    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//	        ctx := r.Context()
+//	        span := otel.Layers.Middleware(ctx, "auth", "ValidateToken",
+//	            F("http.path", r.URL.Path))
+//	        defer span.End()
+//	        // ... middleware logic
+//	        next.ServeHTTP(w, r.WithContext(span.Context()))
+//	    })
+//	}
+func (l *LayeredSpanHelper) Middleware(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
+	tracerName := "middleware." + component
+	operationName := component + "." + operation
+
+	allFields := append([]Field{F("layer", "middleware")}, fields...)
+
+	return StartSpan(ctx, tracerName, operationName,
+		WithAttributes(allFields...),
+		WithSpanKind(trace.SpanKindServer))
+}
+
 // StartHandler creates a LayerContext for HTTP handler layer operations.
 // Combines span and logger with automatic correlation.
 //
@@ -506,6 +534,53 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 	span := StartSpan(ctx, tracerName, operationName,
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
+
+	var logger *LogHelper
+	if config := ConfigFromContext(span.Context()); config != nil {
+		logger = span.Logger(tracerName)
+	}
+
+	return &LayerContext{
+		Span:   span,
+		Logger: logger,
+	}
+}
+
+// StartMiddleware creates a LayerContext for middleware layer operations.
+// Combines span and logger with automatic correlation.
+//
+// Example:
+//
+//	func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+//	    return func(c echo.Context) error {
+//	        lc := otel.Layers.StartMiddleware(c.Request().Context(), "auth", "ValidateToken",
+//	            F("http.path", c.Path()),
+//	            F("http.method", c.Request().Method))
+//	        defer lc.End()
+//
+//	        lc.Logger.Info("Validating authentication token")
+//	        token := c.Request().Header.Get("Authorization")
+//	        if token == "" {
+//	            return lc.Error(errors.New("missing token"), "authentication failed")
+//	        }
+//
+//	        // Pass updated context to next handler
+//	        c.SetRequest(c.Request().WithContext(lc.Context()))
+//	        if err := next(c); err != nil {
+//	            return lc.Error(err, "request failed")
+//	        }
+//	        return lc.Success("Request processed successfully")
+//	    }
+//	}
+func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
+	tracerName := "middleware." + component
+	operationName := component + "." + operation
+
+	allFields := append([]Field{F("layer", "middleware")}, fields...)
+
+	span := StartSpan(ctx, tracerName, operationName,
+		WithAttributes(allFields...),
+		WithSpanKind(trace.SpanKindServer))
 
 	var logger *LogHelper
 	if config := ConfigFromContext(span.Context()); config != nil {
