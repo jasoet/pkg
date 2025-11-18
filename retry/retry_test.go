@@ -72,7 +72,8 @@ func TestDo_SuccessAfterRetries(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, attempts)
 	// Should have waited at least 10ms (first retry) + 20ms (second retry)
-	assert.Greater(t, elapsed, 30*time.Millisecond)
+	// With jitter (0.5x-1.5x), minimum is 5ms + 10ms = 15ms
+	assert.Greater(t, elapsed, 15*time.Millisecond)
 }
 
 func TestDo_FailsAfterMaxRetries(t *testing.T) {
