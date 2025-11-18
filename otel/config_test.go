@@ -236,6 +236,169 @@ func TestWithoutLogging(t *testing.T) {
 	})
 }
 
+func TestDisableTracing(t *testing.T) {
+	t.Run("disables tracing by setting provider to nil", func(t *testing.T) {
+		cfg := NewConfig("test-service").
+			WithTracerProvider(noopt.NewTracerProvider())
+
+		// Verify tracer is set
+		if cfg.TracerProvider == nil {
+			t.Error("expected TracerProvider to be set")
+		}
+
+		cfg.DisableTracing()
+
+		if cfg.TracerProvider != nil {
+			t.Error("expected TracerProvider to be nil after DisableTracing")
+		}
+	})
+
+	t.Run("returns config for method chaining", func(t *testing.T) {
+		cfg := NewConfig("test-service").
+			WithTracerProvider(noopt.NewTracerProvider())
+
+		result := cfg.DisableTracing()
+
+		if result != cfg {
+			t.Error("expected DisableTracing to return same config instance")
+		}
+	})
+
+	t.Run("allows method chaining", func(t *testing.T) {
+		mp := noopm.NewMeterProvider()
+
+		cfg := NewConfig("test-service").
+			WithTracerProvider(noopt.NewTracerProvider()).
+			DisableTracing().
+			WithMeterProvider(mp)
+
+		if cfg.TracerProvider != nil {
+			t.Error("expected TracerProvider to be nil")
+		}
+		if cfg.MeterProvider != mp {
+			t.Error("expected MeterProvider to be set")
+		}
+	})
+
+	t.Run("works when tracer provider is already nil", func(t *testing.T) {
+		cfg := NewConfig("test-service")
+
+		cfg.DisableTracing()
+
+		if cfg.TracerProvider != nil {
+			t.Error("expected TracerProvider to remain nil")
+		}
+	})
+}
+
+func TestDisableMetrics(t *testing.T) {
+	t.Run("disables metrics by setting provider to nil", func(t *testing.T) {
+		cfg := NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider())
+
+		// Verify meter is set
+		if cfg.MeterProvider == nil {
+			t.Error("expected MeterProvider to be set")
+		}
+
+		cfg.DisableMetrics()
+
+		if cfg.MeterProvider != nil {
+			t.Error("expected MeterProvider to be nil after DisableMetrics")
+		}
+	})
+
+	t.Run("returns config for method chaining", func(t *testing.T) {
+		cfg := NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider())
+
+		result := cfg.DisableMetrics()
+
+		if result != cfg {
+			t.Error("expected DisableMetrics to return same config instance")
+		}
+	})
+
+	t.Run("allows method chaining", func(t *testing.T) {
+		tp := noopt.NewTracerProvider()
+
+		cfg := NewConfig("test-service").
+			WithMeterProvider(noopm.NewMeterProvider()).
+			DisableMetrics().
+			WithTracerProvider(tp)
+
+		if cfg.MeterProvider != nil {
+			t.Error("expected MeterProvider to be nil")
+		}
+		if cfg.TracerProvider != tp {
+			t.Error("expected TracerProvider to be set")
+		}
+	})
+
+	t.Run("works when meter provider is already nil", func(t *testing.T) {
+		cfg := NewConfig("test-service")
+
+		cfg.DisableMetrics()
+
+		if cfg.MeterProvider != nil {
+			t.Error("expected MeterProvider to remain nil")
+		}
+	})
+}
+
+func TestDisableLogging(t *testing.T) {
+	t.Run("disables logging by setting provider to nil", func(t *testing.T) {
+		cfg := NewConfig("test-service")
+
+		// Verify default logger is set
+		if cfg.LoggerProvider == nil {
+			t.Error("expected default LoggerProvider to be set")
+		}
+
+		cfg.DisableLogging()
+
+		if cfg.LoggerProvider != nil {
+			t.Error("expected LoggerProvider to be nil after DisableLogging")
+		}
+	})
+
+	t.Run("returns config for method chaining", func(t *testing.T) {
+		cfg := NewConfig("test-service")
+
+		result := cfg.DisableLogging()
+
+		if result != cfg {
+			t.Error("expected DisableLogging to return same config instance")
+		}
+	})
+
+	t.Run("allows method chaining", func(t *testing.T) {
+		tp := noopt.NewTracerProvider()
+
+		cfg := NewConfig("test-service").
+			DisableLogging().
+			WithTracerProvider(tp)
+
+		if cfg.LoggerProvider != nil {
+			t.Error("expected LoggerProvider to be nil")
+		}
+		if cfg.TracerProvider != tp {
+			t.Error("expected TracerProvider to be set")
+		}
+	})
+
+	t.Run("works with custom logger provider", func(t *testing.T) {
+		cfg := NewConfig("test-service").
+			WithLoggerProvider(noopl.NewLoggerProvider())
+
+		cfg.DisableLogging()
+
+		if cfg.LoggerProvider != nil {
+			t.Error("expected LoggerProvider to be nil after DisableLogging")
+		}
+	})
+}
+
 func TestIsTracingEnabled(t *testing.T) {
 	t.Run("returns false when config is nil", func(t *testing.T) {
 		var cfg *Config
