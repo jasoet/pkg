@@ -2,6 +2,7 @@ package otel
 
 import (
 	"context"
+	"fmt"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,7 +21,8 @@ import (
 //	        otel.WithAttribute("entity.id", id))
 //	    defer span.End()
 //
-//	    if err := s.repository.Save(ctx, data); err != nil {
+//	    // IMPORTANT: Use span.Context() for child operations to maintain trace correlation
+//	    if err := s.repository.Save(span.Context(), data); err != nil {
 //	        return span.Error(err, "failed to save data")
 //	    }
 //
@@ -90,7 +92,14 @@ func StartSpan(ctx context.Context, tracerName, operationName string, opts ...Sp
 		opt(cfg)
 	}
 
-	tracer := otel.Tracer(tracerName)
+	// Use TracerProvider from config if available, otherwise use global provider
+	var tracer trace.Tracer
+	if config := ConfigFromContext(ctx); config != nil && config.TracerProvider != nil {
+		tracer = config.TracerProvider.Tracer(tracerName)
+	} else {
+		tracer = otel.Tracer(tracerName)
+	}
+
 	ctx, span := tracer.Start(ctx, operationName,
 		trace.WithSpanKind(cfg.spanKind),
 		trace.WithAttributes(cfg.attributes...),
@@ -264,7 +273,7 @@ func toString(v any) string {
 	if stringer, ok := v.(interface{ String() string }); ok {
 		return stringer.String()
 	}
-	return ""
+	return fmt.Sprint(v)
 }
 
 // LayerContext provides unified access to both span and logger for a layer operation.
@@ -461,14 +470,9 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindServer))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName),
 	}
 }
 
@@ -498,14 +502,9 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName),
 	}
 }
 
@@ -535,14 +534,9 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName),
 	}
 }
 
@@ -582,14 +576,9 @@ func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, oper
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindServer))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName),
 	}
 }
 
@@ -622,14 +611,9 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindClient))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName),
 	}
 }
 
