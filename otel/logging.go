@@ -82,8 +82,6 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 		opt(cfg)
 	}
 
-	// Determine the effective log level
-	// Default to info if not specified
 	effectiveLevel := cfg.logLevel
 	if effectiveLevel == "" {
 		effectiveLevel = logging.LogLevelInfo
@@ -91,7 +89,6 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 
 	ctx := context.Background()
 
-	// Create resource with service name
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(serviceName),
@@ -101,16 +98,13 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	// Collect all processors
 	var processors []sdklog.Processor
 
-	// Add console processor if enabled
 	if cfg.consoleOutput {
 		consoleExporter := newConsoleExporter(serviceName, effectiveLevel)
 		processors = append(processors, sdklog.NewSimpleProcessor(consoleExporter))
 	}
 
-	// Add OTLP processor if endpoint is configured
 	if cfg.otlpEndpoint != "" {
 		exporterOpts := []otlploghttp.Option{
 			otlploghttp.WithEndpoint(cfg.otlpEndpoint),
@@ -127,13 +121,11 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 		processors = append(processors, sdklog.NewBatchProcessor(otlpExporter))
 	}
 
-	// If no processors configured, fall back to console-only
 	if len(processors) == 0 {
 		consoleExporter := newConsoleExporter(serviceName, effectiveLevel)
 		processors = append(processors, sdklog.NewSimpleProcessor(consoleExporter))
 	}
 
-	// Create OTel LoggerProvider with all processors
 	providerOpts := []sdklog.LoggerProviderOption{
 		sdklog.WithResource(res),
 	}
@@ -171,18 +163,14 @@ func (e *consoleExporter) Export(ctx context.Context, records []sdklog.Record) e
 	for _, record := range records {
 		event := severityToZerologEvent(e.logger, record.Severity())
 
-		// Add timestamp
 		if !record.Timestamp().IsZero() {
 			event = event.Time("timestamp", record.Timestamp())
 		}
 
-		// Add severity text if present
 		if severityText := record.SeverityText(); severityText != "" {
 			event = event.Str("severity", severityText)
 		}
 
-		// Extract trace context from the record for log-span correlation
-		// The OTel SDK captures trace context when Emit() is called and stores it in the record
 		traceID := record.TraceID()
 		spanID := record.SpanID()
 		if traceID.IsValid() {
@@ -197,13 +185,11 @@ func (e *consoleExporter) Export(ctx context.Context, records []sdklog.Record) e
 			}
 		}
 
-		// Add all attributes
 		record.WalkAttributes(func(kv log.KeyValue) bool {
 			event = addAttributeToEvent(event, kv)
 			return true
 		})
 
-		// Get message and emit
 		message := record.Body().AsString()
 		if message == "" {
 			message = "log entry"

@@ -289,7 +289,8 @@ func (r *Repository) Save(ctx context.Context, data Data) error {
     // Fields "layer=repository" and "data.id" automatically in logs
     lc.Logger.Debug("Saving to database")
 
-    return lc.Success("Data saved")
+    lc.Success("Data saved")
+    return nil
 }
 ```
 

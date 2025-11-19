@@ -80,11 +80,8 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 	}
 
 	if config != nil && config.IsLoggingEnabled() {
-		// Use OTel logger - logs will go through consoleExporter which handles formatting
 		h.otelLogger = config.GetLogger(scopeName)
 	} else {
-		// Fallback to zerolog with explicit initialization
-		// Ensures consistent formatting even if logging.Initialize() wasn't called
 		serviceName := scopeName
 		if config != nil && config.ServiceName != "" {
 			serviceName = config.ServiceName
@@ -157,7 +154,6 @@ func (h *LogHelper) Warn(msg string, fields ...Field) {
 
 // log is the internal method that handles both OTel and zerolog logging
 func (h *LogHelper) log(severity otellog.Severity, zerologFn func() *zerolog.Event, msg string, fields ...Field) {
-	// Prepend base fields to user-provided fields
 	allFields := append(h.baseFields, fields...)
 
 	if h.otelLogger != nil {
@@ -192,7 +188,6 @@ func (h *LogHelper) Span() trace.Span {
 //
 //	logger.Error(err, "Failed to process request", F("request_id", reqID), F("attempt", 3))
 func (h *LogHelper) Error(err error, msg string, fields ...Field) {
-	// Set span status to error if we have an active span
 	span := h.Span()
 	if span.IsRecording() {
 		span.SetStatus(codes.Error, msg)
@@ -201,7 +196,6 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 		}
 	}
 
-	// Prepend base fields to user-provided fields
 	allFields := append(h.baseFields, fields...)
 
 	if h.otelLogger != nil {
@@ -226,12 +220,10 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
 
-	// Add function name if provided
 	if h.function != "" {
 		record.AddAttributes(otellog.String("function", h.function))
 	}
 
-	// Add fields
 	for _, field := range fields {
 		switch v := field.Value.(type) {
 		case string:
@@ -247,7 +239,6 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 		case time.Duration:
 			record.AddAttributes(otellog.String(field.Key, v.String()))
 		default:
-			// For other types, convert to string using fmt.Sprint
 			record.AddAttributes(otellog.String(field.Key, fmt.Sprint(v)))
 		}
 	}

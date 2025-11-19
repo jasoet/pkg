@@ -92,7 +92,6 @@ func StartSpan(ctx context.Context, tracerName, operationName string, opts ...Sp
 		opt(cfg)
 	}
 
-	// Use TracerProvider from config if available, otherwise use global provider
 	var tracer trace.Tracer
 	if config := ConfigFromContext(ctx); config != nil && config.TracerProvider != nil {
 		tracer = config.TracerProvider.Tracer(tracerName)
@@ -199,14 +198,10 @@ func (h *SpanHelper) AddEvent(name string, fields ...Field) *SpanHelper {
 //	    F("key", cacheKey),
 //	    F("reason", "expired"))
 func (h *SpanHelper) LogEvent(logger *LogHelper, eventName string, fields ...Field) *SpanHelper {
-	// Add span event
 	h.AddEvent(eventName, fields...)
-
-	// Add log entry if logger provided
 	if logger != nil {
 		logger.Info(eventName, fields...)
 	}
-
 	return h
 }
 
@@ -304,7 +299,6 @@ func (lc *LayerContext) End() {
 //	    return lc.Error(err, "failed to save", F("id", id))
 //	}
 func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
-	// Add fields as span attributes
 	if len(fields) > 0 {
 		lc.Span.AddAttributes(fields...)
 	}
@@ -323,7 +317,6 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 //
 //	lc.Success("User created successfully", F("user_id", userID))
 func (lc *LayerContext) Success(msg string, fields ...Field) {
-	// Add fields as span attributes
 	if len(fields) > 0 {
 		lc.Span.AddAttributes(fields...)
 	}
