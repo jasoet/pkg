@@ -226,14 +226,14 @@ func (h *SpanHelper) Error(err error, message string) error {
 	return err
 }
 
-// Success marks the span as successful.
+// Success marks the span as successful with an optional message.
 // This is optional but provides explicit success signaling.
 //
 // Example:
 //
-//	span.Success()
-func (h *SpanHelper) Success() {
-	h.span.SetStatus(codes.Ok, "")
+//	span.Success("operation completed")
+func (h *SpanHelper) Success(message string) {
+	h.span.SetStatus(codes.Ok, message)
 }
 
 // End finishes the span. Always defer this after creating a span.
@@ -317,7 +317,7 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 // Success marks the operation as successful in both span and logs.
 // Base fields from StartX are automatically included in the log via the Logger.
 // Additional fields are also added as span attributes for correlation.
-// The message is added as a span event named "success" for observability.
+// The message is used as the span status message for consistency with Error().
 //
 // Example:
 //
@@ -327,12 +327,10 @@ func (lc *LayerContext) Success(msg string, fields ...Field) {
 	if len(fields) > 0 {
 		lc.Span.AddAttributes(fields...)
 	}
-	// Add success message as span event
-	lc.Span.AddEvent("success", F("message", msg))
 	if lc.Logger != nil {
 		lc.Logger.Info(msg, fields...)
 	}
-	lc.Span.Success()
+	lc.Span.Success(msg)
 }
 
 // LayeredSpanHelper provides convenience methods for common span patterns across
