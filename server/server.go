@@ -10,13 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
-	"go.opentelemetry.io/otel/attribute"
-	otellog "go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
 type (
@@ -26,9 +20,6 @@ type (
 )
 
 // Config holds the HTTP server configuration.
-// BREAKING CHANGE from v1: Prometheus metrics replaced with OpenTelemetry.
-// Removed: EnableMetrics, MetricsPath, MetricsSubsystem
-// Added: OTelConfig
 type Config struct {
 	Port int
 
@@ -41,11 +32,6 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	EchoConfigurer EchoConfigurer
-
-	// OpenTelemetry configuration (optional - nil disables telemetry)
-	// Use otel.NewConfig("service-name") to get default logging
-	// Replaces EnableMetrics, MetricsPath, MetricsSubsystem from v1
-	OTelConfig *otel.Config
 }
 
 // DefaultConfig returns a default server configuration
@@ -55,7 +41,6 @@ func DefaultConfig(port int, operation Operation, shutdown Shutdown) Config {
 		Operation:       operation,
 		Shutdown:        shutdown,
 		ShutdownTimeout: 10 * time.Second,
-		OTelConfig:      nil, // Telemetry disabled by default
 	}
 }
 
@@ -68,33 +53,6 @@ type httpServer struct {
 func setupEcho(config Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
-
-	// OpenTelemetry logging middleware
-	// Note: Uses default stdout LoggerProvider from otel.NewConfig() if OTelConfig provided
-	// If OTelConfig is nil, logging is disabled
-	if config.OTelConfig != nil && config.OTelConfig.IsLoggingEnabled() {
-		e.Use(createLoggingMiddleware(config.OTelConfig))
-	}
-
-	// OpenTelemetry instrumentation (if configured)
-	if config.OTelConfig != nil {
-		// Add tracing middleware
-		if config.OTelConfig.IsTracingEnabled() {
-			serviceName := config.OTelConfig.ServiceName
-			if serviceName == "" {
-				serviceName = "http-server"
-			}
-
-			e.Use(otelecho.Middleware(serviceName,
-				otelecho.WithTracerProvider(config.OTelConfig.TracerProvider),
-			))
-		}
-
-		// Add metrics middleware
-		if config.OTelConfig.IsMetricsEnabled() {
-			e.Use(createMetricsMiddleware(config.OTelConfig))
-		}
-	}
 
 	// Add custom middleware
 	for _, m := range config.Middleware {
@@ -124,128 +82,6 @@ func setupEcho(config Config) *echo.Echo {
 	}
 
 	return e
-}
-
-// createLoggingMiddleware creates Echo middleware that logs HTTP requests via OpenTelemetry
-func createLoggingMiddleware(cfg *otel.Config) echo.MiddlewareFunc {
-	logger := cfg.GetLogger("server.http")
-
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			start := time.Now()
-			req := c.Request()
-
-			// Process request
-			err := next(c)
-
-			// Calculate duration
-			duration := time.Since(start)
-
-			// Prepare log record
-			severity := otellog.SeverityInfo
-			if err != nil || c.Response().Status >= 500 {
-				severity = otellog.SeverityError
-			} else if c.Response().Status >= 400 {
-				severity = otellog.SeverityWarn
-			}
-
-			// Create log attributes
-			attrs := []otellog.KeyValue{
-				otellog.String("http.method", req.Method),
-				otellog.String("http.route", c.Path()),
-				otellog.String("http.url", req.RequestURI),
-				otellog.Int("http.status_code", c.Response().Status),
-				otellog.Int64("http.request_size", req.ContentLength),
-				otellog.Int64("http.response_size", c.Response().Size),
-				otellog.Int64("http.duration_ms", duration.Milliseconds()),
-			}
-
-			if err != nil {
-				// Only use "error" attribute for 5xx server errors
-				// Use "message" for 4xx client errors to avoid Grafana categorizing them as errors
-				// Extract status code from HTTPError since Response.Status may not be set yet
-				statusCode := http.StatusInternalServerError // default to 500
-				var httpErr *echo.HTTPError
-				if errors.As(err, &httpErr) {
-					statusCode = httpErr.Code
-				}
-
-				if statusCode >= 500 {
-					attrs = append(attrs, otellog.String("error", err.Error()))
-				} else {
-					attrs = append(attrs, otellog.String("message", err.Error()))
-				}
-			}
-
-			// Emit log record
-			var logRecord otellog.Record
-			logRecord.SetTimestamp(start)
-			logRecord.SetSeverity(severity)
-			logRecord.SetBody(otellog.StringValue(fmt.Sprintf("%s %s", req.Method, req.RequestURI)))
-			logRecord.AddAttributes(attrs...)
-
-			logger.Emit(req.Context(), logRecord)
-
-			return err
-		}
-	}
-}
-
-// createMetricsMiddleware creates Echo middleware that records HTTP metrics via OpenTelemetry
-func createMetricsMiddleware(cfg *otel.Config) echo.MiddlewareFunc {
-	meter := cfg.GetMeter("server")
-
-	// Create metrics instruments
-	// Note: errors are intentionally ignored as they only occur with nil meter (checked by GetMeter)
-	requestCounter, _ := meter.Int64Counter( //nolint:errcheck
-		"http.server.request.count",
-		metric.WithDescription("Total number of HTTP requests"),
-		metric.WithUnit("{request}"),
-	)
-
-	requestDuration, _ := meter.Float64Histogram( //nolint:errcheck
-		"http.server.request.duration",
-		metric.WithDescription("HTTP request duration"),
-		metric.WithUnit("ms"),
-	)
-
-	activeRequests, _ := meter.Int64UpDownCounter( //nolint:errcheck
-		"http.server.active_requests",
-		metric.WithDescription("Number of active HTTP requests"),
-		metric.WithUnit("{request}"),
-	)
-
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			start := time.Now()
-			ctx := c.Request().Context()
-
-			// Increment active requests
-			activeRequests.Add(ctx, 1)
-
-			// Process request
-			err := next(c)
-
-			// Decrement active requests
-			activeRequests.Add(ctx, -1)
-
-			// Calculate duration
-			duration := time.Since(start).Milliseconds()
-
-			// Prepare attributes
-			attrs := []attribute.KeyValue{
-				semconv.HTTPRequestMethodKey.String(c.Request().Method),
-				semconv.HTTPRouteKey.String(c.Path()),
-				semconv.HTTPResponseStatusCodeKey.Int(c.Response().Status),
-			}
-
-			// Record metrics
-			requestCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
-			requestDuration.Record(ctx, float64(duration), metric.WithAttributes(attrs...))
-
-			return err
-		}
-	}
 }
 
 func newHttpServer(config Config) *httpServer {
