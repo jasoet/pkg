@@ -8,12 +8,12 @@ import (
 
 	"github.com/jasoet/pkg/v2/logging"
 	"github.com/rs/zerolog"
-	zlog "github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // LogLevel is an alias for logging.LogLevel for convenience.
@@ -26,7 +26,6 @@ type LoggerProviderOption func(*loggerProviderConfig)
 // loggerProviderConfig holds configuration for logger provider
 type loggerProviderConfig struct {
 	serviceName   string
-	debug         bool
 	consoleOutput bool
 	otlpEndpoint  string
 	otlpInsecure  bool
@@ -50,7 +49,7 @@ func WithOTLPEndpoint(endpoint string, insecure bool) LoggerProviderOption {
 
 // WithLogLevel sets the log level for console output
 // Valid levels: "debug", "info", "warn", "error", "none"
-// If not specified, defaults to "info" (or "debug" if debug parameter is true)
+// If not specified, defaults to "info"
 func WithLogLevel(level LogLevel) LoggerProviderOption {
 	return func(cfg *loggerProviderConfig) {
 		cfg.logLevel = level
@@ -62,7 +61,6 @@ func WithLogLevel(level LogLevel) LoggerProviderOption {
 //
 // Parameters:
 //   - serviceName: Name of the service
-//   - debug: If true, sets log level to Debug, otherwise Info
 //   - opts: Optional configuration options
 //
 // Returns:
@@ -71,13 +69,13 @@ func WithLogLevel(level LogLevel) LoggerProviderOption {
 //
 // Example:
 //
-//	provider, err := otel.NewLoggerProviderWithOptions("my-service", false,
+//	provider, err := otel.NewLoggerProviderWithOptions("my-service",
+//	    otel.WithLogLevel(logging.LogLevelDebug),
 //	    otel.WithOTLPEndpoint("localhost:4318", true),
 //	    otel.WithConsoleOutput(true))
-func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...LoggerProviderOption) (log.LoggerProvider, error) {
+func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOption) (log.LoggerProvider, error) {
 	cfg := &loggerProviderConfig{
 		serviceName:   serviceName,
-		debug:         debug,
 		consoleOutput: true, // Default: keep console output
 	}
 
@@ -86,39 +84,13 @@ func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...Logger
 	}
 
 	// Determine the effective log level
-	// Priority: explicit logLevel > debug flag > default (info)
+	// Default to info if not specified
 	effectiveLevel := cfg.logLevel
 	if effectiveLevel == "" {
-		if debug {
-			effectiveLevel = logging.LogLevelDebug
-		} else {
-			effectiveLevel = logging.LogLevelInfo
-		}
+		effectiveLevel = logging.LogLevelInfo
 	}
 
-	// If no OTLP endpoint, fall back to console-only (existing behavior)
-	if cfg.otlpEndpoint == "" {
-		return logging.NewLoggerProviderWithLevel(serviceName, effectiveLevel), nil
-	}
-
-	// Setup console logging if enabled (for local development)
-	if cfg.consoleOutput {
-		setupZerologConsole(serviceName, effectiveLevel)
-	}
-
-	// Create OTLP log exporter
 	ctx := context.Background()
-	exporterOpts := []otlploghttp.Option{
-		otlploghttp.WithEndpoint(cfg.otlpEndpoint),
-	}
-	if cfg.otlpInsecure {
-		exporterOpts = append(exporterOpts, otlploghttp.WithInsecure())
-	}
-
-	exporter, err := otlploghttp.New(ctx, exporterOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OTLP log exporter: %w", err)
-	}
 
 	// Create resource with service name
 	res, err := resource.New(ctx,
@@ -130,37 +102,183 @@ func NewLoggerProviderWithOptions(serviceName string, debug bool, opts ...Logger
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	// Create OTel LoggerProvider with batch processor
-	provider := sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
+	// Collect all processors
+	var processors []sdklog.Processor
+
+	// Add console processor if enabled
+	if cfg.consoleOutput {
+		consoleExporter := newConsoleExporter(serviceName, effectiveLevel)
+		processors = append(processors, sdklog.NewSimpleProcessor(consoleExporter))
+	}
+
+	// Add OTLP processor if endpoint is configured
+	if cfg.otlpEndpoint != "" {
+		exporterOpts := []otlploghttp.Option{
+			otlploghttp.WithEndpoint(cfg.otlpEndpoint),
+		}
+		if cfg.otlpInsecure {
+			exporterOpts = append(exporterOpts, otlploghttp.WithInsecure())
+		}
+
+		otlpExporter, err := otlploghttp.New(ctx, exporterOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create OTLP log exporter: %w", err)
+		}
+
+		processors = append(processors, sdklog.NewBatchProcessor(otlpExporter))
+	}
+
+	// If no processors configured, fall back to console-only
+	if len(processors) == 0 {
+		consoleExporter := newConsoleExporter(serviceName, effectiveLevel)
+		processors = append(processors, sdklog.NewSimpleProcessor(consoleExporter))
+	}
+
+	// Create OTel LoggerProvider with all processors
+	providerOpts := []sdklog.LoggerProviderOption{
 		sdklog.WithResource(res),
-	)
+	}
+	for _, processor := range processors {
+		providerOpts = append(providerOpts, sdklog.WithProcessor(processor))
+	}
+
+	provider := sdklog.NewLoggerProvider(providerOpts...)
 
 	return provider, nil
 }
 
-// setupZerologConsole configures zerolog for console output with specified log level
-func setupZerologConsole(serviceName string, logLevel LogLevel) {
-	var lvl zerolog.Level
-	switch logLevel {
-	case logging.LogLevelDebug:
-		lvl = zerolog.DebugLevel
-	case logging.LogLevelInfo:
-		lvl = zerolog.InfoLevel
-	case logging.LogLevelWarn:
-		lvl = zerolog.WarnLevel
-	case logging.LogLevelError:
-		lvl = zerolog.ErrorLevel
-	case logging.LogLevelNone:
-		lvl = zerolog.Disabled
-	default:
-		lvl = zerolog.InfoLevel
-	}
+// consoleExporter implements sdklog.Exporter for console output via zerolog
+type consoleExporter struct {
+	logger zerolog.Logger
+}
 
-	zlog.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+// newConsoleExporter creates a console exporter with zerolog (OTel-aware version)
+func newConsoleExporter(serviceName string, logLevel LogLevel) *consoleExporter {
+	lvl := logLevelToZerolog(logLevel)
+
+	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
 		With().
 		Timestamp().
 		Str("service", serviceName).
 		Int("pid", os.Getpid()).
-		Logger().Level(lvl)
+		Logger().
+		Level(lvl)
+
+	return &consoleExporter{logger: logger}
+}
+
+// Export implements sdklog.Exporter interface
+func (e *consoleExporter) Export(ctx context.Context, records []sdklog.Record) error {
+	for _, record := range records {
+		event := severityToZerologEvent(e.logger, record.Severity())
+
+		// Add timestamp
+		if !record.Timestamp().IsZero() {
+			event = event.Time("timestamp", record.Timestamp())
+		}
+
+		// Add severity text if present
+		if severityText := record.SeverityText(); severityText != "" {
+			event = event.Str("severity", severityText)
+		}
+
+		// Extract trace context for log-span correlation
+		if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
+			event = event.
+				Str("trace_id", spanCtx.TraceID().String()).
+				Str("span_id", spanCtx.SpanID().String())
+
+			if spanCtx.IsSampled() {
+				event = event.Str("trace_flags", "01")
+			} else {
+				event = event.Str("trace_flags", "00")
+			}
+		}
+
+		// Add all attributes
+		record.WalkAttributes(func(kv log.KeyValue) bool {
+			event = addAttributeToEvent(event, kv)
+			return true
+		})
+
+		// Get message and emit
+		message := record.Body().AsString()
+		if message == "" {
+			message = "log entry"
+		}
+		event.Msg(message)
+	}
+
+	return nil
+}
+
+// Shutdown implements sdklog.Exporter interface
+func (e *consoleExporter) Shutdown(ctx context.Context) error {
+	return nil
+}
+
+// ForceFlush implements sdklog.Exporter interface
+func (e *consoleExporter) ForceFlush(ctx context.Context) error {
+	return nil
+}
+
+// logLevelToZerolog converts LogLevel to zerolog.Level
+func logLevelToZerolog(level LogLevel) zerolog.Level {
+	switch level {
+	case logging.LogLevelDebug:
+		return zerolog.DebugLevel
+	case logging.LogLevelInfo:
+		return zerolog.InfoLevel
+	case logging.LogLevelWarn:
+		return zerolog.WarnLevel
+	case logging.LogLevelError:
+		return zerolog.ErrorLevel
+	case logging.LogLevelNone:
+		return zerolog.Disabled
+	default:
+		return zerolog.InfoLevel
+	}
+}
+
+// severityToZerologEvent maps OTel severity to zerolog event
+func severityToZerologEvent(logger zerolog.Logger, severity log.Severity) *zerolog.Event {
+	switch {
+	case severity >= log.SeverityFatal:
+		return logger.Fatal()
+	case severity >= log.SeverityError:
+		return logger.Error()
+	case severity >= log.SeverityWarn:
+		return logger.Warn()
+	case severity >= log.SeverityInfo:
+		return logger.Info()
+	case severity >= log.SeverityDebug:
+		return logger.Debug()
+	default:
+		return logger.Trace()
+	}
+}
+
+// addAttributeToEvent adds a log attribute to zerolog event
+func addAttributeToEvent(event *zerolog.Event, kv log.KeyValue) *zerolog.Event {
+	key := kv.Key
+	value := kv.Value
+
+	switch value.Kind() {
+	case log.KindBool:
+		return event.Bool(key, value.AsBool())
+	case log.KindInt64:
+		return event.Int64(key, value.AsInt64())
+	case log.KindFloat64:
+		return event.Float64(key, value.AsFloat64())
+	case log.KindString:
+		return event.Str(key, value.AsString())
+	case log.KindBytes:
+		return event.Bytes(key, value.AsBytes())
+	case log.KindSlice:
+		return event.Interface(key, value.AsSlice())
+	case log.KindMap:
+		return event.Interface(key, value.AsMap())
+	default:
+		return event.Interface(key, value.AsString())
+	}
 }

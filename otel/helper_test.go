@@ -182,7 +182,8 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 
 	t.Run("warn level filters info and debug", func(t *testing.T) {
 		// Create logger provider with WARN level
-		loggerProvider := logging.NewLoggerProviderWithLevel("test-service", logging.LogLevelWarn)
+		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
+			WithLogLevel(logging.LogLevelWarn))
 
 		cfg := &Config{
 			ServiceName:    "test-service",
@@ -201,7 +202,8 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 	})
 
 	t.Run("info level filters debug only", func(t *testing.T) {
-		loggerProvider := logging.NewLoggerProviderWithLevel("test-service", logging.LogLevelInfo)
+		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
+			WithLogLevel(logging.LogLevelInfo))
 
 		cfg := &Config{
 			ServiceName:    "test-service",
@@ -220,7 +222,8 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 	})
 
 	t.Run("error level filters all except errors", func(t *testing.T) {
-		loggerProvider := logging.NewLoggerProviderWithLevel("test-service", logging.LogLevelError)
+		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
+			WithLogLevel(logging.LogLevelError))
 
 		cfg := &Config{
 			ServiceName:    "test-service",
