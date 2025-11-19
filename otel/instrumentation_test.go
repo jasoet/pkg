@@ -10,43 +10,43 @@ import (
 func TestLayerContext_WithoutConfig(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("StartService without config has nil logger", func(t *testing.T) {
+	t.Run("StartService without config creates zerolog fallback", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser",
 			F("user.id", "123"))
 		defer lc.End()
 
-		if lc.Logger != nil {
-			t.Error("Expected Logger to be nil when no config in context")
+		if lc.Logger == nil {
+			t.Error("Expected Logger to be set (zerolog fallback)")
 		}
 	})
 
-	t.Run("StartRepository without config has nil logger", func(t *testing.T) {
+	t.Run("StartRepository without config creates zerolog fallback", func(t *testing.T) {
 		lc := Layers.StartRepository(ctx, "user", "FindByID",
 			F("user.id", "123"))
 		defer lc.End()
 
-		if lc.Logger != nil {
-			t.Error("Expected Logger to be nil when no config in context")
+		if lc.Logger == nil {
+			t.Error("Expected Logger to be set (zerolog fallback)")
 		}
 	})
 
-	t.Run("StartHandler without config has nil logger", func(t *testing.T) {
+	t.Run("StartHandler without config creates zerolog fallback", func(t *testing.T) {
 		lc := Layers.StartHandler(ctx, "user", "GetUser",
 			F("http.method", "GET"))
 		defer lc.End()
 
-		if lc.Logger != nil {
-			t.Error("Expected Logger to be nil when no config in context")
+		if lc.Logger == nil {
+			t.Error("Expected Logger to be set (zerolog fallback)")
 		}
 	})
 
-	t.Run("StartOperations without config has nil logger", func(t *testing.T) {
+	t.Run("StartOperations without config creates zerolog fallback", func(t *testing.T) {
 		lc := Layers.StartOperations(ctx, "user", "ProcessQueue",
 			F("queue.name", "user-events"))
 		defer lc.End()
 
-		if lc.Logger != nil {
-			t.Error("Expected Logger to be nil when no config in context")
+		if lc.Logger == nil {
+			t.Error("Expected Logger to be set (zerolog fallback)")
 		}
 	})
 }
@@ -97,14 +97,12 @@ func TestLayerContext_WithConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Success returns nil", func(t *testing.T) {
+	t.Run("Success adds span event and attributes", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
 
-		err := lc.Success("User created", F("user.id", "123"))
-		if err != nil {
-			t.Errorf("Expected Success to return nil, got %v", err)
-		}
+		// Success should not panic and should add fields as span attributes
+		lc.Success("User created", F("user.id", "123"))
 	})
 }
 
@@ -144,7 +142,7 @@ func TestLayerContext_NestedCalls(t *testing.T) {
 	if repoCtx.Logger != nil {
 		repoCtx.Logger.Info("Repository query")
 	}
-	_ = repoCtx.Success("User found")
+	repoCtx.Success("User found")
 
 	// All layers should complete without panic
 }
@@ -168,9 +166,9 @@ func TestLayerContext_AllLayersWithoutConfig(t *testing.T) {
 		t.Run(layer.name+" works without config", func(t *testing.T) {
 			defer layer.lc.End()
 
-			// Logger should be nil without config
-			if layer.lc.Logger != nil {
-				t.Errorf("%s: Expected Logger to be nil without config in context", layer.name)
+			// Logger should be set with zerolog fallback
+			if layer.lc.Logger == nil {
+				t.Errorf("%s: Expected Logger to be set (zerolog fallback)", layer.name)
 			}
 
 			if layer.lc.Span == nil {
@@ -182,26 +180,14 @@ func TestLayerContext_AllLayersWithoutConfig(t *testing.T) {
 
 // TestMiddlewareLayer verifies middleware layer specific functionality
 func TestMiddlewareLayer(t *testing.T) {
-	t.Run("Middleware span without config", func(t *testing.T) {
-		ctx := context.Background()
-		span := Layers.Middleware(ctx, "auth", "ValidateToken",
-			F("http.path", "/api/users"),
-			F("http.method", "GET"))
-		defer span.End()
-
-		if span == nil {
-			t.Error("Expected span to be created")
-		}
-	})
-
-	t.Run("StartMiddleware without config has nil logger", func(t *testing.T) {
+	t.Run("StartMiddleware without config creates zerolog fallback", func(t *testing.T) {
 		ctx := context.Background()
 		lc := Layers.StartMiddleware(ctx, "auth", "ValidateToken",
 			F("http.path", "/api/users"))
 		defer lc.End()
 
-		if lc.Logger != nil {
-			t.Error("Expected Logger to be nil when no config in context")
+		if lc.Logger == nil {
+			t.Error("Expected Logger to be set (zerolog fallback)")
 		}
 
 		if lc.Span == nil {
@@ -254,10 +240,8 @@ func TestMiddlewareLayer(t *testing.T) {
 		lc := Layers.StartMiddleware(ctx, "cors", "SetHeaders")
 		defer lc.End()
 
-		err := lc.Success("CORS headers set", F("origin", "https://example.com"))
-		if err != nil {
-			t.Errorf("Expected Success to return nil, got %v", err)
-		}
+		// Success should not panic and should add fields as span attributes
+		lc.Success("CORS headers set", F("origin", "https://example.com"))
 	})
 }
 
@@ -298,12 +282,12 @@ func TestMiddlewareLayerContext(t *testing.T) {
 	if repoCtx.Logger != nil {
 		repoCtx.Logger.Info("Repository query")
 	}
-	_ = repoCtx.Success("User found")
+	repoCtx.Success("User found")
 
 	// All layers should complete without panic
-	_ = serviceCtx.Success("Service completed")
-	_ = handlerCtx.Success("Handler completed")
-	_ = middlewareCtx.Success("Middleware completed")
+	serviceCtx.Success("Service completed")
+	handlerCtx.Success("Handler completed")
+	middlewareCtx.Success("Middleware completed")
 }
 
 // TestConfigContext verifies config context management

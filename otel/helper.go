@@ -3,10 +3,10 @@ package otel
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/codes"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/trace"
@@ -48,6 +48,7 @@ type LogHelper struct {
 	function   string
 	logger     zerolog.Logger
 	otelLogger otellog.Logger
+	baseFields []Field // Base fields included in every log call
 }
 
 // NewLogHelper creates a logger that uses OTel when available, zerolog otherwise.
@@ -78,17 +79,47 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 		function: function,
 	}
 
-	if function != "" {
-		h.logger = log.With().Str("scopeName", scopeName).Str("function", function).Logger()
-	} else {
-		h.logger = log.Logger
-	}
-
 	if config != nil && config.IsLoggingEnabled() {
 		h.otelLogger = config.GetLogger(scopeName)
+	} else {
+		serviceName := scopeName
+		if config != nil && config.ServiceName != "" {
+			serviceName = config.ServiceName
+		}
+
+		loggerCtx := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+			With().
+			Timestamp().
+			Str("service", serviceName).
+			Int("pid", os.Getpid())
+
+		if function != "" {
+			loggerCtx = loggerCtx.Str("function", function)
+		}
+
+		h.logger = loggerCtx.Logger()
 	}
 
 	return h
+}
+
+// WithFields returns a new LogHelper with additional base fields.
+// These fields will be automatically included in every log call.
+//
+// Example:
+//
+//	logger := otel.NewLogHelper(ctx, cfg, "service.user", "").
+//	    WithFields(F("user.id", userID), F("action", "create"))
+//	logger.Info("Processing request") // Includes user.id and action
+func (h *LogHelper) WithFields(fields ...Field) *LogHelper {
+	newHelper := &LogHelper{
+		ctx:        h.ctx,
+		function:   h.function,
+		logger:     h.logger,
+		otelLogger: h.otelLogger,
+		baseFields: append(h.baseFields, fields...),
+	}
+	return newHelper
 }
 
 // Debug logs a debug-level message with optional fields.
@@ -98,16 +129,7 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 //
 //	logger.Debug("Processing request", F("request_id", reqID), F("user", userID))
 func (h *LogHelper) Debug(msg string, fields ...Field) {
-	if h.otelLogger != nil {
-		params := otellog.EnabledParameters{Severity: otellog.SeverityDebug}
-		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(otellog.SeverityDebug, msg, fields...)
-		}
-	} else {
-		event := h.logger.Debug()
-		h.addFields(event, fields...)
-		event.Msg(msg)
-	}
+	h.log(otellog.SeverityDebug, h.logger.Debug, msg, fields...)
 }
 
 // Info logs an info-level message with optional fields.
@@ -117,16 +139,7 @@ func (h *LogHelper) Debug(msg string, fields ...Field) {
 //
 //	logger.Info("User logged in", F("user_id", 123), F("role", "admin"))
 func (h *LogHelper) Info(msg string, fields ...Field) {
-	if h.otelLogger != nil {
-		params := otellog.EnabledParameters{Severity: otellog.SeverityInfo}
-		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(otellog.SeverityInfo, msg, fields...)
-		}
-	} else {
-		event := h.logger.Info()
-		h.addFields(event, fields...)
-		event.Msg(msg)
-	}
+	h.log(otellog.SeverityInfo, h.logger.Info, msg, fields...)
 }
 
 // Warn logs a warning-level message with optional fields.
@@ -136,14 +149,21 @@ func (h *LogHelper) Info(msg string, fields ...Field) {
 //
 //	logger.Warn("Rate limit approaching", F("current", 95), F("limit", 100))
 func (h *LogHelper) Warn(msg string, fields ...Field) {
+	h.log(otellog.SeverityWarn, h.logger.Warn, msg, fields...)
+}
+
+// log is the internal method that handles both OTel and zerolog logging
+func (h *LogHelper) log(severity otellog.Severity, zerologFn func() *zerolog.Event, msg string, fields ...Field) {
+	allFields := append(h.baseFields, fields...)
+
 	if h.otelLogger != nil {
-		params := otellog.EnabledParameters{Severity: otellog.SeverityWarn}
+		params := otellog.EnabledParameters{Severity: severity}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(otellog.SeverityWarn, msg, fields...)
+			h.emitOTel(severity, msg, allFields...)
 		}
 	} else {
-		event := h.logger.Warn()
-		h.addFields(event, fields...)
+		event := zerologFn()
+		h.addFields(event, allFields...)
 		event.Msg(msg)
 	}
 }
@@ -168,23 +188,28 @@ func (h *LogHelper) Span() trace.Span {
 //
 //	logger.Error(err, "Failed to process request", F("request_id", reqID), F("attempt", 3))
 func (h *LogHelper) Error(err error, msg string, fields ...Field) {
-	// Set span status to error if we have an active span
 	span := h.Span()
 	if span.IsRecording() {
 		span.SetStatus(codes.Error, msg)
-		span.RecordError(err)
+		if err != nil {
+			span.RecordError(err)
+		}
 	}
+
+	allFields := append(h.baseFields, fields...)
 
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: otellog.SeverityError}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			errorField := F("error", err.Error())
-			allFields := append([]Field{errorField}, fields...)
+			if err != nil {
+				errorField := F("error", err.Error())
+				allFields = append([]Field{errorField}, allFields...)
+			}
 			h.emitOTel(otellog.SeverityError, msg, allFields...)
 		}
 	} else {
 		event := h.logger.Error().Err(err)
-		h.addFields(event, fields...)
+		h.addFields(event, allFields...)
 		event.Msg(msg)
 	}
 }
@@ -195,12 +220,10 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
 
-	// Add function name if provided
 	if h.function != "" {
 		record.AddAttributes(otellog.String("function", h.function))
 	}
 
-	// Add fields
 	for _, field := range fields {
 		switch v := field.Value.(type) {
 		case string:
@@ -216,7 +239,6 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 		case time.Duration:
 			record.AddAttributes(otellog.String(field.Key, v.String()))
 		default:
-			// For other types, convert to string using fmt.Sprint
 			record.AddAttributes(otellog.String(field.Key, fmt.Sprint(v)))
 		}
 	}

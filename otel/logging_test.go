@@ -141,25 +141,21 @@ func TestNewLoggerProviderWithOptions_NoOTLP(t *testing.T) {
 	tests := []struct {
 		name        string
 		serviceName string
-		debug       bool
 		opts        []LoggerProviderOption
 	}{
 		{
 			name:        "debug mode without OTLP",
 			serviceName: "test-service",
-			debug:       true,
-			opts:        []LoggerProviderOption{},
+			opts:        []LoggerProviderOption{WithLogLevel(logging.LogLevelDebug)},
 		},
 		{
 			name:        "info mode without OTLP",
 			serviceName: "test-service",
-			debug:       false,
 			opts:        []LoggerProviderOption{},
 		},
 		{
 			name:        "explicit log level without OTLP",
 			serviceName: "test-service",
-			debug:       false,
 			opts: []LoggerProviderOption{
 				WithLogLevel(logging.LogLevelWarn),
 			},
@@ -168,7 +164,7 @@ func TestNewLoggerProviderWithOptions_NoOTLP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider, err := NewLoggerProviderWithOptions(tt.serviceName, tt.debug, tt.opts...)
+			provider, err := NewLoggerProviderWithOptions(tt.serviceName, tt.opts...)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -187,7 +183,6 @@ func TestNewLoggerProviderWithOptions_WithOTLP(t *testing.T) {
 		// Use an invalid endpoint that will cause immediate failure
 		_, err := NewLoggerProviderWithOptions(
 			"test-service",
-			false,
 			WithOTLPEndpoint("", true), // Empty endpoint should fail
 		)
 		// We expect this to fallback to console-only since endpoint is empty
@@ -205,7 +200,6 @@ func TestNewLoggerProviderWithOptions_WithOTLP(t *testing.T) {
 		// This should create the provider even if connection fails later
 		_, err := NewLoggerProviderWithOptions(
 			serviceName,
-			false,
 			WithOTLPEndpoint(endpoint, true),
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelInfo),
@@ -221,34 +215,24 @@ func TestNewLoggerProviderWithOptions_WithOTLP(t *testing.T) {
 // TestNewLoggerProviderWithOptions_LogLevelPriority tests log level priority
 func TestNewLoggerProviderWithOptions_LogLevelPriority(t *testing.T) {
 	tests := []struct {
-		name            string
-		debug           bool
-		explicitLevel   LogLevel
-		expectedDefault bool // true if we expect default behavior
+		name          string
+		explicitLevel LogLevel
 	}{
 		{
-			name:            "explicit level overrides debug true",
-			debug:           true,
-			explicitLevel:   logging.LogLevelError,
-			expectedDefault: false,
+			name:          "explicit error level",
+			explicitLevel: logging.LogLevelError,
 		},
 		{
-			name:            "explicit level overrides debug false",
-			debug:           false,
-			explicitLevel:   logging.LogLevelDebug,
-			expectedDefault: false,
+			name:          "explicit debug level",
+			explicitLevel: logging.LogLevelDebug,
 		},
 		{
-			name:            "debug true without explicit level",
-			debug:           true,
-			explicitLevel:   "",
-			expectedDefault: true,
+			name:          "explicit warn level",
+			explicitLevel: logging.LogLevelWarn,
 		},
 		{
-			name:            "debug false without explicit level",
-			debug:           false,
-			explicitLevel:   "",
-			expectedDefault: true,
+			name:          "default level (info)",
+			explicitLevel: "",
 		},
 	}
 
@@ -259,7 +243,7 @@ func TestNewLoggerProviderWithOptions_LogLevelPriority(t *testing.T) {
 				opts = append(opts, WithLogLevel(tt.explicitLevel))
 			}
 
-			provider, err := NewLoggerProviderWithOptions("test-service", tt.debug, opts...)
+			provider, err := NewLoggerProviderWithOptions("test-service", opts...)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -277,7 +261,6 @@ func TestNewLoggerProviderWithOptions_MultipleOptions(t *testing.T) {
 	t.Run("all options combined without OTLP", func(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
-			false,
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelWarn),
 		)
@@ -293,7 +276,6 @@ func TestNewLoggerProviderWithOptions_MultipleOptions(t *testing.T) {
 	t.Run("disable console output", func(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
-			false,
 			WithConsoleOutput(false),
 			WithLogLevel(logging.LogLevelInfo),
 		)
@@ -312,7 +294,6 @@ func TestLoggerProviderConfig_Defaults(t *testing.T) {
 	t.Run("default config values", func(t *testing.T) {
 		cfg := &loggerProviderConfig{
 			serviceName:   "test-service",
-			debug:         false,
 			consoleOutput: true, // Default value
 		}
 
@@ -369,7 +350,6 @@ func TestSetupZerologConsole(t *testing.T) {
 			// This indirectly tests setupZerologConsole
 			provider, err := NewLoggerProviderWithOptions(
 				"test-service",
-				false,
 				WithLogLevel(tt.logLevel),
 				WithConsoleOutput(true),
 			)
@@ -390,7 +370,6 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 		// Typical local development: console output only, debug enabled
 		provider, err := NewLoggerProviderWithOptions(
 			"my-service",
-			true,
 			WithConsoleOutput(true),
 		)
 
@@ -412,7 +391,6 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 		// Production without OTLP: console output with specific log level
 		provider, err := NewLoggerProviderWithOptions(
 			"my-service",
-			false,
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelInfo),
 		)
@@ -429,7 +407,6 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 		// Silent mode: no console output, none log level
 		provider, err := NewLoggerProviderWithOptions(
 			"my-service",
-			false,
 			WithConsoleOutput(false),
 			WithLogLevel(logging.LogLevelNone),
 		)
@@ -446,7 +423,7 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 // TestLoggerProviderCompatibility tests that the provider implements the interface correctly
 func TestLoggerProviderCompatibility(t *testing.T) {
 	t.Run("provider implements log.LoggerProvider", func(t *testing.T) {
-		provider, err := NewLoggerProviderWithOptions("test-service", false)
+		provider, err := NewLoggerProviderWithOptions("test-service")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -456,7 +433,7 @@ func TestLoggerProviderCompatibility(t *testing.T) {
 	})
 
 	t.Run("logger can be obtained from provider", func(t *testing.T) {
-		provider, err := NewLoggerProviderWithOptions("test-service", false)
+		provider, err := NewLoggerProviderWithOptions("test-service")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -474,7 +451,7 @@ func TestLoggerProviderCompatibility(t *testing.T) {
 // TestNewLoggerProviderWithOptions_EmptyServiceName tests behavior with empty service name
 func TestNewLoggerProviderWithOptions_EmptyServiceName(t *testing.T) {
 	t.Run("empty service name", func(t *testing.T) {
-		provider, err := NewLoggerProviderWithOptions("", false)
+		provider, err := NewLoggerProviderWithOptions("")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -489,7 +466,6 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 	t.Run("chain multiple options", func(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
-			false,
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelDebug),
 		)
@@ -506,7 +482,6 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 		// Multiple log level options - last one should win
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
-			false,
 			WithLogLevel(logging.LogLevelDebug),
 			WithLogLevel(logging.LogLevelError), // This should win
 		)
@@ -524,7 +499,7 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 func TestLoggerProvider_NoopComparison(t *testing.T) {
 	t.Run("created provider vs noop provider", func(t *testing.T) {
 		// Create our provider
-		ourProvider, err := NewLoggerProviderWithOptions("test-service", false)
+		ourProvider, err := NewLoggerProviderWithOptions("test-service")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
