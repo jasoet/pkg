@@ -48,6 +48,7 @@ type LogHelper struct {
 	function   string
 	logger     zerolog.Logger
 	otelLogger otellog.Logger
+	baseFields []Field // Base fields included in every log call
 }
 
 // NewLogHelper creates a logger that uses OTel when available, zerolog otherwise.
@@ -105,6 +106,25 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 	return h
 }
 
+// WithFields returns a new LogHelper with additional base fields.
+// These fields will be automatically included in every log call.
+//
+// Example:
+//
+//	logger := otel.NewLogHelper(ctx, cfg, "service.user", "").
+//	    WithFields(F("user.id", userID), F("action", "create"))
+//	logger.Info("Processing request") // Includes user.id and action
+func (h *LogHelper) WithFields(fields ...Field) *LogHelper {
+	newHelper := &LogHelper{
+		ctx:        h.ctx,
+		function:   h.function,
+		logger:     h.logger,
+		otelLogger: h.otelLogger,
+		baseFields: append(h.baseFields, fields...),
+	}
+	return newHelper
+}
+
 // Debug logs a debug-level message with optional fields.
 // If OTel is enabled, automatically adds trace_id and span_id.
 //
@@ -137,14 +157,17 @@ func (h *LogHelper) Warn(msg string, fields ...Field) {
 
 // log is the internal method that handles both OTel and zerolog logging
 func (h *LogHelper) log(severity otellog.Severity, zerologFn func() *zerolog.Event, msg string, fields ...Field) {
+	// Prepend base fields to user-provided fields
+	allFields := append(h.baseFields, fields...)
+
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: severity}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(severity, msg, fields...)
+			h.emitOTel(severity, msg, allFields...)
 		}
 	} else {
 		event := zerologFn()
-		h.addFields(event, fields...)
+		h.addFields(event, allFields...)
 		event.Msg(msg)
 	}
 }
@@ -178,19 +201,21 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 		}
 	}
 
+	// Prepend base fields to user-provided fields
+	allFields := append(h.baseFields, fields...)
+
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: otellog.SeverityError}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			allFields := fields
 			if err != nil {
 				errorField := F("error", err.Error())
-				allFields = append([]Field{errorField}, fields...)
+				allFields = append([]Field{errorField}, allFields...)
 			}
 			h.emitOTel(otellog.SeverityError, msg, allFields...)
 		}
 	} else {
 		event := h.logger.Error().Err(err)
-		h.addFields(event, fields...)
+		h.addFields(event, allFields...)
 		event.Msg(msg)
 	}
 }
