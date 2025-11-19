@@ -112,16 +112,7 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 //
 //	logger.Debug("Processing request", F("request_id", reqID), F("user", userID))
 func (h *LogHelper) Debug(msg string, fields ...Field) {
-	if h.otelLogger != nil {
-		params := otellog.EnabledParameters{Severity: otellog.SeverityDebug}
-		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(otellog.SeverityDebug, msg, fields...)
-		}
-	} else {
-		event := h.logger.Debug()
-		h.addFields(event, fields...)
-		event.Msg(msg)
-	}
+	h.log(otellog.SeverityDebug, h.logger.Debug, msg, fields...)
 }
 
 // Info logs an info-level message with optional fields.
@@ -131,16 +122,7 @@ func (h *LogHelper) Debug(msg string, fields ...Field) {
 //
 //	logger.Info("User logged in", F("user_id", 123), F("role", "admin"))
 func (h *LogHelper) Info(msg string, fields ...Field) {
-	if h.otelLogger != nil {
-		params := otellog.EnabledParameters{Severity: otellog.SeverityInfo}
-		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(otellog.SeverityInfo, msg, fields...)
-		}
-	} else {
-		event := h.logger.Info()
-		h.addFields(event, fields...)
-		event.Msg(msg)
-	}
+	h.log(otellog.SeverityInfo, h.logger.Info, msg, fields...)
 }
 
 // Warn logs a warning-level message with optional fields.
@@ -150,13 +132,18 @@ func (h *LogHelper) Info(msg string, fields ...Field) {
 //
 //	logger.Warn("Rate limit approaching", F("current", 95), F("limit", 100))
 func (h *LogHelper) Warn(msg string, fields ...Field) {
+	h.log(otellog.SeverityWarn, h.logger.Warn, msg, fields...)
+}
+
+// log is the internal method that handles both OTel and zerolog logging
+func (h *LogHelper) log(severity otellog.Severity, zerologFn func() *zerolog.Event, msg string, fields ...Field) {
 	if h.otelLogger != nil {
-		params := otellog.EnabledParameters{Severity: otellog.SeverityWarn}
+		params := otellog.EnabledParameters{Severity: severity}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			h.emitOTel(otellog.SeverityWarn, msg, fields...)
+			h.emitOTel(severity, msg, fields...)
 		}
 	} else {
-		event := h.logger.Warn()
+		event := zerologFn()
 		h.addFields(event, fields...)
 		event.Msg(msg)
 	}
