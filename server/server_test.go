@@ -14,9 +14,38 @@ import (
 	"github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	otellog "go.opentelemetry.io/otel/log"
 	noopm "go.opentelemetry.io/otel/metric/noop"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 )
+
+// testProcessor is a simple processor that captures log records for testing
+type testProcessor struct {
+	mu      sync.Mutex
+	records []sdklog.Record
+}
+
+func (p *testProcessor) OnEmit(_ context.Context, record *sdklog.Record) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.records = append(p.records, record.Clone())
+	return nil
+}
+
+func (p *testProcessor) Shutdown(_ context.Context) error {
+	return nil
+}
+
+func (p *testProcessor) ForceFlush(_ context.Context) error {
+	return nil
+}
+
+func (p *testProcessor) Records() []sdklog.Record {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]sdklog.Record{}, p.records...)
+}
 
 func TestNewHttpServer(t *testing.T) {
 	// Test server initialization with default config
@@ -349,6 +378,96 @@ func TestCreateLoggingMiddleware(t *testing.T) {
 		e.ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("5xx errors use error attribute", func(t *testing.T) {
+		// Create a test processor to capture log records
+		processor := &testProcessor{}
+		loggerProvider := sdklog.NewLoggerProvider(
+			sdklog.WithProcessor(processor),
+		)
+
+		cfg := otel.NewConfig("test-service").WithLoggerProvider(loggerProvider)
+
+		e := echo.New()
+		e.Use(createLoggingMiddleware(cfg))
+		e.GET("/server-error", func(c echo.Context) error {
+			return echo.NewHTTPError(http.StatusInternalServerError, "internal server error")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/server-error", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+		// Wait for logs to be processed
+		time.Sleep(10 * time.Millisecond)
+
+		// Check that the log record has "error" attribute for 5xx
+		records := processor.Records()
+		assert.NotEmpty(t, records, "Should have recorded logs")
+		if len(records) > 0 {
+			record := records[0]
+			var hasErrorAttr bool
+			var hasMessageAttr bool
+			record.WalkAttributes(func(kv otellog.KeyValue) bool {
+				if kv.Key == "error" {
+					hasErrorAttr = true
+				}
+				if kv.Key == "message" {
+					hasMessageAttr = true
+				}
+				return true
+			})
+			assert.True(t, hasErrorAttr, "5xx errors should have 'error' attribute")
+			assert.False(t, hasMessageAttr, "5xx errors should not have 'message' attribute")
+		}
+	})
+
+	t.Run("4xx errors use message attribute instead of error", func(t *testing.T) {
+		// Create a test processor to capture log records
+		processor := &testProcessor{}
+		loggerProvider := sdklog.NewLoggerProvider(
+			sdklog.WithProcessor(processor),
+		)
+
+		cfg := otel.NewConfig("test-service").WithLoggerProvider(loggerProvider)
+
+		e := echo.New()
+		e.Use(createLoggingMiddleware(cfg))
+		e.GET("/client-error", func(c echo.Context) error {
+			return echo.NewHTTPError(http.StatusNotFound, "not found")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/client-error", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+
+		// Wait for logs to be processed
+		time.Sleep(10 * time.Millisecond)
+
+		// Check that the log record has "message" attribute for 4xx
+		records := processor.Records()
+		assert.NotEmpty(t, records, "Should have recorded logs")
+		if len(records) > 0 {
+			record := records[0]
+			var hasErrorAttr bool
+			var hasMessageAttr bool
+			record.WalkAttributes(func(kv otellog.KeyValue) bool {
+				if kv.Key == "error" {
+					hasErrorAttr = true
+				}
+				if kv.Key == "message" {
+					hasMessageAttr = true
+				}
+				return true
+			})
+			assert.False(t, hasErrorAttr, "4xx errors should not have 'error' attribute")
+			assert.True(t, hasMessageAttr, "4xx errors should have 'message' attribute")
+		}
 	})
 
 	t.Run("handles nil OTel config gracefully", func(t *testing.T) {
