@@ -2,6 +2,7 @@ package otel
 
 import (
 	"context"
+	"fmt"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,7 +21,8 @@ import (
 //	        otel.WithAttribute("entity.id", id))
 //	    defer span.End()
 //
-//	    if err := s.repository.Save(ctx, data); err != nil {
+//	    // IMPORTANT: Use span.Context() for child operations to maintain trace correlation
+//	    if err := s.repository.Save(span.Context(), data); err != nil {
 //	        return span.Error(err, "failed to save data")
 //	    }
 //
@@ -90,7 +92,13 @@ func StartSpan(ctx context.Context, tracerName, operationName string, opts ...Sp
 		opt(cfg)
 	}
 
-	tracer := otel.Tracer(tracerName)
+	var tracer trace.Tracer
+	if config := ConfigFromContext(ctx); config != nil && config.TracerProvider != nil {
+		tracer = config.TracerProvider.Tracer(tracerName)
+	} else {
+		tracer = otel.Tracer(tracerName)
+	}
+
 	ctx, span := tracer.Start(ctx, operationName,
 		trace.WithSpanKind(cfg.spanKind),
 		trace.WithAttributes(cfg.attributes...),
@@ -190,14 +198,10 @@ func (h *SpanHelper) AddEvent(name string, fields ...Field) *SpanHelper {
 //	    F("key", cacheKey),
 //	    F("reason", "expired"))
 func (h *SpanHelper) LogEvent(logger *LogHelper, eventName string, fields ...Field) *SpanHelper {
-	// Add span event
 	h.AddEvent(eventName, fields...)
-
-	// Add log entry if logger provided
 	if logger != nil {
 		logger.Info(eventName, fields...)
 	}
-
 	return h
 }
 
@@ -217,15 +221,14 @@ func (h *SpanHelper) Error(err error, message string) error {
 	return err
 }
 
-// Success marks the span as successful and returns nil.
+// Success marks the span as successful with an optional message.
 // This is optional but provides explicit success signaling.
 //
 // Example:
 //
-//	return span.Success()
-func (h *SpanHelper) Success() error {
-	h.span.SetStatus(codes.Ok, "")
-	return nil
+//	span.Success("operation completed")
+func (h *SpanHelper) Success(message string) {
+	h.span.SetStatus(codes.Ok, message)
 }
 
 // End finishes the span. Always defer this after creating a span.
@@ -264,14 +267,16 @@ func toString(v any) string {
 	if stringer, ok := v.(interface{ String() string }); ok {
 		return stringer.String()
 	}
-	return ""
+	return fmt.Sprint(v)
 }
 
 // LayerContext provides unified access to both span and logger for a layer operation.
 // This combines span tracing and logging with automatic correlation.
+// Base fields are automatically included in Error() and Success() log calls.
 type LayerContext struct {
 	Span   *SpanHelper
 	Logger *LogHelper
+	fields []Field // Base fields for all logs
 }
 
 // Context returns the span's context for passing to child operations.
@@ -285,6 +290,8 @@ func (lc *LayerContext) End() {
 }
 
 // Error records an error to both span and logs, then returns the error.
+// Base fields from StartX are automatically included in the log via the Logger.
+// Additional fields are also added as span attributes for correlation.
 //
 // Example:
 //
@@ -292,6 +299,9 @@ func (lc *LayerContext) End() {
 //	    return lc.Error(err, "failed to save", F("id", id))
 //	}
 func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
+	if len(fields) > 0 {
+		lc.Span.AddAttributes(fields...)
+	}
 	if lc.Logger != nil {
 		lc.Logger.Error(err, msg, fields...)
 	}
@@ -299,141 +309,28 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 }
 
 // Success marks the operation as successful in both span and logs.
+// Base fields from StartX are automatically included in the log via the Logger.
+// Additional fields are also added as span attributes for correlation.
+// The message is used as the span status message for consistency with Error().
 //
 // Example:
 //
 //	lc.Success("User created successfully", F("user_id", userID))
-//	return nil
-func (lc *LayerContext) Success(msg string, fields ...Field) error {
+func (lc *LayerContext) Success(msg string, fields ...Field) {
+	if len(fields) > 0 {
+		lc.Span.AddAttributes(fields...)
+	}
 	if lc.Logger != nil {
 		lc.Logger.Info(msg, fields...)
 	}
-	return lc.Span.Success()
+	lc.Span.Success(msg)
 }
 
 // LayeredSpanHelper provides convenience methods for common span patterns across
 // handler, service, and repository layers with consistent naming and attributes.
+// All methods return LayerContext which provides both span and logger for unified
+// tracing and logging with automatic correlation.
 type LayeredSpanHelper struct{}
-
-// Handler creates a span for HTTP handler layer operations.
-// Automatically adds handler-specific attributes.
-//
-// Example:
-//
-//	func (h *EventHandler) Create(c echo.Context) error {
-//	    ctx := c.Request().Context()
-//	    span := otel.Layers.Handler(ctx, "admin.event", "Create",
-//	        F("event.id", req.EventID))
-//	    defer span.End()
-//	    // ... handler logic
-//	}
-func (l *LayeredSpanHelper) Handler(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
-	tracerName := "handler." + component
-	operationName := component + "." + operation
-
-	allFields := append([]Field{F("layer", "handler")}, fields...)
-
-	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(allFields...),
-		WithSpanKind(trace.SpanKindServer))
-}
-
-// Service creates a span for service layer business logic.
-// Automatically adds service-specific attributes.
-//
-// Example:
-//
-//	func (s *EventService) CancelEvent(ctx context.Context, eventID string) error {
-//	    span := otel.Layers.Service(ctx, "event", "CancelEvent",
-//	        F("event.id", eventID))
-//	    defer span.End()
-//	    // ... service logic
-//	}
-func (l *LayeredSpanHelper) Service(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
-	tracerName := "service." + component
-	operationName := component + "." + operation
-
-	allFields := append([]Field{F("layer", "service")}, fields...)
-
-	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(allFields...),
-		WithSpanKind(trace.SpanKindInternal))
-}
-
-// Repository creates a span for repository layer data access.
-// Automatically adds repository and database-specific attributes.
-//
-// Example:
-//
-//	func (r *EventRepository) FindByID(ctx context.Context, eventID string) (*Event, error) {
-//	    span := otel.Layers.Repository(ctx, "event", "FindByID",
-//	        F("event.id", eventID),
-//	        F("db.operation", "select"))
-//	    defer span.End()
-//	    // ... repository logic
-//	}
-func (l *LayeredSpanHelper) Repository(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
-	tracerName := "repository." + component
-	operationName := component + "." + operation
-
-	allFields := append([]Field{F("layer", "repository")}, fields...)
-
-	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(allFields...),
-		WithSpanKind(trace.SpanKindClient))
-}
-
-// Operations creates a span for operations layer that wraps final functionality.
-// This layer is typically used for CLI commands, scheduled jobs, or orchestration
-// logic that coordinates services without initialization concerns.
-// Automatically adds operations-specific attributes.
-//
-// Example:
-//
-//	func (o *EventOps) ProcessEventQueue(ctx context.Context, queueName string) error {
-//	    span := otel.Layers.Operations(ctx, "event", "ProcessEventQueue",
-//	        F("queue.name", queueName))
-//	    defer span.End()
-//	    // ... operations logic coordinating services
-//	}
-func (l *LayeredSpanHelper) Operations(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
-	tracerName := "operations." + component
-	operationName := component + "." + operation
-
-	allFields := append([]Field{F("layer", "operations")}, fields...)
-
-	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(allFields...),
-		WithSpanKind(trace.SpanKindInternal))
-}
-
-// Middleware creates a span for middleware layer operations.
-// This layer is used for HTTP middleware that intercepts requests/responses,
-// authentication, authorization, rate limiting, and other cross-cutting concerns.
-// Automatically adds middleware-specific attributes.
-//
-// Example:
-//
-//	func AuthMiddleware(next http.Handler) http.Handler {
-//	    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//	        ctx := r.Context()
-//	        span := otel.Layers.Middleware(ctx, "auth", "ValidateToken",
-//	            F("http.path", r.URL.Path))
-//	        defer span.End()
-//	        // ... middleware logic
-//	        next.ServeHTTP(w, r.WithContext(span.Context()))
-//	    })
-//	}
-func (l *LayeredSpanHelper) Middleware(ctx context.Context, component, operation string, fields ...Field) *SpanHelper {
-	tracerName := "middleware." + component
-	operationName := component + "." + operation
-
-	allFields := append([]Field{F("layer", "middleware")}, fields...)
-
-	return StartSpan(ctx, tracerName, operationName,
-		WithAttributes(allFields...),
-		WithSpanKind(trace.SpanKindServer))
-}
 
 // StartHandler creates a LayerContext for HTTP handler layer operations.
 // Combines span and logger with automatic correlation.
@@ -461,14 +358,10 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindServer))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName).WithFields(allFields...),
+		fields: allFields,
 	}
 }
 
@@ -498,14 +391,10 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName).WithFields(allFields...),
+		fields: allFields,
 	}
 }
 
@@ -535,14 +424,10 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindInternal))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName).WithFields(allFields...),
+		fields: allFields,
 	}
 }
 
@@ -582,14 +467,10 @@ func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, oper
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindServer))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName).WithFields(allFields...),
+		fields: allFields,
 	}
 }
 
@@ -622,14 +503,10 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 		WithAttributes(allFields...),
 		WithSpanKind(trace.SpanKindClient))
 
-	var logger *LogHelper
-	if config := ConfigFromContext(span.Context()); config != nil {
-		logger = span.Logger(tracerName)
-	}
-
 	return &LayerContext{
 		Span:   span,
-		Logger: logger,
+		Logger: span.Logger(tracerName).WithFields(allFields...),
+		fields: allFields,
 	}
 }
 
