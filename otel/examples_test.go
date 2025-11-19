@@ -33,7 +33,7 @@ func Example_withoutOTelConfig() {
 		return
 	}
 
-	_ = lc.Success("User created successfully")
+	lc.Success("User created successfully")
 
 	fmt.Println("Spans and logging work without OTel config")
 }
@@ -58,7 +58,7 @@ func Example_withOTelConfig() {
 	// Fields "layer=service" and "user.id=12345" are automatically included
 	lc.Logger.Info("Creating user with OTel", otel.F("email", "user@example.com"))
 
-	_ = lc.Success("User created successfully")
+	lc.Success("User created successfully")
 
 	fmt.Println("OTel integration active")
 }
@@ -104,7 +104,7 @@ func Example_layerPropagation() {
 
 	// Logs include: layer="repository", db.operation="insert", db.table="users"
 	repo.Logger.Info("Inserting into database")
-	_ = repo.Success("User inserted")
+	repo.Success("User inserted")
 
 	// All logs will be correlated with trace_id and span_id
 	fmt.Println("Request completed with full trace")

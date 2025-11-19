@@ -26,7 +26,7 @@ func Example_layerContextIntegration() {
 	// Logger is always available, fields auto-included
 	lc.Logger.Info("Creating user", otel.F("email", "user@example.com"))
 	// Simulate success - user.id="12345" automatically included
-	_ = lc.Success("User created successfully")
+	lc.Success("User created successfully")
 
 	// Example 2: SpanHelper with Logger() method
 	fmt.Println("\n=== Example 2: SpanHelper.Logger() ===")
@@ -93,7 +93,7 @@ func Example_layerContextIntegration() {
 		otel.F("db.operation", "select"))
 	defer repoCtx.End()
 	repoCtx.Logger.Debug("Querying database")
-	_ = repoCtx.Success("User found")
+	repoCtx.Success("User found")
 
 	fmt.Println("\nAll examples completed successfully")
 
@@ -162,7 +162,7 @@ func Example_middlewareLayer() {
 
 	authCtx.Logger.Info("Checking authorization header")
 	// Simulate successful auth - http.path and http.method auto-included
-	_ = authCtx.Success("Token validated", otel.F("user.id", "user-123"))
+	authCtx.Success("Token validated", otel.F("user.id", "user-123"))
 
 	// Example 2: CORS middleware
 	fmt.Println("\n--- CORS Middleware ---")
@@ -171,7 +171,7 @@ func Example_middlewareLayer() {
 	defer corsCtx.End()
 
 	corsCtx.Logger.Info("Setting CORS headers")
-	_ = corsCtx.Success("CORS headers configured")
+	corsCtx.Success("CORS headers configured")
 
 	// Example 3: Rate limiting middleware with error
 	fmt.Println("\n--- Rate Limiting Middleware ---")
@@ -194,8 +194,8 @@ func Example_middlewareLayer() {
 	mw2Ctx := otel.Layers.StartMiddleware(mw1Ctx.Context(), "validation", "ValidateInput")
 	defer mw2Ctx.End()
 	mw2Ctx.Logger.Info("Validating request body")
-	_ = mw2Ctx.Success("Validation passed")
-	_ = mw1Ctx.Success("Request logged")
+	mw2Ctx.Success("Validation passed")
+	mw1Ctx.Success("Request logged")
 
 	fmt.Println("\nAll middleware examples completed")
 

@@ -226,15 +226,14 @@ func (h *SpanHelper) Error(err error, message string) error {
 	return err
 }
 
-// Success marks the span as successful and returns nil.
+// Success marks the span as successful.
 // This is optional but provides explicit success signaling.
 //
 // Example:
 //
-//	return span.Success()
-func (h *SpanHelper) Success() error {
+//	span.Success()
+func (h *SpanHelper) Success() {
 	h.span.SetStatus(codes.Ok, "")
-	return nil
 }
 
 // End finishes the span. Always defer this after creating a span.
@@ -297,6 +296,7 @@ func (lc *LayerContext) End() {
 
 // Error records an error to both span and logs, then returns the error.
 // Base fields from StartX are automatically included in the log via the Logger.
+// Additional fields are also added as span attributes for correlation.
 //
 // Example:
 //
@@ -304,6 +304,10 @@ func (lc *LayerContext) End() {
 //	    return lc.Error(err, "failed to save", F("id", id))
 //	}
 func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
+	// Add fields as span attributes
+	if len(fields) > 0 {
+		lc.Span.AddAttributes(fields...)
+	}
 	if lc.Logger != nil {
 		lc.Logger.Error(err, msg, fields...)
 	}
@@ -312,16 +316,23 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 
 // Success marks the operation as successful in both span and logs.
 // Base fields from StartX are automatically included in the log via the Logger.
+// Additional fields are also added as span attributes for correlation.
+// The message is added as a span event named "success" for observability.
 //
 // Example:
 //
 //	lc.Success("User created successfully", F("user_id", userID))
-//	return nil
-func (lc *LayerContext) Success(msg string, fields ...Field) error {
+func (lc *LayerContext) Success(msg string, fields ...Field) {
+	// Add fields as span attributes
+	if len(fields) > 0 {
+		lc.Span.AddAttributes(fields...)
+	}
+	// Add success message as span event
+	lc.Span.AddEvent("success", F("message", msg))
 	if lc.Logger != nil {
 		lc.Logger.Info(msg, fields...)
 	}
-	return lc.Span.Success()
+	lc.Span.Success()
 }
 
 // LayeredSpanHelper provides convenience methods for common span patterns across

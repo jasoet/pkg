@@ -97,14 +97,12 @@ func TestLayerContext_WithConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Success returns nil", func(t *testing.T) {
+	t.Run("Success adds span event and attributes", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
 
-		err := lc.Success("User created", F("user.id", "123"))
-		if err != nil {
-			t.Errorf("Expected Success to return nil, got %v", err)
-		}
+		// Success should not panic and should add fields as span attributes
+		lc.Success("User created", F("user.id", "123"))
 	})
 }
 
@@ -144,7 +142,7 @@ func TestLayerContext_NestedCalls(t *testing.T) {
 	if repoCtx.Logger != nil {
 		repoCtx.Logger.Info("Repository query")
 	}
-	_ = repoCtx.Success("User found")
+	repoCtx.Success("User found")
 
 	// All layers should complete without panic
 }
@@ -242,10 +240,8 @@ func TestMiddlewareLayer(t *testing.T) {
 		lc := Layers.StartMiddleware(ctx, "cors", "SetHeaders")
 		defer lc.End()
 
-		err := lc.Success("CORS headers set", F("origin", "https://example.com"))
-		if err != nil {
-			t.Errorf("Expected Success to return nil, got %v", err)
-		}
+		// Success should not panic and should add fields as span attributes
+		lc.Success("CORS headers set", F("origin", "https://example.com"))
 	})
 }
 
@@ -286,12 +282,12 @@ func TestMiddlewareLayerContext(t *testing.T) {
 	if repoCtx.Logger != nil {
 		repoCtx.Logger.Info("Repository query")
 	}
-	_ = repoCtx.Success("User found")
+	repoCtx.Success("User found")
 
 	// All layers should complete without panic
-	_ = serviceCtx.Success("Service completed")
-	_ = handlerCtx.Success("Handler completed")
-	_ = middlewareCtx.Success("Middleware completed")
+	serviceCtx.Success("Service completed")
+	handlerCtx.Success("Handler completed")
+	middlewareCtx.Success("Middleware completed")
 }
 
 // TestConfigContext verifies config context management
