@@ -3,10 +3,10 @@ package otel
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/codes"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/trace"
@@ -78,14 +78,28 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 		function: function,
 	}
 
-	if function != "" {
-		h.logger = log.With().Str("scopeName", scopeName).Str("function", function).Logger()
-	} else {
-		h.logger = log.Logger
-	}
-
 	if config != nil && config.IsLoggingEnabled() {
+		// Use OTel logger - logs will go through consoleExporter which handles formatting
 		h.otelLogger = config.GetLogger(scopeName)
+	} else {
+		// Fallback to zerolog with explicit initialization
+		// Ensures consistent formatting even if logging.Initialize() wasn't called
+		serviceName := scopeName
+		if config != nil && config.ServiceName != "" {
+			serviceName = config.ServiceName
+		}
+
+		loggerCtx := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+			With().
+			Timestamp().
+			Str("service", serviceName).
+			Int("pid", os.Getpid())
+
+		if function != "" {
+			loggerCtx = loggerCtx.Str("function", function)
+		}
+
+		h.logger = loggerCtx.Logger()
 	}
 
 	return h
