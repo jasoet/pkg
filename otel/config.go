@@ -152,7 +152,13 @@ func ConfigFromContext(ctx context.Context) *Config {
 // This is used as the default to ensure logging works out of the box with proper formatting
 // and automatic log-span correlation when tracing is enabled.
 func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
-	return logging.NewLoggerProvider(serviceName, debug)
+	// Use the otel package's own logger provider with console output only (no OTLP)
+	var opts []LoggerProviderOption
+	if debug {
+		opts = append(opts, WithLogLevel(logging.LogLevelDebug))
+	}
+	provider, _ := NewLoggerProviderWithOptions(serviceName, opts...)
+	return provider
 }
 
 // Shutdown gracefully shuts down all configured providers

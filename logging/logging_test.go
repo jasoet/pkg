@@ -4,52 +4,98 @@ import (
 	"context"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/log"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func TestInitialize(t *testing.T) {
-	// Reset the global logger for testing
-	zlog.Logger = zerolog.New(os.Stderr)
+	t.Run("sets debug level when debug is true", func(t *testing.T) {
+		// Reset the global logger for testing
+		zlog.Logger = zerolog.New(os.Stderr)
 
-	// Call Initialize
-	Initialize("test-service", true)
+		// Call Initialize with debug=true
+		Initialize("test-service", true)
 
-	// Verify that the global level is set to Debug
-	if zerolog.GlobalLevel() != zerolog.DebugLevel {
-		t.Errorf("Expected global level to be Debug, got %v", zerolog.GlobalLevel())
-	}
+		// Verify that the global level is set to Debug
+		if zerolog.GlobalLevel() != zerolog.DebugLevel {
+			t.Errorf("Expected global level to be Debug, got %v", zerolog.GlobalLevel())
+		}
 
-	// Call Initialize again with different parameters
-	Initialize("another-service", false)
+		// Verify global logger is not nil
+		if zlog.Logger.GetLevel() != zerolog.DebugLevel {
+			t.Errorf("Expected logger level to be Debug, got %v", zlog.Logger.GetLevel())
+		}
+	})
 
-	// Verify that the global level is still Debug (due to sync.Once)
-	if zerolog.GlobalLevel() != zerolog.DebugLevel {
-		t.Errorf("Expected global level to remain Debug, got %v", zerolog.GlobalLevel())
-	}
+	t.Run("sets info level when debug is false", func(t *testing.T) {
+		// Reset the global logger for testing
+		zlog.Logger = zerolog.New(os.Stderr)
+
+		// Call Initialize with debug=false
+		Initialize("prod-service", false)
+
+		// Verify that the global level is set to Info
+		if zerolog.GlobalLevel() != zerolog.InfoLevel {
+			t.Errorf("Expected global level to be Info, got %v", zerolog.GlobalLevel())
+		}
+
+		// Verify global logger is not nil
+		if zlog.Logger.GetLevel() != zerolog.InfoLevel {
+			t.Errorf("Expected logger level to be Info, got %v", zlog.Logger.GetLevel())
+		}
+	})
 }
 
 func TestContextLogger(t *testing.T) {
-	// Reset the global logger for testing
-	zlog.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	t.Run("creates logger with component field", func(t *testing.T) {
+		// Reset the global logger for testing
+		zlog.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
-	// Create a context with values
-	type contextKey string
-	const requestIDKey contextKey = "request_id"
-	ctx := context.WithValue(context.Background(), requestIDKey, "123456")
+		// Create a context
+		ctx := context.Background()
 
-	// Get a logger with context
-	logger := ContextLogger(ctx, "test-component")
+		// Get a logger with context
+		logger := ContextLogger(ctx, "test-component")
 
-	// Verify that the logger has the component field
-	if logger.GetLevel() != zlog.Logger.GetLevel() {
-		t.Errorf("Expected logger level to match global logger level")
-	}
+		globalLogger := zlog.Logger
+		// Verify that the logger level matches global logger level
+		if logger.GetLevel() != globalLogger.GetLevel() {
+			t.Errorf("Expected logger level to match global logger level")
+		}
+
+		// Verify logger is not nil and can log without panic
+		logger.Info().Msg("test message")
+	})
+
+	t.Run("inherits level from global logger", func(t *testing.T) {
+		// Set global logger with specific level
+		zlog.Logger = zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
+
+		ctx := context.Background()
+		logger := ContextLogger(ctx, "warn-component")
+
+		// Verify logger inherits warn level
+		if logger.GetLevel() != zerolog.WarnLevel {
+			t.Errorf("Expected logger level to be Warn, got %v", logger.GetLevel())
+		}
+	})
+
+	t.Run("works with context values", func(t *testing.T) {
+		// Reset the global logger
+		zlog.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+
+		// Create a context with values
+		type contextKey string
+		const requestIDKey contextKey = "request_id"
+		ctx := context.WithValue(context.Background(), requestIDKey, "123456")
+
+		// Get a logger with context - should not panic
+		logger := ContextLogger(ctx, "ctx-component")
+
+		// Verify logger can be used
+		logger.Info().Msg("message with context")
+	})
 }
 
 func TestIntegration(t *testing.T) {
@@ -66,191 +112,7 @@ func TestIntegration(t *testing.T) {
 	// Log a message (this is just to verify it doesn't panic)
 	logger.Info().Msg("Test message")
 
-	// Use the global logger directly
-	zlog.Info().Msg("Global logger test message")
+	globalLogger := zlog.Logger
+	globalLogger.Info().Msg("Global logger test message")
 }
 
-// TestNewLoggerProvider tests the creation of OTel LoggerProvider
-func TestNewLoggerProvider(t *testing.T) {
-	t.Run("creates provider with debug level", func(t *testing.T) {
-		provider := NewLoggerProvider("test-service", true)
-		if provider == nil {
-			t.Fatal("Expected non-nil LoggerProvider")
-		}
-	})
-
-	t.Run("creates provider with info level", func(t *testing.T) {
-		provider := NewLoggerProvider("test-service", false)
-		if provider == nil {
-			t.Fatal("Expected non-nil LoggerProvider")
-		}
-	})
-}
-
-// TestLoggerProvider_Logger tests the Logger method
-func TestLoggerProvider_Logger(t *testing.T) {
-	provider := NewLoggerProvider("test-service", false)
-
-	t.Run("creates logger with scope", func(t *testing.T) {
-		logger := provider.Logger("test-scope")
-		if logger == nil {
-			t.Fatal("Expected non-nil Logger")
-		}
-	})
-
-	t.Run("creates multiple loggers", func(t *testing.T) {
-		logger1 := provider.Logger("scope1")
-		logger2 := provider.Logger("scope2")
-
-		if logger1 == nil || logger2 == nil {
-			t.Fatal("Expected non-nil loggers")
-		}
-	})
-}
-
-// TestLogger_Emit tests basic log emission
-func TestLogger_Emit(t *testing.T) {
-	provider := NewLoggerProvider("test-service", true)
-	logger := provider.Logger("test-scope")
-	ctx := context.Background()
-
-	t.Run("emits log record with message", func(t *testing.T) {
-		var record log.Record
-		record.SetBody(log.StringValue("test message"))
-		record.SetTimestamp(time.Now())
-		record.SetSeverity(log.SeverityInfo)
-
-		// Should not panic
-		logger.Emit(ctx, record)
-	})
-
-	t.Run("emits log record with attributes", func(t *testing.T) {
-		var record log.Record
-		record.SetBody(log.StringValue("test with attributes"))
-		record.SetSeverity(log.SeverityWarn)
-		record.AddAttributes(
-			log.String("key1", "value1"),
-			log.Int64("key2", 42),
-			log.Bool("key3", true),
-		)
-
-		// Should not panic
-		logger.Emit(ctx, record)
-	})
-
-	t.Run("emits different severity levels", func(t *testing.T) {
-		severities := []log.Severity{
-			log.SeverityDebug,
-			log.SeverityInfo,
-			log.SeverityWarn,
-			log.SeverityError,
-		}
-
-		for _, severity := range severities {
-			var record log.Record
-			record.SetBody(log.StringValue("test message"))
-			record.SetSeverity(severity)
-
-			// Should not panic
-			logger.Emit(ctx, record)
-		}
-	})
-}
-
-// TestLogger_EmitWithTraceContext tests trace context extraction
-func TestLogger_EmitWithTraceContext(t *testing.T) {
-	provider := NewLoggerProvider("test-service", true)
-	logger := provider.Logger("test-scope")
-
-	t.Run("extracts trace context from span", func(t *testing.T) {
-		// Create a tracer provider for testing
-		tp := sdktrace.NewTracerProvider()
-		tracer := tp.Tracer("test-tracer")
-
-		// Start a span
-		ctx, span := tracer.Start(context.Background(), "test-span")
-		defer span.End()
-
-		// Emit log with span context
-		var record log.Record
-		record.SetBody(log.StringValue("test with trace context"))
-		record.SetSeverity(log.SeverityInfo)
-
-		// Should not panic and should extract trace_id/span_id
-		logger.Emit(ctx, record)
-
-		// Verify span context is valid
-		spanCtx := trace.SpanContextFromContext(ctx)
-		if !spanCtx.IsValid() {
-			t.Error("Expected valid span context")
-		}
-		if !spanCtx.TraceID().IsValid() {
-			t.Error("Expected valid trace ID")
-		}
-		if !spanCtx.SpanID().IsValid() {
-			t.Error("Expected valid span ID")
-		}
-	})
-
-	t.Run("handles context without span", func(t *testing.T) {
-		ctx := context.Background()
-
-		var record log.Record
-		record.SetBody(log.StringValue("test without trace context"))
-		record.SetSeverity(log.SeverityInfo)
-
-		// Should not panic even without span context
-		logger.Emit(ctx, record)
-	})
-}
-
-// TestLogger_Enabled tests the Enabled method
-func TestLogger_Enabled(t *testing.T) {
-	t.Run("debug logger enables all levels", func(t *testing.T) {
-		provider := NewLoggerProvider("test-service", true)
-		logger := provider.Logger("test-scope")
-		ctx := context.Background()
-
-		testCases := []struct {
-			severity log.Severity
-			expected bool
-		}{
-			{log.SeverityDebug, true},
-			{log.SeverityInfo, true},
-			{log.SeverityWarn, true},
-			{log.SeverityError, true},
-			{log.SeverityFatal, true},
-		}
-
-		for _, tc := range testCases {
-			params := log.EnabledParameters{Severity: tc.severity}
-			if got := logger.Enabled(ctx, params); got != tc.expected {
-				t.Errorf("Severity %v: expected %v, got %v", tc.severity, tc.expected, got)
-			}
-		}
-	})
-
-	t.Run("info logger filters debug", func(t *testing.T) {
-		provider := NewLoggerProvider("test-service", false)
-		logger := provider.Logger("test-scope")
-		ctx := context.Background()
-
-		testCases := []struct {
-			severity log.Severity
-			expected bool
-		}{
-			{log.SeverityDebug, false},
-			{log.SeverityInfo, true},
-			{log.SeverityWarn, true},
-			{log.SeverityError, true},
-			{log.SeverityFatal, true},
-		}
-
-		for _, tc := range testCases {
-			params := log.EnabledParameters{Severity: tc.severity}
-			if got := logger.Enabled(ctx, params); got != tc.expected {
-				t.Errorf("Severity %v: expected %v, got %v", tc.severity, tc.expected, got)
-			}
-		}
-	})
-}
