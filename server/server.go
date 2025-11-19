@@ -161,7 +161,20 @@ func createLoggingMiddleware(cfg *otel.Config) echo.MiddlewareFunc {
 			}
 
 			if err != nil {
-				attrs = append(attrs, otellog.String("error", err.Error()))
+				// Only use "error" attribute for 5xx server errors
+				// Use "message" for 4xx client errors to avoid Grafana categorizing them as errors
+				// Extract status code from HTTPError since Response.Status may not be set yet
+				statusCode := http.StatusInternalServerError // default to 500
+				var httpErr *echo.HTTPError
+				if errors.As(err, &httpErr) {
+					statusCode = httpErr.Code
+				}
+
+				if statusCode >= 500 {
+					attrs = append(attrs, otellog.String("error", err.Error()))
+				} else {
+					attrs = append(attrs, otellog.String("message", err.Error()))
+				}
 			}
 
 			// Emit log record
