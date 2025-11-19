@@ -17,16 +17,16 @@ func Example_layerContextIntegration() {
 	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	// Example 1: Using LayerContext for simplified span + logging
+	// Fields passed here are automatically included in all log calls
 	fmt.Println("=== Example 1: LayerContext ===")
 	lc := otel.Layers.StartService(ctx, "user", "CreateUser",
 		otel.F("user.id", "12345"))
 	defer lc.End()
 
-	if lc.Logger != nil {
-		lc.Logger.Info("Creating user", otel.F("email", "user@example.com"))
-	}
-	// Simulate success
-	_ = lc.Success("User created successfully", otel.F("user.id", "12345"))
+	// Logger is always available, fields auto-included
+	lc.Logger.Info("Creating user", otel.F("email", "user@example.com"))
+	// Simulate success - user.id="12345" automatically included
+	_ = lc.Success("User created successfully")
 
 	// Example 2: SpanHelper with Logger() method
 	fmt.Println("\n=== Example 2: SpanHelper.Logger() ===")
@@ -34,10 +34,9 @@ func Example_layerContextIntegration() {
 		otel.WithAttribute("order.id", "ORD-123"))
 	defer span.End()
 
+	// Logger is always available
 	logger := span.Logger("service.order")
-	if logger != nil {
-		logger.Info("Processing order", otel.F("items", 3))
-	}
+	logger.Info("Processing order", otel.F("items", 3))
 
 	// Example 3: LogEvent for dual span events + logs
 	fmt.Println("\n=== Example 3: LogEvent ===")
@@ -61,6 +60,7 @@ func Example_layerContextIntegration() {
 	_ = lc2.Error(err, "failed to find user", otel.F("user.id", "999"))
 
 	// Example 5: All five layers (config propagates automatically via context)
+	// Fields are automatically included in all log calls for each layer
 	fmt.Println("\n=== Example 5: All Layers ===")
 
 	// Middleware layer (auth, CORS, rate limiting, etc.)
@@ -68,41 +68,31 @@ func Example_layerContextIntegration() {
 		otel.F("http.path", "/api/users"),
 		otel.F("http.method", "GET"))
 	defer middlewareCtx.End()
-	if middlewareCtx.Logger != nil {
-		middlewareCtx.Logger.Info("Validating authentication token")
-	}
+	middlewareCtx.Logger.Info("Validating authentication token")
 
 	// Handler layer (config available from middleware.Context())
 	handlerCtx := otel.Layers.StartHandler(middlewareCtx.Context(), "user", "GetUser",
 		otel.F("http.method", "GET"))
 	defer handlerCtx.End()
-	if handlerCtx.Logger != nil {
-		handlerCtx.Logger.Info("Handling request")
-	}
+	handlerCtx.Logger.Info("Handling request")
 
 	// Operations layer (config available from handler.Context())
 	opsCtx := otel.Layers.StartOperations(handlerCtx.Context(), "user", "ProcessUserRequest")
 	defer opsCtx.End()
-	if opsCtx.Logger != nil {
-		opsCtx.Logger.Info("Orchestrating user request")
-	}
+	opsCtx.Logger.Info("Orchestrating user request")
 
 	// Service layer
 	serviceCtx := otel.Layers.StartService(opsCtx.Context(), "user", "GetUser",
 		otel.F("user.id", "123"))
 	defer serviceCtx.End()
-	if serviceCtx.Logger != nil {
-		serviceCtx.Logger.Info("Fetching user data")
-	}
+	serviceCtx.Logger.Info("Fetching user data")
 
 	// Repository layer
 	repoCtx := otel.Layers.StartRepository(serviceCtx.Context(), "user", "FindByID",
 		otel.F("user.id", "123"),
 		otel.F("db.operation", "select"))
 	defer repoCtx.End()
-	if repoCtx.Logger != nil {
-		repoCtx.Logger.Debug("Querying database")
-	}
+	repoCtx.Logger.Debug("Querying database")
 	_ = repoCtx.Success("User found")
 
 	fmt.Println("\nAll examples completed successfully")
@@ -163,16 +153,15 @@ func Example_middlewareLayer() {
 	fmt.Println("=== Middleware Layer Examples ===")
 
 	// Example 1: Authentication middleware
+	// Fields automatically included in all auth logs
 	fmt.Println("\n--- Authentication Middleware ---")
 	authCtx := otel.Layers.StartMiddleware(ctx, "auth", "ValidateToken",
 		otel.F("http.path", "/api/users"),
 		otel.F("http.method", "GET"))
 	defer authCtx.End()
 
-	if authCtx.Logger != nil {
-		authCtx.Logger.Info("Checking authorization header")
-	}
-	// Simulate successful auth
+	authCtx.Logger.Info("Checking authorization header")
+	// Simulate successful auth - http.path and http.method auto-included
 	_ = authCtx.Success("Token validated", otel.F("user.id", "user-123"))
 
 	// Example 2: CORS middleware
@@ -181,9 +170,7 @@ func Example_middlewareLayer() {
 		otel.F("origin", "https://example.com"))
 	defer corsCtx.End()
 
-	if corsCtx.Logger != nil {
-		corsCtx.Logger.Info("Setting CORS headers")
-	}
+	corsCtx.Logger.Info("Setting CORS headers")
 	_ = corsCtx.Success("CORS headers configured")
 
 	// Example 3: Rate limiting middleware with error
@@ -193,9 +180,7 @@ func Example_middlewareLayer() {
 		otel.F("endpoint", "/api/data"))
 	defer rateLimitCtx.End()
 
-	if rateLimitCtx.Logger != nil {
-		rateLimitCtx.Logger.Warn("Rate limit exceeded", otel.F("limit", 100))
-	}
+	rateLimitCtx.Logger.Warn("Rate limit exceeded", otel.F("limit", 100))
 	err := errors.New("rate limit exceeded")
 	_ = rateLimitCtx.Error(err, "request throttled", otel.F("retry_after", "60s"))
 
@@ -203,16 +188,12 @@ func Example_middlewareLayer() {
 	fmt.Println("\n--- Middleware Chain ---")
 	mw1Ctx := otel.Layers.StartMiddleware(ctx, "logging", "RequestLogger")
 	defer mw1Ctx.End()
-	if mw1Ctx.Logger != nil {
-		mw1Ctx.Logger.Info("Incoming request", otel.F("request.id", "req-456"))
-	}
+	mw1Ctx.Logger.Info("Incoming request", otel.F("request.id", "req-456"))
 
 	// Next middleware gets context from previous one
 	mw2Ctx := otel.Layers.StartMiddleware(mw1Ctx.Context(), "validation", "ValidateInput")
 	defer mw2Ctx.End()
-	if mw2Ctx.Logger != nil {
-		mw2Ctx.Logger.Info("Validating request body")
-	}
+	mw2Ctx.Logger.Info("Validating request body")
 	_ = mw2Ctx.Success("Validation passed")
 	_ = mw1Ctx.Success("Request logged")
 

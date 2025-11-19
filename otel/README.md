@@ -112,15 +112,11 @@ Create a logger provider with OTLP export and granular control:
 import "github.com/jasoet/pkg/v2/otel"
 
 // Console-only logging (default, no OTLP)
-loggerProvider, err := otel.NewLoggerProviderWithOptions(
-    "my-service",
-    false, // debug mode
-)
+loggerProvider, err := otel.NewLoggerProviderWithOptions("my-service")
 
 // OTLP logging with console output (local development)
 loggerProvider, err := otel.NewLoggerProviderWithOptions(
     "my-service",
-    false,
     otel.WithOTLPEndpoint("localhost:4318", true), // insecure for local
     otel.WithConsoleOutput(true),
     otel.WithLogLevel(logging.LogLevelInfo),
@@ -129,7 +125,6 @@ loggerProvider, err := otel.NewLoggerProviderWithOptions(
 // OTLP-only logging (production)
 loggerProvider, err := otel.NewLoggerProviderWithOptions(
     "my-service",
-    false,
     otel.WithOTLPEndpoint("otel-collector.prod:4318", false), // secure
     otel.WithConsoleOutput(false), // disable console in prod
     otel.WithLogLevel(logging.LogLevelWarn),
@@ -199,29 +194,32 @@ Create flexible logger providers with `NewLoggerProviderWithOptions`:
 
 **Log Level Priority:**
 1. Explicit `WithLogLevel()` (highest priority)
-2. `debug` parameter value
-3. Default to `info` level
+2. Default to `info` level
 
 **Examples:**
 
 ```go
 import "github.com/jasoet/pkg/v2/logging"
 
+// Default info level
+provider, _ := otel.NewLoggerProviderWithOptions("service")
+
 // Debug mode (all logs)
-provider, _ := otel.NewLoggerProviderWithOptions("service", true)
+provider, _ := otel.NewLoggerProviderWithOptions("service",
+    otel.WithLogLevel(logging.LogLevelDebug))
 
 // Specific log level
-provider, _ := otel.NewLoggerProviderWithOptions("service", false,
+provider, _ := otel.NewLoggerProviderWithOptions("service",
     otel.WithLogLevel(logging.LogLevelWarn))
 
 // OTLP + console for development
-provider, _ := otel.NewLoggerProviderWithOptions("service", false,
+provider, _ := otel.NewLoggerProviderWithOptions("service",
     otel.WithOTLPEndpoint("localhost:4318", true),
     otel.WithConsoleOutput(true),
     otel.WithLogLevel(logging.LogLevelDebug))
 
 // OTLP-only for production
-provider, _ := otel.NewLoggerProviderWithOptions("service", false,
+provider, _ := otel.NewLoggerProviderWithOptions("service",
     otel.WithOTLPEndpoint("collector:4318", false),
     otel.WithConsoleOutput(false),
     otel.WithLogLevel(logging.LogLevelInfo))
@@ -270,26 +268,26 @@ func (h *Handler) HandleRequest(c echo.Context) error {
 // In service layer - no need to pass config explicitly
 func (s *Service) ProcessRequest(ctx context.Context, req Request) error {
     // Config retrieved from context automatically
-    lc := otel.Layers.StartService(ctx, "user", "ProcessRequest")
+    // Fields passed here are automatically included in all log calls
+    lc := otel.Layers.StartService(ctx, "user", "ProcessRequest",
+        otel.F("request.id", req.ID))
     defer lc.End()
 
-    // Logger available if config in context
-    if lc.Logger != nil {
-        lc.Logger.Info("Processing request")
-    }
+    // Logger is always available (zerolog fallback when no config)
+    // Fields "layer=service" and "request.id" are automatically included
+    lc.Logger.Info("Processing request")
 
     return s.repo.Save(lc.Context(), data)
 }
 
 // In repository layer - config still available
 func (r *Repository) Save(ctx context.Context, data Data) error {
-    lc := otel.Layers.StartRepository(ctx, "user", "Save")
+    lc := otel.Layers.StartRepository(ctx, "user", "Save",
+        otel.F("data.id", data.ID))
     defer lc.End()
 
-    // Config flows through naturally
-    if lc.Logger != nil {
-        lc.Logger.Debug("Saving to database")
-    }
+    // Fields "layer=repository" and "data.id" automatically in logs
+    lc.Logger.Debug("Saving to database")
 
     return lc.Success("Data saved")
 }
@@ -300,17 +298,27 @@ func (r *Repository) Save(ctx context.Context, data Data) error {
 - No need to pass config as parameter through all layers
 - Natural propagation through context (like span data)
 - Clean API - fewer parameters
+- **Logger always available** (zerolog fallback when no config)
+- **Fields automatically included** in all log calls
 
 **API Pattern:**
 ```go
 // Store config in context (once at entry point)
 ctx = otel.ContextWithConfig(ctx, cfg)
 
-// Create layer contexts (config retrieved automatically)
-lc := otel.Layers.StartHandler(ctx, "user", "GetUser")
-lc := otel.Layers.StartService(ctx, "user", "CreateUser")
-lc := otel.Layers.StartRepository(ctx, "user", "FindByID")
-lc := otel.Layers.StartOperations(ctx, "user", "ProcessQueue")
+// Create layer contexts - all return both Span and Logger
+// Fields passed here are automatically included in all log calls
+lc := otel.Layers.StartHandler(ctx, "user", "GetUser", otel.F("http.method", "GET"))
+lc := otel.Layers.StartService(ctx, "user", "CreateUser", otel.F("user.email", email))
+lc := otel.Layers.StartRepository(ctx, "user", "FindByID", otel.F("user.id", id))
+lc := otel.Layers.StartOperations(ctx, "user", "ProcessQueue", otel.F("queue.name", queue))
+lc := otel.Layers.StartMiddleware(ctx, "auth", "ValidateToken", otel.F("token.type", "JWT"))
+
+// All log calls automatically include the fields
+lc.Logger.Info("Processing")           // Includes all fields
+lc.Logger.Debug("Details", F("extra", val)) // Adds extra field
+lc.Error(err, "Failed")               // Includes all fields
+lc.Success("Done")                    // Includes all fields
 
 // Get logger from span (config retrieved automatically)
 span := otel.StartSpan(ctx, "service.user", "DoWork")
