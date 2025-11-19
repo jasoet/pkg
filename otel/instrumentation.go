@@ -278,9 +278,11 @@ func toString(v any) string {
 
 // LayerContext provides unified access to both span and logger for a layer operation.
 // This combines span tracing and logging with automatic correlation.
+// Base fields are automatically included in Error() and Success() log calls.
 type LayerContext struct {
 	Span   *SpanHelper
 	Logger *LogHelper
+	fields []Field // Base fields for all logs
 }
 
 // Context returns the span's context for passing to child operations.
@@ -294,6 +296,7 @@ func (lc *LayerContext) End() {
 }
 
 // Error records an error to both span and logs, then returns the error.
+// Base fields from StartX are automatically included in the log.
 //
 // Example:
 //
@@ -302,12 +305,14 @@ func (lc *LayerContext) End() {
 //	}
 func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 	if lc.Logger != nil {
-		lc.Logger.Error(err, msg, fields...)
+		allFields := append(lc.fields, fields...)
+		lc.Logger.Error(err, msg, allFields...)
 	}
 	return lc.Span.Error(err, msg)
 }
 
 // Success marks the operation as successful in both span and logs.
+// Base fields from StartX are automatically included in the log.
 //
 // Example:
 //
@@ -315,7 +320,8 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 //	return nil
 func (lc *LayerContext) Success(msg string, fields ...Field) error {
 	if lc.Logger != nil {
-		lc.Logger.Info(msg, fields...)
+		allFields := append(lc.fields, fields...)
+		lc.Logger.Info(msg, allFields...)
 	}
 	return lc.Span.Success()
 }
@@ -355,6 +361,7 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName),
+		fields: allFields,
 	}
 }
 
@@ -387,6 +394,7 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName),
+		fields: allFields,
 	}
 }
 
@@ -419,6 +427,7 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName),
+		fields: allFields,
 	}
 }
 
@@ -461,6 +470,7 @@ func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, oper
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName),
+		fields: allFields,
 	}
 }
 
@@ -496,6 +506,7 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName),
+		fields: allFields,
 	}
 }
 
