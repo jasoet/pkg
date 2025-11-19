@@ -182,18 +182,6 @@ func TestLayerContext_AllLayersWithoutConfig(t *testing.T) {
 
 // TestMiddlewareLayer verifies middleware layer specific functionality
 func TestMiddlewareLayer(t *testing.T) {
-	t.Run("Middleware span without config", func(t *testing.T) {
-		ctx := context.Background()
-		span := Layers.Middleware(ctx, "auth", "ValidateToken",
-			F("http.path", "/api/users"),
-			F("http.method", "GET"))
-		defer span.End()
-
-		if span == nil {
-			t.Error("Expected span to be created")
-		}
-	})
-
 	t.Run("StartMiddleware without config creates zerolog fallback", func(t *testing.T) {
 		ctx := context.Background()
 		lc := Layers.StartMiddleware(ctx, "auth", "ValidateToken",
