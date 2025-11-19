@@ -13,7 +13,6 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // LogLevel is an alias for logging.LogLevel for convenience.
@@ -182,13 +181,16 @@ func (e *consoleExporter) Export(ctx context.Context, records []sdklog.Record) e
 			event = event.Str("severity", severityText)
 		}
 
-		// Extract trace context for log-span correlation
-		if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
+		// Extract trace context from the record for log-span correlation
+		// The OTel SDK captures trace context when Emit() is called and stores it in the record
+		traceID := record.TraceID()
+		spanID := record.SpanID()
+		if traceID.IsValid() {
 			event = event.
-				Str("trace_id", spanCtx.TraceID().String()).
-				Str("span_id", spanCtx.SpanID().String())
+				Str("trace_id", traceID.String()).
+				Str("span_id", spanID.String())
 
-			if spanCtx.IsSampled() {
+			if record.TraceFlags().IsSampled() {
 				event = event.Str("trace_flags", "01")
 			} else {
 				event = event.Str("trace_flags", "00")
