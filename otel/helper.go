@@ -186,14 +186,19 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 	span := h.Span()
 	if span.IsRecording() {
 		span.SetStatus(codes.Error, msg)
-		span.RecordError(err)
+		if err != nil {
+			span.RecordError(err)
+		}
 	}
 
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: otellog.SeverityError}
 		if h.otelLogger.Enabled(h.ctx, params) {
-			errorField := F("error", err.Error())
-			allFields := append([]Field{errorField}, fields...)
+			allFields := fields
+			if err != nil {
+				errorField := F("error", err.Error())
+				allFields = append([]Field{errorField}, fields...)
+			}
 			h.emitOTel(otellog.SeverityError, msg, allFields...)
 		}
 	} else {
