@@ -4,13 +4,21 @@ This directory contains examples demonstrating how to use the `logging` package 
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/logging/examples/example.go](https://github.com/jasoet/pkg/blob/main/logging/examples/example.go)
+**Legacy examples:**
+- [example.go](./example.go) - Basic logging usage
+- [otel_example.go](./otel_example.go) - OpenTelemetry integration
+
+**File output examples:**
+- [console/](./console/) - Console-only logging
+- [file/](./file/) - File-only logging
+- [both/](./both/) - Dual console + file logging
+- [environment/](./environment/) - Environment-based configuration
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
+### Basic Console Logging
 ```go
-// Basic usage pattern
-import "github.com/jasoet/pkg/logging"
+import "github.com/jasoet/pkg/v2/logging"
 
 // Initialize logging (MUST be called first, only once)
 logging.Initialize("service-name", true) // true for debug mode
@@ -29,15 +37,30 @@ logger.Info().
 logger.Error().Err(err).Str("operation", "db_query").Msg("Failed")
 ```
 
+### File Output Logging
+```go
+// File only
+logging.InitializeWithFile("my-service", false,
+    logging.OutputFile,
+    &logging.FileConfig{Path: "/var/log/app.log"})
+
+// Both console and file
+logging.InitializeWithFile("my-service", true,
+    logging.OutputConsole | logging.OutputFile,
+    &logging.FileConfig{Path: "/var/log/app.log"})
+```
+
 **Critical notes:**
-- Always call `Initialize()` once at application startup
+- Always call `Initialize()` or `InitializeWithFile()` once at application startup
 - Use `ContextLogger()` for component-specific logging
 - Global `log` is available after initialization
+- File output uses JSON format, console uses human-readable format
 
 ## Overview
 
 The `logging` package provides utilities for:
 - Centralized logging setup with zerolog
+- Flexible output destinations (console, file, or both)
 - Context-aware logging with component identification
 - Structured logging with consistent fields
 - Debug and production logging configurations
@@ -45,11 +68,44 @@ The `logging` package provides utilities for:
 
 ## Running the Examples
 
-To run the examples, use the following command from the `logging/examples` directory:
+### Legacy Examples
+
+To run the legacy examples:
 
 ```bash
-go run example.go
+go run -tags=example example.go
+go run -tags=example otel_example.go
 ```
+
+### File Output Examples
+
+To run the new file output examples:
+
+```bash
+# Console only output
+go run -tags=example ./console
+
+# File only output
+go run -tags=example ./file
+
+# Both console and file output
+go run -tags=example ./both
+
+# Environment-based configuration
+go run -tags=example ./environment
+ENV=staging go run -tags=example ./environment
+ENV=production go run -tags=example ./environment
+```
+
+## Learning Path
+
+1. **Start with legacy `example.go`** - Understand basic console logging
+2. **Try `console/`** - See new API for console output
+3. **Explore `file/`** - Learn JSON file output
+4. **Study `both/`** - Dual output and component loggers
+5. **Apply `environment/`** - Environment-based patterns
+
+For detailed documentation, see [logging/README.md](../../logging/README.md).
 
 ## Example Descriptions
 
