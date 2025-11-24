@@ -185,6 +185,14 @@ Structured JSON for parsing:
 
 ## Usage Patterns
 
+### Runnable Examples
+
+See [`examples/logging/`](../examples/logging/) for complete runnable examples:
+- `console/` - Console-only logging
+- `file/` - File-only logging  
+- `both/` - Dual console + file logging
+- `environment/` - Environment-based configuration
+
 ### Environment-Based Configuration
 
 ```go
