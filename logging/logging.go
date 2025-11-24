@@ -2,6 +2,8 @@ package logging
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -9,15 +11,45 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
-// Initialize sets up the zerolog global logger with standard fields.
-// This function should be called once at the start of your application.
-// After calling Initialize, you can use zerolog's log package functions directly
-// (log.Debug(), log.Info(), etc.) or create component-specific loggers with ContextLogger.
+// OutputDestination defines where logs should be written.
+// Multiple destinations can be combined using bitwise OR.
+type OutputDestination int
+
+const (
+	OutputConsole OutputDestination = 1 << 0 // Output to console (stderr)
+	OutputFile    OutputDestination = 1 << 1 // Output to file
+)
+
+// FileConfig configures file-based logging.
+// File rotation should be managed by OS tools like logrotate.
+type FileConfig struct {
+	Path string // Log file path (required when OutputFile is used)
+}
+
+// InitializeWithFile sets up the zerolog global logger with flexible output options.
+// Supports console output, file output, or both simultaneously.
 //
 // Parameters:
 //   - serviceName: Name of the service, added as a field to all log entries
 //   - debug: If true, sets log level to Debug, otherwise Info
-func Initialize(serviceName string, debug bool) {
+//   - output: Output destination flags (OutputConsole, OutputFile, or both combined with |)
+//   - fileConfig: File configuration (required if OutputFile is specified, can be nil otherwise)
+//
+// Output formats:
+//   - Console: Human-readable colored output (zerolog.ConsoleWriter)
+//   - File: Structured JSON format for parsing and log aggregation
+//
+// Example:
+//
+//	// Console only
+//	InitializeWithFile("my-service", true, OutputConsole, nil)
+//
+//	// File only
+//	InitializeWithFile("my-service", false, OutputFile, &FileConfig{Path: "app.log"})
+//
+//	// Both console and file
+//	InitializeWithFile("my-service", true, OutputConsole|OutputFile, &FileConfig{Path: "app.log"})
+func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) {
 	level := zerolog.InfoLevel
 	if debug {
 		level = zerolog.DebugLevel
@@ -25,7 +57,45 @@ func Initialize(serviceName string, debug bool) {
 
 	zerolog.SetGlobalLevel(level)
 
-	zlog.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+	var writers []io.Writer
+
+	// Console output (human-readable, colored)
+	if output&OutputConsole != 0 {
+		consoleWriter := zerolog.ConsoleWriter{
+			Out:        os.Stderr,
+			TimeFormat: time.RFC3339,
+		}
+		writers = append(writers, consoleWriter)
+	}
+
+	// File output (JSON, structured)
+	if output&OutputFile != 0 {
+		if fileConfig == nil || fileConfig.Path == "" {
+			panic("fileConfig with Path is required when OutputFile is specified")
+		}
+
+		file, err := os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			panic(fmt.Sprintf("failed to open log file %s: %v", fileConfig.Path, err))
+		}
+
+		writers = append(writers, file)
+	}
+
+	// Ensure at least one output is configured
+	if len(writers) == 0 {
+		panic("at least one output destination must be specified")
+	}
+
+	// Create multi-writer if multiple outputs
+	var writer io.Writer
+	if len(writers) == 1 {
+		writer = writers[0]
+	} else {
+		writer = zerolog.MultiLevelWriter(writers...)
+	}
+
+	zlog.Logger = zerolog.New(writer).
 		With().
 		Timestamp().
 		Str("service", serviceName).
@@ -35,8 +105,23 @@ func Initialize(serviceName string, debug bool) {
 		Level(level)
 }
 
+// Initialize sets up the zerolog global logger with standard fields.
+// This function should be called once at the start of your application.
+// After calling Initialize, you can use zerolog's log package functions directly
+// (log.Debug(), log.Info(), etc.) or create component-specific loggers with ContextLogger.
+//
+// This is a convenience wrapper around InitializeWithFile for console-only output.
+// For file output or multiple outputs, use InitializeWithFile directly.
+//
+// Parameters:
+//   - serviceName: Name of the service, added as a field to all log entries
+//   - debug: If true, sets log level to Debug, otherwise Info
+func Initialize(serviceName string, debug bool) {
+	InitializeWithFile(serviceName, debug, OutputConsole, nil)
+}
+
 // ContextLogger creates a logger with context values.
-// This function uses the global logger configured by Initialize.
+// This function uses the global logger configured by Initialize or InitializeWithFile.
 // It adds context values and a component name to the logger.
 //
 // Parameters:
