@@ -116,28 +116,25 @@ func otelConfigExample() {
 		fmt.Println("Cleaning up resources...")
 	}
 
-	// Create OTel configuration with default LoggerProvider (stdout)
-	// This enables logging out of the box
+	// OTel is configured at the middleware level, not on server.Config.
+	// Create an OTel config and use it in Echo middleware:
 	otelCfg := otel.NewConfig("server-example").
 		WithServiceVersion("1.0.0")
-	// Note: TracerProvider and MeterProvider can be added via:
-	// .WithTracerProvider(tp).WithMeterProvider(mp)
 
 	config := server.DefaultConfig(8081, operation, shutdown)
 	config.ShutdownTimeout = 15 * time.Second
-	config.OTelConfig = otelCfg
+	// OTel middleware can be added via config.Middleware or EchoConfigurer
+	// Example: e.Use(otelecho.Middleware(otelCfg.ServiceName))
 
 	fmt.Printf("Server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Shutdown Timeout: %v\n", config.ShutdownTimeout)
-	fmt.Printf("- OpenTelemetry Logging: enabled (stdout)\n")
-	fmt.Printf("- OpenTelemetry Tracing: disabled\n")
-	fmt.Printf("- OpenTelemetry Metrics: disabled\n")
+	fmt.Printf("- OTel Config Service: %s\n", otelCfg.ServiceName)
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("server.StartWithConfig(config)")
-	fmt.Println("\nNote: Default LoggerProvider logs to stdout for easy debugging")
-	fmt.Println("✓ OpenTelemetry configuration example completed")
+	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("\nNote: OTel is configured via Echo middleware, not server.Config")
+	fmt.Println("OpenTelemetry configuration example completed")
 }
 
 func customRoutesExample() {
