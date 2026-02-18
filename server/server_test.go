@@ -13,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewHttpServer(t *testing.T) {
@@ -79,7 +80,8 @@ func TestOperationExecution(t *testing.T) {
 	server := newHttpServer(config)
 
 	// Start the server
-	server.start()
+	err := server.start()
+	require.NoError(t, err)
 
 	// Wait for operation to be called or timeout
 	select {
@@ -104,7 +106,8 @@ func TestShutdownExecution(t *testing.T) {
 	server := newHttpServer(config)
 
 	// Start the server
-	server.start()
+	err := server.start()
+	require.NoError(t, err)
 
 	// Stop the server
 	_ = server.stop()
@@ -185,7 +188,8 @@ func TestIntegration(t *testing.T) {
 	server := newHttpServer(config)
 
 	// Start the server
-	server.start()
+	err := server.start()
+	require.NoError(t, err)
 
 	// Wait for server to be ready
 	select {
@@ -218,7 +222,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	// Stop the server
-	err := server.stop()
+	err = server.stop()
 	assert.NoError(t, err)
 	assert.True(t, shutdownCalled.Load(), "Shutdown should be called after server stopFunc")
 }
@@ -243,13 +247,14 @@ func TestServerStartStop(t *testing.T) {
 	server := newHttpServer(config)
 
 	// Start the server
-	server.start()
+	err := server.start()
+	require.NoError(t, err)
 
 	// Wait for operation to be called
 	operationWg.Wait()
 
 	// Stop the server
-	err := server.stop()
+	err = server.stop()
 	assert.NoError(t, err)
 
 	// Wait for shutdown to be called
@@ -325,8 +330,8 @@ func TestStartFunction(t *testing.T) {
 		assert.Len(t, server.config.Middleware, 1)
 
 		// Start and stop to verify callbacks work
-		server.start()
-		time.Sleep(100 * time.Millisecond)
+		err := server.start()
+		require.NoError(t, err)
 		assert.True(t, operationCalled.Load(), "Operation should be called")
 
 		_ = server.stop()
@@ -359,11 +364,11 @@ func TestStartWithConfigFunction(t *testing.T) {
 		assert.Equal(t, 5*time.Second, server.config.ShutdownTimeout)
 
 		// Test start/stop cycle
-		server.start()
-		time.Sleep(100 * time.Millisecond)
+		err := server.start()
+		require.NoError(t, err)
 		assert.True(t, operationCalled.Load(), "Operation should be called during start")
 
-		err := server.stop()
+		err = server.stop()
 		assert.NoError(t, err, "Stop should not error")
 		assert.True(t, shutdownCalled.Load(), "Shutdown should be called during stop")
 	})

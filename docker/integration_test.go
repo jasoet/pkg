@@ -15,6 +15,7 @@ import (
 
 // Integration test with OpenTelemetry
 func TestIntegration_WithOTel(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Create OTel providers
@@ -46,6 +47,7 @@ func TestIntegration_WithOTel(t *testing.T) {
 
 // Integration test for complex container lifecycle
 func TestIntegration_ComplexLifecycle(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -133,6 +135,7 @@ func TestIntegration_ComplexLifecycle(t *testing.T) {
 
 // Integration test for error scenarios
 func TestIntegration_ErrorScenarios(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	t.Run("OperationsBeforeStart", func(t *testing.T) {
@@ -169,6 +172,7 @@ func TestIntegration_ErrorScenarios(t *testing.T) {
 
 // Integration test for volume mounting
 func TestIntegration_VolumeMounts(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -191,6 +195,7 @@ func TestIntegration_VolumeMounts(t *testing.T) {
 
 // Integration test for network modes
 func TestIntegration_NetworkModes(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -211,6 +216,7 @@ func TestIntegration_NetworkModes(t *testing.T) {
 
 // Integration test for labels
 func TestIntegration_Labels(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -238,6 +244,7 @@ func TestIntegration_Labels(t *testing.T) {
 
 // Integration test for environment variables
 func TestIntegration_EnvironmentVars(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -265,6 +272,7 @@ func TestIntegration_EnvironmentVars(t *testing.T) {
 
 // Integration test for port mapping edge cases
 func TestIntegration_PortMapping(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -290,6 +298,7 @@ func TestIntegration_PortMapping(t *testing.T) {
 
 // Integration test for wait strategies combinations
 func TestIntegration_WaitStrategies(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	t.Run("MultipleStrategies", func(t *testing.T) {

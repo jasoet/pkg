@@ -20,7 +20,9 @@ import (
 
 func main() {
 	// Initialize logging
-	logging.Initialize("argo-example", false)
+	if err := logging.Initialize("argo-example", false); err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize logging")
+	}
 	log.Info().Msg("Starting Argo Workflows client example")
 
 	// Create context

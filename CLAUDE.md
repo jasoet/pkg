@@ -149,7 +149,7 @@ Three-layer configuration strategy:
 ```go
 cfg, err := config.LoadString[AppConfig](yamlContent)
 // Or from file:
-cfg, err := config.Load[AppConfig]("config.yaml", "APP")
+cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 ```
 - Type-safe with generics (Go 1.24+)
 - Struct tags: `yaml:"field" mapstructure:"field" validate:"required"`
@@ -341,7 +341,7 @@ type AppConfig struct {
 cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 
 // Load from file
-cfg, err := config.Load[AppConfig]("config.yaml", "APP")
+cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 ```
 
 Environment override: `APP_SERVER_PORT=8080`

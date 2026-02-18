@@ -84,7 +84,10 @@ func basicLoggingExample() {
 	fmt.Println("Setting up basic logging configuration...")
 
 	// Initialize logging with service name and debug mode
-	logging.Initialize("logging-examples", true)
+	if err := logging.Initialize("logging-examples", true); err != nil {
+		fmt.Printf("Failed to initialize logging: %v\n", err)
+		return
+	}
 
 	// Use the global logger directly
 	log.Info().Msg("Application started")

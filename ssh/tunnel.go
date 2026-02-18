@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -63,7 +64,7 @@ func (t *Tunnel) getHostKeyCallback() ssh.HostKeyCallback {
 	// Default: return a callback that accepts any key but logs a warning
 	// This is more secure than InsecureIgnoreHostKey as it at least logs the connection
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		fmt.Printf("WARNING: Unable to verify host key for %s. Key type: %s\n", hostname, key.Type())
+		log.Warn().Str("hostname", hostname).Str("keyType", key.Type()).Msg("Unable to verify host key")
 		return nil
 	}
 }
@@ -111,22 +112,22 @@ func (t *Tunnel) Start() error {
 func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	remoteConn, err := t.client.Dial("tcp", remoteAddr)
 	if err != nil {
-		fmt.Println("SSH tunnel dial error:", err)
+		log.Error().Err(err).Str("remoteAddr", remoteAddr).Msg("SSH tunnel dial error")
 		if closeErr := localConn.Close(); closeErr != nil {
-			fmt.Printf("Error closing local connection: %v\n", closeErr)
+			log.Error().Err(closeErr).Msg("Error closing local connection")
 		}
 		return
 	}
 	go func() {
 		_, err := io.Copy(remoteConn, localConn)
 		if err != nil {
-			fmt.Println("SSH tunnel copy error:", err)
+			log.Error().Err(err).Msg("SSH tunnel copy error")
 		}
 	}()
 	go func() {
 		_, err := io.Copy(localConn, remoteConn)
 		if err != nil {
-			fmt.Println("SSH tunnel copy error:", err)
+			log.Error().Err(err).Msg("SSH tunnel copy error")
 		}
 	}()
 }

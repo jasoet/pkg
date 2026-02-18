@@ -23,11 +23,13 @@ func main() {
 	logFile := filepath.Join(tempDir, "app.log")
 
 	// Initialize with BOTH console and file output
-	logging.InitializeWithFile("both-example", true,
+	if err := logging.InitializeWithFile("both-example", true,
 		logging.OutputConsole|logging.OutputFile, // Bitwise OR
 		&logging.FileConfig{
 			Path: logFile,
-		})
+		}); err != nil {
+		panic(err)
+	}
 
 	println("=== Logging to both console and file ===\n")
 

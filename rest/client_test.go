@@ -141,7 +141,7 @@ func TestNewClient(t *testing.T) {
 	t.Run("With multiple middlewares", func(t *testing.T) {
 		middleware1 := NewNoOpMiddleware()
 		middleware2 := NewLoggingMiddleware()
-		middleware3 := NewDatabaseLoggingMiddleware()
+		middleware3 := NewNoOpMiddleware()
 
 		client := NewClient(WithMiddlewares(middleware1, middleware2, middleware3))
 
@@ -159,9 +159,9 @@ func TestNewClient(t *testing.T) {
 			t.Errorf("Expected second middleware to be LoggingMiddleware, got %T", client.middlewares[1])
 		}
 
-		_, ok3 := client.middlewares[2].(*DatabaseLoggingMiddleware)
+		_, ok3 := client.middlewares[2].(*NoOpMiddleware)
 		if !ok3 {
-			t.Errorf("Expected third middleware to be DatabaseLoggingMiddleware, got %T", client.middlewares[2])
+			t.Errorf("Expected third middleware to be NoOpMiddleware, got %T", client.middlewares[2])
 		}
 	})
 }

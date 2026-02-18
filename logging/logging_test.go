@@ -19,7 +19,8 @@ func TestInitialize(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		// Call Initialize with debug=true
-		Initialize("test-service", true)
+		err := Initialize("test-service", true)
+		require.NoError(t, err)
 
 		// Verify that the global level is set to Debug
 		assert.Equal(t, zerolog.DebugLevel, zerolog.GlobalLevel())
@@ -31,7 +32,8 @@ func TestInitialize(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		// Call Initialize with debug=false
-		Initialize("prod-service", false)
+		err := Initialize("prod-service", false)
+		require.NoError(t, err)
 
 		// Verify that the global level is set to Info
 		assert.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel())
@@ -42,8 +44,9 @@ func TestInitialize(t *testing.T) {
 		// Reset the global logger for testing
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		// Initialize should work without panicking
-		Initialize("test-service", false)
+		// Initialize should work without error
+		err := Initialize("test-service", false)
+		require.NoError(t, err)
 
 		// Verify logger is functional
 		zlog.Logger.Info().Msg("test message")
@@ -57,7 +60,8 @@ func TestInitializeWithFile(t *testing.T) {
 	t.Run("console only output", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		InitializeWithFile("console-service", true, OutputConsole, nil)
+		err := InitializeWithFile("console-service", true, OutputConsole, nil)
+		require.NoError(t, err)
 
 		assert.Equal(t, zerolog.DebugLevel, zerolog.GlobalLevel())
 		zlog.Logger.Info().Msg("console only message")
@@ -67,7 +71,8 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "file-only.log")
-		InitializeWithFile("file-service", false, OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("file-service", false, OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 
 		assert.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel())
 
@@ -89,7 +94,8 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "both.log")
-		InitializeWithFile("dual-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("dual-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 
 		assert.Equal(t, zerolog.DebugLevel, zerolog.GlobalLevel())
 
@@ -113,12 +119,14 @@ func TestInitializeWithFile(t *testing.T) {
 		logFile := filepath.Join(tempDir, "append.log")
 
 		// First initialization
-		InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 		zlog.Logger.Info().Msg("first message")
 
 		// Re-initialize (simulating app restart)
 		zlog.Logger = zerolog.New(os.Stderr)
-		InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
+		err = InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 		zlog.Logger.Info().Msg("second message")
 
 		// Verify both messages are in the file
@@ -134,45 +142,46 @@ func TestInitializeWithFile(t *testing.T) {
 		assert.Equal(t, 2, len(lines))
 	})
 
-	t.Run("panics when OutputFile specified without fileConfig", func(t *testing.T) {
+	t.Run("returns error when OutputFile specified without fileConfig", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		assert.Panics(t, func() {
-			InitializeWithFile("panic-service", false, OutputFile, nil)
-		})
+		err := InitializeWithFile("error-service", false, OutputFile, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "fileConfig with Path is required")
 	})
 
-	t.Run("panics when OutputFile specified with empty path", func(t *testing.T) {
+	t.Run("returns error when OutputFile specified with empty path", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		assert.Panics(t, func() {
-			InitializeWithFile("panic-service", false, OutputFile, &FileConfig{Path: ""})
-		})
+		err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: ""})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "fileConfig with Path is required")
 	})
 
-	t.Run("panics when no output destination specified", func(t *testing.T) {
+	t.Run("returns error when no output destination specified", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		assert.Panics(t, func() {
-			InitializeWithFile("panic-service", false, 0, nil)
-		})
+		err := InitializeWithFile("error-service", false, 0, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "at least one output destination must be specified")
 	})
 
-	t.Run("panics when file cannot be opened", func(t *testing.T) {
+	t.Run("returns error when file cannot be opened", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		invalidPath := "/invalid/nonexistent/directory/file.log"
 
-		assert.Panics(t, func() {
-			InitializeWithFile("panic-service", false, OutputFile, &FileConfig{Path: invalidPath})
-		})
+		err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: invalidPath})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to open log file")
 	})
 
 	t.Run("creates file with correct permissions", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "permissions.log")
-		InitializeWithFile("perm-service", false, OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("perm-service", false, OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 
 		// Write a message to ensure file is created
 		zlog.Logger.Info().Msg("test")
@@ -190,7 +199,8 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "levels.log")
-		InitializeWithFile("levels-service", true, OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("levels-service", true, OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 
 		// Write multiple levels
 		zlog.Logger.Debug().Msg("debug message")
@@ -261,7 +271,8 @@ func TestContextLogger(t *testing.T) {
 		logFile := filepath.Join(tempDir, "context.log")
 
 		zlog.Logger = zerolog.New(os.Stderr)
-		InitializeWithFile("context-service", false, OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("context-service", false, OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 
 		ctx := context.Background()
 		logger := ContextLogger(ctx, "my-component")
@@ -288,7 +299,8 @@ func TestIntegration(t *testing.T) {
 		logFile := filepath.Join(tempDir, "integration.log")
 
 		// Initialize the logger with both outputs
-		InitializeWithFile("integration-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
+		err := InitializeWithFile("integration-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
+		require.NoError(t, err)
 
 		// Create a context logger
 		ctx := context.Background()

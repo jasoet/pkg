@@ -79,7 +79,10 @@ func (m *MetricsMiddleware) GetStats() (int, time.Duration) {
 
 func main() {
 	// Initialize logging
-	logging.Initialize("rest-examples", true)
+	if err := logging.Initialize("rest-examples", true); err != nil {
+		fmt.Printf("Failed to initialize logging: %v\n", err)
+		return
+	}
 
 	fmt.Println("REST Package Examples")
 	fmt.Println("====================")

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 )
 
 type (
@@ -92,20 +93,29 @@ func newHttpServer(config Config) *httpServer {
 	}
 }
 
-func (s *httpServer) start() {
+func (s *httpServer) start() error {
 	s.config.Operation(s.echo)
 
+	errCh := make(chan error, 1)
 	go func() {
-		fmt.Printf("Starting server on port %d\n", s.config.Port)
+		log.Info().Int("port", s.config.Port).Msg("Starting server")
 		if err := s.echo.Start(fmt.Sprintf(":%v", s.config.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Fprintf(os.Stderr, "Failed to start server: %v\n", err)
-			os.Exit(1)
+			errCh <- err
 		}
+		close(errCh)
 	}()
+
+	// Give the server a moment to fail on bind errors
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("failed to start server: %w", err)
+	case <-time.After(100 * time.Millisecond):
+		return nil
+	}
 }
 
 func (s *httpServer) stop() error {
-	fmt.Println("Gracefully shutting down server...")
+	log.Info().Msg("Gracefully shutting down server")
 
 	s.config.Shutdown(s.echo)
 
@@ -116,25 +126,24 @@ func (s *httpServer) stop() error {
 }
 
 // StartWithConfig starts the HTTP server with the given configuration
-func StartWithConfig(config Config) {
+func StartWithConfig(config Config) error {
 	server := newHttpServer(config)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	server.start()
+	if err := server.start(); err != nil {
+		return err
+	}
 
 	<-ctx.Done()
 
-	if err := server.stop(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to shutdown server: %v\n", err)
-		os.Exit(1)
-	}
+	return server.stop()
 }
 
 // Start starts the HTTP server with simplified configuration
-func Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) {
+func Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) error {
 	config := DefaultConfig(port, operation, shutdown)
 	config.Middleware = middleware
-	StartWithConfig(config)
+	return StartWithConfig(config)
 }

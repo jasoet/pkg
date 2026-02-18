@@ -36,7 +36,7 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, e
 		Logger:    NewZerologAdapter(zerologLogger),
 	}
 
-	if !metricsEnabled {
+	if metricsEnabled {
 		scope, err := newPrometheusScope(prometheus.Configuration{
 			ListenAddress: config.MetricsListenAddress,
 			TimerType:     "histogram",
