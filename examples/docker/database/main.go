@@ -25,7 +25,7 @@ func postgresExample(ctx context.Context) {
 
 	// Create PostgreSQL container
 	req := docker.ContainerRequest{
-		Image:        "postgres:16-alpine",
+		Image:        "postgres:18-alpine",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "testuser",

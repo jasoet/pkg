@@ -347,7 +347,7 @@ endpoint, _ := exec.Endpoint(ctx, "80/tcp")
 
 // Or struct-based (testcontainers-like)
 req := docker.ContainerRequest{
-    Image:        "postgres:16-alpine",
+    Image:        "postgres:18-alpine",
     ExposedPorts: []string{"5432/tcp"},
     Env: map[string]string{
         "POSTGRES_PASSWORD": "secret",

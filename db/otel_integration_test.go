@@ -28,7 +28,7 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -200,7 +200,7 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -276,7 +276,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -444,7 +444,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -587,7 +587,7 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
