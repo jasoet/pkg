@@ -280,7 +280,7 @@ exec, _ := docker.New(
 
 // Style 2: Struct-based (testcontainers-compatible)
 req := docker.ContainerRequest{
-    Image:        "postgres:16-alpine",
+    Image:        "postgres:18-alpine",
     ExposedPorts: []string{"5432/tcp"},
     Env:          map[string]string{"POSTGRES_PASSWORD": "secret"},
     WaitingFor:   docker.WaitForLog("ready to accept connections"),
