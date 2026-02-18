@@ -96,9 +96,9 @@ func basicServerExample() {
 	fmt.Printf("- OpenTelemetry: disabled (nil)\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("server.StartWithConfig(config)")
+	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
 	fmt.Println("\nNote: Without OTelConfig, no request logging or telemetry is enabled")
-	fmt.Println("✓ Basic server example completed")
+	fmt.Println("Basic server example completed")
 }
 
 func otelConfigExample() {
@@ -178,8 +178,8 @@ func customRoutesExample() {
 	fmt.Printf("- Custom Middleware: RequestID, Auth, Logging\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("server.StartWithConfig(config)")
-	fmt.Println("✓ Custom routes example completed")
+	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("Custom routes example completed")
 }
 
 func healthChecksExample() {
@@ -228,8 +228,8 @@ func healthChecksExample() {
 	fmt.Printf("- Custom health endpoint: /custom-health\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("server.StartWithConfig(config)")
-	fmt.Println("✓ Health checks example completed")
+	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("Health checks example completed")
 }
 
 func gracefulShutdownExample() {
@@ -259,9 +259,9 @@ func gracefulShutdownExample() {
 	fmt.Printf("- Automatic signal handling (SIGINT, SIGTERM)\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("server.StartWithConfig(config)")
+	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
 	fmt.Println("\nNote: StartWithConfig() automatically handles graceful shutdown")
-	fmt.Println("✓ Graceful shutdown example completed")
+	fmt.Println("Graceful shutdown example completed")
 }
 
 // Helper functions for testing endpoints
