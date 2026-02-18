@@ -3,13 +3,19 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/jasoet/pkg/v2/logging"
 	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	// Initialize with console output only (default behavior)
-	logging.Initialize("console-example", true)
+	if err := logging.Initialize("console-example", true); err != nil {
+		fmt.Printf("Failed to initialize logging: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Basic logging
 	log.Info().Msg("Service started")
