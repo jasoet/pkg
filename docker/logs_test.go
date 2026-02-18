@@ -12,6 +12,7 @@ import (
 )
 
 func TestLogOptions_WithStdout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -31,6 +32,7 @@ func TestLogOptions_WithStdout(t *testing.T) {
 }
 
 func TestLogOptions_WithStderr(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -50,6 +52,7 @@ func TestLogOptions_WithStderr(t *testing.T) {
 }
 
 func TestLogOptions_WithTimestamps(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -69,6 +72,7 @@ func TestLogOptions_WithTimestamps(t *testing.T) {
 }
 
 func TestLogOptions_WithTail(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -88,6 +92,7 @@ func TestLogOptions_WithTail(t *testing.T) {
 }
 
 func TestLogOptions_WithSince(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -107,6 +112,7 @@ func TestLogOptions_WithSince(t *testing.T) {
 }
 
 func TestLogOptions_WithUntil(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -127,6 +133,7 @@ func TestLogOptions_WithUntil(t *testing.T) {
 }
 
 func TestLogOptions_Combined(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -151,6 +158,7 @@ func TestLogOptions_Combined(t *testing.T) {
 }
 
 func TestLogMethods_GetStdout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -170,6 +178,7 @@ func TestLogMethods_GetStdout(t *testing.T) {
 }
 
 func TestLogMethods_GetStderr(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -189,6 +198,7 @@ func TestLogMethods_GetStderr(t *testing.T) {
 }
 
 func TestFollowLogs_ToWriter(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

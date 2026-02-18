@@ -41,12 +41,16 @@ func main() {
 	fmt.Println("\n6. OTLP Log Export (see code for details)")
 	fmt.Println("  Uncomment otlpLogExportExample() to test with OTLP collector")
 
-	fmt.Println("\n✓ All examples completed!")
+	fmt.Println("\nAll examples completed!")
 }
 
 func basicLoggerProviderExample() {
-	// Create a LoggerProvider with zerolog backend
-	provider := logging.NewLoggerProvider("basic-example", true)
+	// Create a LoggerProvider with debug level
+	provider, err := otel.NewLoggerProviderWithOptions("basic-example", otel.WithLogLevel(logging.LogLevelDebug))
+	if err != nil {
+		fmt.Printf("Failed to create logger provider: %v\n", err)
+		return
+	}
 
 	// Get a logger from the provider
 	logger := provider.Logger("main")
@@ -60,15 +64,22 @@ func basicLoggerProviderExample() {
 	// Emit the log
 	logger.Emit(context.Background(), record)
 
-	fmt.Println("✓ Basic LoggerProvider created and used")
+	fmt.Println("Basic LoggerProvider created and used")
 	fmt.Println("  Check above for log output with service name, scope, and timestamp")
 }
 
 func otelConfigExample() {
+	// Create LoggerProvider (default info level)
+	provider, err := otel.NewLoggerProviderWithOptions("otel-example")
+	if err != nil {
+		fmt.Printf("Failed to create logger provider: %v\n", err)
+		return
+	}
+
 	// Create OTel config with LoggerProvider
 	cfg := otel.NewConfig("otel-example").
 		WithServiceVersion("1.0.0").
-		WithLoggerProvider(logging.NewLoggerProvider("otel-example", false))
+		WithLoggerProvider(provider)
 
 	// Get a logger from the config
 	logger := cfg.GetLogger("business-logic")
@@ -85,13 +96,17 @@ func otelConfigExample() {
 
 	logger.Emit(context.Background(), record)
 
-	fmt.Println("✓ OTel Config with LoggerProvider demonstrated")
+	fmt.Println("OTel Config with LoggerProvider demonstrated")
 	fmt.Println("  Using cfg.GetLogger() to get scoped loggers")
 }
 
 func traceCorrelationExample() {
-	// Create LoggerProvider
-	provider := logging.NewLoggerProvider("trace-example", true)
+	// Create LoggerProvider with debug level
+	provider, err := otel.NewLoggerProviderWithOptions("trace-example", otel.WithLogLevel(logging.LogLevelDebug))
+	if err != nil {
+		fmt.Printf("Failed to create logger provider: %v\n", err)
+		return
+	}
 	logger := provider.Logger("trace-scope")
 
 	// Create a TracerProvider for testing
@@ -115,13 +130,18 @@ func traceCorrelationExample() {
 	// Emit log - this will automatically include trace_id and span_id
 	logger.Emit(ctx, record)
 
-	fmt.Println("✓ Trace correlation demonstrated")
+	fmt.Println("Trace correlation demonstrated")
 	fmt.Println("  Notice the trace_id, span_id, and trace_flags in the log output")
 	fmt.Println("  These fields enable log-span correlation in Grafana!")
 }
 
 func multipleScopesExample() {
-	provider := logging.NewLoggerProvider("multi-scope", false)
+	// Create LoggerProvider (default info level)
+	provider, err := otel.NewLoggerProviderWithOptions("multi-scope")
+	if err != nil {
+		fmt.Printf("Failed to create logger provider: %v\n", err)
+		return
+	}
 
 	// Create loggers for different components
 	authLogger := provider.Logger("auth")
@@ -156,12 +176,17 @@ func multipleScopesExample() {
 	)
 	apiLogger.Emit(context.Background(), apiRecord)
 
-	fmt.Println("✓ Multiple scopes demonstrated")
+	fmt.Println("Multiple scopes demonstrated")
 	fmt.Println("  Each logger has its own scope field (auth, database, api)")
 }
 
 func severityLevelsExample() {
-	provider := logging.NewLoggerProvider("severity-example", true)
+	// Create LoggerProvider with debug level to see all severities
+	provider, err := otel.NewLoggerProviderWithOptions("severity-example", otel.WithLogLevel(logging.LogLevelDebug))
+	if err != nil {
+		fmt.Printf("Failed to create logger provider: %v\n", err)
+		return
+	}
 	logger := provider.Logger("severity-test")
 	ctx := context.Background()
 
@@ -187,7 +212,7 @@ func severityLevelsExample() {
 		}
 	}
 
-	fmt.Println("✓ Different severity levels demonstrated")
+	fmt.Println("Different severity levels demonstrated")
 	fmt.Println("  Debug, Info, Warn, and Error logs shown")
 	fmt.Println("  Notice the different colors and log levels in the output")
 }
@@ -204,12 +229,12 @@ func severityLevelsExample() {
 func otlpLogExportExample() {
 	// Create LoggerProvider with OTLP export
 	// This will send logs to localhost:4318 (standard OTLP HTTP port)
-	provider, err := otel.NewLoggerProviderWithOptions("otlp-example", false,
+	provider, err := otel.NewLoggerProviderWithOptions("otlp-example",
 		otel.WithOTLPEndpoint("localhost:4318", true), // insecure=true for local testing
 		otel.WithConsoleOutput(true),                  // also log to console
 	)
 	if err != nil {
-		fmt.Printf("✗ Failed to create OTLP logger provider: %v\n", err)
+		fmt.Printf("Failed to create OTLP logger provider: %v\n", err)
 		return
 	}
 
@@ -230,7 +255,7 @@ func otlpLogExportExample() {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	fmt.Println("✓ OTLP log export demonstrated")
+	fmt.Println("OTLP log export demonstrated")
 	fmt.Println("  Logs sent to OTLP collector at localhost:4318")
 	fmt.Println("  Check your OTLP backend (Grafana/Jaeger) to see the exported logs")
 }

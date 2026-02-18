@@ -52,7 +52,10 @@ type Order struct {
 
 func main() {
 	// Initialize logging
-	logging.Initialize("db-examples", true)
+	if err := logging.Initialize("db-examples", true); err != nil {
+		fmt.Printf("Failed to initialize logging: %v\n", err)
+		return
+	}
 	ctx := context.Background()
 
 	fmt.Println("DB Package Examples")

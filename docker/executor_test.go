@@ -14,6 +14,7 @@ import (
 )
 
 func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Create executor with functional options
@@ -53,6 +54,7 @@ func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
 }
 
 func TestExecutor_StructBased_Nginx(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Create executor with ContainerRequest (testcontainers style)
@@ -81,6 +83,7 @@ func TestExecutor_StructBased_Nginx(t *testing.T) {
 }
 
 func TestExecutor_Hybrid_Redis(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Start with struct, add functional options
@@ -116,6 +119,7 @@ func TestExecutor_Hybrid_Redis(t *testing.T) {
 }
 
 func TestExecutor_WaitStrategies(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	t.Run("WaitForLog", func(t *testing.T) {
@@ -180,6 +184,7 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 }
 
 func TestExecutor_Logs(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -202,6 +207,7 @@ func TestExecutor_Logs(t *testing.T) {
 }
 
 func TestExecutor_LogStreaming(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -242,6 +248,7 @@ collectLogs:
 }
 
 func TestExecutor_Status(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -268,6 +275,7 @@ func TestExecutor_Status(t *testing.T) {
 }
 
 func TestExecutor_Network(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -322,6 +330,7 @@ func TestExecutor_Network(t *testing.T) {
 }
 
 func TestExecutor_Lifecycle(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -359,6 +368,7 @@ func TestExecutor_Lifecycle(t *testing.T) {
 }
 
 func TestExecutor_EnvironmentVariables(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -382,6 +392,7 @@ func TestExecutor_EnvironmentVariables(t *testing.T) {
 }
 
 func TestExecutor_WorkDir(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -401,6 +412,7 @@ func TestExecutor_WorkDir(t *testing.T) {
 }
 
 func TestExecutor_ContainerName(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	containerName := fmt.Sprintf("test-name-%d", time.Now().Unix())
@@ -422,6 +434,7 @@ func TestExecutor_ContainerName(t *testing.T) {
 }
 
 func TestExecutor_MultipleContainers(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Start nginx
@@ -468,6 +481,7 @@ func TestExecutor_MultipleContainers(t *testing.T) {
 }
 
 func TestExecutor_AutoRemove(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -491,6 +505,7 @@ func TestExecutor_AutoRemove(t *testing.T) {
 }
 
 func TestExecutor_FollowLogs(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -522,6 +537,7 @@ func TestExecutor_FollowLogs(t *testing.T) {
 }
 
 func TestExecutor_ConnectionString(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -543,6 +559,7 @@ func TestExecutor_ConnectionString(t *testing.T) {
 }
 
 func TestExecutor_GetLogsSince(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -563,6 +580,7 @@ func TestExecutor_GetLogsSince(t *testing.T) {
 }
 
 func TestExecutor_GetLastNLines(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -582,6 +600,7 @@ func TestExecutor_GetLastNLines(t *testing.T) {
 }
 
 func TestExecutor_ErrorHandling(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	t.Run("InvalidImage", func(t *testing.T) {
@@ -620,6 +639,7 @@ func TestExecutor_ErrorHandling(t *testing.T) {
 }
 
 func TestExecutor_StdoutStderr(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
