@@ -151,6 +151,7 @@ func TestLogOptions_Combined(t *testing.T) {
 }
 
 func TestLogMethods_GetStdout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -170,6 +171,7 @@ func TestLogMethods_GetStdout(t *testing.T) {
 }
 
 func TestLogMethods_GetStderr(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -189,6 +191,7 @@ func TestLogMethods_GetStderr(t *testing.T) {
 }
 
 func TestFollowLogs_ToWriter(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

@@ -12,6 +12,7 @@ import (
 )
 
 func TestWaitStrategy_WaitForLog(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -33,6 +34,7 @@ func TestWaitStrategy_WaitForLog(t *testing.T) {
 }
 
 func TestWaitStrategy_WaitForPort(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -53,6 +55,7 @@ func TestWaitStrategy_WaitForPort(t *testing.T) {
 }
 
 func TestWaitStrategy_WaitForHTTP(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -74,6 +77,7 @@ func TestWaitStrategy_WaitForHTTP(t *testing.T) {
 }
 
 func TestWaitStrategy_ForListeningPort(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -95,6 +99,7 @@ func TestWaitStrategy_ForListeningPort(t *testing.T) {
 }
 
 func TestWaitStrategy_WaitForFunc(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	customWait := docker.WaitForFunc(func(ctx context.Context, cli *client.Client, containerID string) error {
@@ -119,6 +124,7 @@ func TestWaitStrategy_WaitForFunc(t *testing.T) {
 }
 
 func TestWaitStrategy_WaitForAll(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	multiWait := docker.WaitForAll(
@@ -142,6 +148,7 @@ func TestWaitStrategy_WaitForAll(t *testing.T) {
 }
 
 func TestWaitStrategy_Timeout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Wait for a log that will never appear with very short timeout
@@ -161,6 +168,7 @@ func TestWaitStrategy_Timeout(t *testing.T) {
 }
 
 func TestWaitStrategy_PortTimeout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Wait for a port on a container that doesn't expose it
@@ -180,6 +188,7 @@ func TestWaitStrategy_PortTimeout(t *testing.T) {
 }
 
 func TestWaitStrategy_HTTPTimeout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	// Wait for HTTP on a container that doesn't serve HTTP
