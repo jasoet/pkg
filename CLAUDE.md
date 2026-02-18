@@ -10,6 +10,10 @@ Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 16 
 **Go Version:** 1.24+ (uses generics)  
 **Test Coverage:** 85%
 
+## Building New Projects with This Library
+
+When scaffolding a new Go project that depends on `github.com/jasoet/pkg/v2`, read **[PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md)** for the recommended project structure, wiring patterns, test tiers (including E2E), Swagger/OpenAPI setup, `.http` files, and Taskfile targets. That template captures patterns that AI agents commonly miss when generating projects from scratch.
+
 ## Development Commands
 
 All commands use Taskfile. Check `task --list` for full list.
