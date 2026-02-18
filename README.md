@@ -230,6 +230,12 @@ task lint               # Run golangci-lint
 - **Stable v1:** v1.5.0 (no OpenTelemetry, maintenance only)
 - **Migration Guide:** See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md)
 
+**Building New Projects with This Library:**
+When creating a new Go project that uses `github.com/jasoet/pkg/v2`, refer to **[PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md)** for the recommended project structure. It covers directory layout, wiring patterns, and three critical aspects AI agents commonly miss:
+- **E2E tests** — full-stack API tests with real HTTP + testcontainer DB (`test/e2e/`)
+- **OpenAPI/Swagger** — `swaggo/swag` annotations, generation pipeline, UI serving
+- **`.http` files** — IntelliJ/VS Code REST Client files for manual API testing (`http/`)
+
 ## 📚 Package Documentation
 
 ### Core Infrastructure
