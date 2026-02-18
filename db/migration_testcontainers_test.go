@@ -24,7 +24,7 @@ func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -226,7 +226,7 @@ func TestPostgresMigrationsWithGorm(t *testing.T) {
 
 	// Start PostgreSQL container
 	postgresContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -320,7 +320,7 @@ func TestPostgresMigrationsWithGormError(t *testing.T) {
 	t.Run("Invalid migration filesystem", func(t *testing.T) {
 		// Start PostgreSQL container
 		postgresContainer, err := postgres.Run(ctx,
-			"postgres:16-alpine",
+			"postgres:18-alpine",
 			postgres.WithDatabase("testdb"),
 			postgres.WithUsername("testuser"),
 			postgres.WithPassword("testpass"),

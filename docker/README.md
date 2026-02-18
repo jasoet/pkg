@@ -74,7 +74,7 @@ import (
 func main() {
     // Create executor with ContainerRequest
     req := docker.ContainerRequest{
-        Image:        "postgres:16-alpine",
+        Image:        "postgres:18-alpine",
         ExposedPorts: []string{"5432/tcp"},
         Env: map[string]string{
             "POSTGRES_PASSWORD": "secret",
@@ -118,7 +118,7 @@ exec, _ := docker.New(
 **2. Options after struct (NEW):**
 ```go
 req := docker.ContainerRequest{
-    Image: "postgres:16-alpine",
+    Image: "postgres:18-alpine",
     Env: map[string]string{
         "POSTGRES_PASSWORD": "secret",
     },
@@ -504,7 +504,7 @@ connStr, err := exec.ConnectionString(ctx, "5432/tcp",
 
 ```go
 req := docker.ContainerRequest{
-    Image: "postgres:16-alpine",
+    Image: "postgres:18-alpine",
     ExposedPorts: []string{"5432/tcp"},
     Env: map[string]string{
         "POSTGRES_PASSWORD": "test",
@@ -588,7 +588,7 @@ redis, _ := docker.New(
 
 // PostgreSQL
 postgres, _ := docker.New(
-    docker.WithImage("postgres:16-alpine"),
+    docker.WithImage("postgres:18-alpine"),
     docker.WithPorts("5432:5432"),
     docker.WithName("dev-postgres"),
     docker.WithEnvMap(map[string]string{
