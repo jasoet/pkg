@@ -36,8 +36,8 @@
 // Use LayerContext for simplified span + logging with automatic correlation:
 //
 //	// Service layer example
-//	lc := otel.Layers.StartService(ctx, cfg, "user", "CreateUser",
-//	    "user.id", userID)
+//	lc := otel.Layers.StartService(ctx, "user", "CreateUser",
+//	    otel.F("user_id", userID))
 //	defer lc.End()
 //
 //	lc.Logger.Info("Creating user", otel.F("email", email))

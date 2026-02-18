@@ -255,7 +255,8 @@ type OrderResult struct {
 // E2E Integration Tests
 func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	// Initialize logging for integration tests
-	logging.Initialize("temporal-integration-test", true)
+	err := logging.Initialize("temporal-integration-test", true)
+	require.NoError(t, err, "Failed to initialize logging")
 
 	ctx := context.Background()
 
@@ -455,7 +456,8 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 }
 
 func TestE2ETemporalIntegration(t *testing.T) {
-	logging.Initialize("temporal-full-integration", true)
+	err := logging.Initialize("temporal-full-integration", true)
+	require.NoError(t, err, "Failed to initialize logging")
 
 	ctx := context.Background()
 

@@ -18,7 +18,9 @@ import (
 // Argo Workflows with full OpenTelemetry instrumentation.
 func main() {
 	// Initialize logging
-	logging.Initialize("argo-builder-example", false)
+	if err := logging.Initialize("argo-builder-example", false); err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize logging")
+	}
 	log.Info().Msg("Starting Argo Workflow Builder example")
 
 	ctx := context.Background()

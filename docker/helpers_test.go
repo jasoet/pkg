@@ -14,6 +14,7 @@ import (
 )
 
 func TestExecutor_ContainerID(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -43,6 +44,7 @@ func TestExecutor_Close(t *testing.T) {
 }
 
 func TestStatus_WaitForState(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -61,6 +63,7 @@ func TestStatus_WaitForState(t *testing.T) {
 }
 
 func TestStatus_WaitForStateTimeout(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -81,6 +84,7 @@ func TestStatus_WaitForStateTimeout(t *testing.T) {
 }
 
 func TestStatus_ExitCode(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -101,6 +105,7 @@ func TestStatus_ExitCode(t *testing.T) {
 }
 
 func TestStatus_ExitCodeWhileRunning(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -120,6 +125,7 @@ func TestStatus_ExitCodeWhileRunning(t *testing.T) {
 }
 
 func TestStatus_Inspect(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -140,6 +146,7 @@ func TestStatus_Inspect(t *testing.T) {
 }
 
 func TestStatus_GetStats(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -159,6 +166,7 @@ func TestStatus_GetStats(t *testing.T) {
 }
 
 func TestNetwork_ConnectionString(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -213,6 +221,7 @@ func TestExecutor_NewFromRequest_WithOptions(t *testing.T) {
 }
 
 func TestExecutor_NewFromRequest_WithOTel(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	req := docker.ContainerRequest{
@@ -329,6 +338,7 @@ func TestNetwork_EndpointBeforeStart(t *testing.T) {
 }
 
 func TestNetwork_MappedPortNotFound(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -347,6 +357,7 @@ func TestNetwork_MappedPortNotFound(t *testing.T) {
 }
 
 func TestExecutor_PullImageError(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -358,6 +369,7 @@ func TestExecutor_PullImageError(t *testing.T) {
 }
 
 func TestExecutor_WaitExitCode(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -375,6 +387,7 @@ func TestExecutor_WaitExitCode(t *testing.T) {
 }
 
 func TestStatus_HealthCheckNotConfigured(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -393,6 +406,7 @@ func TestStatus_HealthCheckNotConfigured(t *testing.T) {
 }
 
 func TestStatus_WaitForHealthyNotConfigured(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(
@@ -411,6 +425,7 @@ func TestStatus_WaitForHealthyNotConfigured(t *testing.T) {
 }
 
 func TestNetwork_GetNetworksEmpty(t *testing.T) {
+	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
 	exec, _ := docker.New(

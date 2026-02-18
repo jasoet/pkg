@@ -82,39 +82,3 @@ func (m *NoOpMiddleware) BeforeRequest(ctx context.Context, method string, url s
 func (m *NoOpMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
 	// No-op
 }
-
-// DatabaseLoggingMiddleware logs HTTP requests and responses to a database (placeholder implementation)
-type DatabaseLoggingMiddleware struct{}
-
-// NewDatabaseLoggingMiddleware creates a new DatabaseLoggingMiddleware instance
-func NewDatabaseLoggingMiddleware() *DatabaseLoggingMiddleware {
-	return &DatabaseLoggingMiddleware{}
-}
-
-// BeforeRequest stores the start time in context for later use
-func (m *DatabaseLoggingMiddleware) BeforeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) context.Context {
-	return context.WithValue(ctx, requestStartTimeKeyValue, time.Now())
-}
-
-// AfterRequest logs the request to database (placeholder - just logs to console for now)
-func (m *DatabaseLoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
-	// TODO: Implement actual database logging
-	// For now, just log to console similar to LoggingMiddleware
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/rest", "DatabaseLoggingMiddleware.AfterRequest")
-
-	if info.Error != nil {
-		logger.Error(info.Error, "Request failed (would log to database)",
-			otel.F("middleware", "database"),
-			otel.F("method", info.Method),
-			otel.F("url", info.URL),
-			otel.F("status_code", info.StatusCode),
-			otel.F("duration", info.Duration))
-	} else {
-		logger.Info("Request completed (would log to database)",
-			otel.F("middleware", "database"),
-			otel.F("method", info.Method),
-			otel.F("url", info.URL),
-			otel.F("status_code", info.StatusCode),
-			otel.F("duration", info.Duration))
-	}
-}
