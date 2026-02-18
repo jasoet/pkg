@@ -33,7 +33,7 @@ type ConnectionConfig struct {
 	Username     string        `yaml:"username" validate:"required,min=1" mapstructure:"username"`
 	Password     string        `yaml:"password" mapstructure:"password"`
 	DbName       string        `yaml:"dbName" validate:"required,min=1" mapstructure:"dbName"`
-	Timeout      time.Duration `yaml:"timeout" mapstructure:"timeout" validate:"min=3s"`
+	Timeout      time.Duration `yaml:"timeout" mapstructure:"timeout"`
 	MaxIdleConns int           `yaml:"maxIdleConns" mapstructure:"maxIdleConns" validate:"min=1"`
 	MaxOpenConns int           `yaml:"maxOpenConns" mapstructure:"maxOpenConns" validate:"min=2"`
 
@@ -191,6 +191,8 @@ func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 	)
 	if err != nil {
 		// Log error but don't fail
-		fmt.Printf("Failed to register pool metrics callback: %v\n", err)
+		logger := pkgotel.NewLogHelper(context.Background(), c.OTelConfig,
+			"github.com/jasoet/pkg/v2/db", "db.collectPoolMetrics")
+		logger.Error(err, "Failed to register pool metrics callback")
 	}
 }
