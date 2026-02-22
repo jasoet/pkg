@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 16 core packages for building cloud-native applications: otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32, and examples.
+Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 core packages for building cloud-native applications: otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, and base32.
 
 **Module Path:** `github.com/jasoet/pkg/v2`  
 **Go Version:** 1.24+ (uses generics)  
@@ -344,8 +344,10 @@ type AppConfig struct {
 // Load from string (useful for tests/examples)
 cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 
-// Load from file
-cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
+// Load with custom Viper configuration
+cfg, err := config.LoadStringWithConfig[AppConfig](yamlContent, func(v *viper.Viper) {
+    v.SetDefault("server.port", 8080)
+}, "APP")
 ```
 
 Environment override: `APP_SERVER_PORT=8080`

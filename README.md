@@ -8,7 +8,7 @@
 
 Production-ready Go utility packages with **OpenTelemetry** instrumentation, comprehensive testing, and battle-tested components for building modern cloud-native applications.
 
-## 🎯 Version 2 Status
+## Version 2 Status
 
 **Current Release:** `v2.0.0` (GA)
 **Status:** Production Ready
@@ -20,7 +20,7 @@ Production-ready Go utility packages with **OpenTelemetry** instrumentation, com
 
 See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for migration instructions and versioning workflow.
 
-## 📦 Packages
+## Packages
 
 Production-ready components with comprehensive observability, testing, and examples:
 
@@ -35,21 +35,18 @@ Production-ready components with comprehensive observability, testing, and examp
 | **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
 | **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, dual protocol, observability |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, OTel tracing |
-| **[retry](./retry/)** | Retry with exponential backoff | Reusable operations, context-aware, OTel support |
+| **[retry](./retry/)** | Retry with exponential backoff | Context-aware, OTel tracing, permanent errors |
 | **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation |
 | **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring |
 | **[ssh](./ssh/)** | SSH tunneling utilities | Secure connections, port forwarding |
-| **[compress](./compress/)** | File compression utilities | ZIP, tar.gz, security validation | 
+| **[base32](./base32/)** | Crockford Base32 encoding | Human-readable IDs, CRC-10 checksums, error correction |
+| **[compress](./compress/)** | File compression utilities | ZIP, tar.gz, security validation |
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
 ```bash
-# Latest stable v1 (production)
-go get github.com/jasoet/pkg
-
-# v2 (includes OpenTelemetry)
 go get github.com/jasoet/pkg/v2@v2.0.0
 ```
 
@@ -62,8 +59,8 @@ import (
     "github.com/jasoet/pkg/v2/config"
     "github.com/jasoet/pkg/v2/logging"
     "github.com/jasoet/pkg/v2/server"
-    "github.com/jasoet/pkg/v2/otel"
     "github.com/labstack/echo/v4"
+    "github.com/rs/zerolog/log"
 )
 
 type AppConfig struct {
@@ -71,19 +68,15 @@ type AppConfig struct {
 }
 
 func main() {
+    // Setup logging
+    if err := logging.Initialize("my-service", false); err != nil {
+        log.Fatal().Err(err).Msg("failed to initialize logging")
+    }
+
     // Load configuration
     cfg, _ := config.LoadString[AppConfig](`port: 8080`)
 
-    // Setup OpenTelemetry
-    otelConfig := otel.NewConfig("my-service").
-        WithTracerProvider(/* your tracer */).
-        WithMeterProvider(/* your meter */)
-
-    // Setup logging with OTel
-    loggerProvider := logging.NewLoggerProvider("my-service", false)
-    otelConfig.LoggerProvider = loggerProvider
-
-    // Start HTTP server with observability
+    // Define routes
     operation := func(e *echo.Echo) {
         e.GET("/", func(c echo.Context) error {
             return c.String(200, "Hello!")
@@ -94,9 +87,11 @@ func main() {
         // cleanup
     }
 
+    // Start HTTP server
     serverCfg := server.DefaultConfig(cfg.Port, operation, shutdown)
-    serverCfg.OTelConfig = otelConfig
-    server.StartWithConfig(serverCfg)
+    if err := server.StartWithConfig(serverCfg); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
 ```
 
@@ -114,9 +109,9 @@ go run -tags=example ./server/examples
 go build -tags=example ./...
 ```
 
-📖 **[Browse Package Examples](./examples/)**
+Each package's examples live in its own `examples/` subdirectory (e.g. `./logging/examples/`).
 
-## 🔬 Test Coverage
+## Test Coverage
 
 **Overall Coverage: 85%**
 
@@ -132,12 +127,12 @@ task test
 # Integration tests (Docker required)
 task test:integration
 
-# All tests with coverage report
-task test:all
+# Complete test suite with coverage report
+task test:complete
 open output/coverage-all.html
 ```
 
-## 🎯 Key Features
+## Key Features
 
 ### OpenTelemetry Integration
 - **Unified Configuration:** Single config for tracing, metrics, and logging
@@ -164,28 +159,27 @@ open output/coverage-all.html
 - **Middleware Support:** Custom request/response handlers
 
 ### Type-Safe Concurrency
-- **Go 1.25+ Generics:** Type-safe parallel execution
+- **Go 1.24+ Generics:** Type-safe parallel execution
 - **Error Handling:** Aggregate errors from concurrent operations
 - **Context Support:** Cancellation and timeout handling
 - **Resource Management:** Automatic goroutine cleanup
 
-## 🔧 Development
+## Development
 
 ### Development Commands
 
 ```bash
-
 # Testing
-# All integration test using testcontainer, docker engine required
+# All integration tests use testcontainers, docker engine required
 task test               # Unit tests
 task test:integration   # Integration tests (Docker required)
-task test:all           # All tests with coverage
+task test:complete      # All tests with coverage
 
 # Quality
 task lint               # Run golangci-lint
 ```
 
-## 🤖 AI Agent Instructions
+## AI Agent Instructions
 
 **Repository Type:** Go utility library (v2) - production-ready infrastructure components with OpenTelemetry
 
@@ -193,7 +187,7 @@ task lint               # Run golangci-lint
 - Ensure docker engine available and accessible from testcontainer
 
 **Architecture:**
-- **12 core packages:** otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress
+- **15 core packages:** otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32
 - **Integration-ready:** Packages work seamlessly together
 - **Examples:** Each package has runnable examples with `go run -tags=example ./package/examples`
 - **Module Path:** `github.com/jasoet/pkg/v2` (Go v2+ semantics)
@@ -206,14 +200,14 @@ task lint               # Run golangci-lint
 - **gRPC:** Production-ready server with Echo gateway, H2C mode, observability (grpc package)
 - **REST Client:** Resilient HTTP client with retries, OTel tracing (rest package)
 - **Logging:** Zerolog with OTel log provider integration (logging package)
-- **Concurrency:** Type-safe parallel execution with Go 1.25+ generics (concurrent package)
+- **Concurrency:** Type-safe parallel execution with Go 1.24+ generics (concurrent package)
 - **Workflows:** Temporal integration for distributed workflows (temporal package)
 
 **Testing Strategy:**
 - **Coverage:** 85% (unit + integration, excludes generated code)
 - **Unit Tests:** `task test` (no Docker, race detection enabled)
 - **Integration Tests:** `task test:integration` (testcontainers, Docker required)
-- **All Tests:** `task test:all` (complete coverage, generates output/coverage-all.html)
+- **All Tests:** `task test:complete` (complete coverage, generates output/coverage-all.html)
 - **Assertion Library:** Use `github.com/stretchr/testify/assert` for all test assertions
 - **Test Categories:**
   - Unit: No build tags, no external dependencies
@@ -236,7 +230,7 @@ When creating a new Go project that uses `github.com/jasoet/pkg/v2`, refer to **
 - **OpenAPI/Swagger** — `swaggo/swag` annotations, generation pipeline, UI serving
 - **`.http` files** — IntelliJ/VS Code REST Client files for manual API testing (`http/`)
 
-## 📚 Package Documentation
+## Package Documentation
 
 ### Core Infrastructure
 
@@ -266,17 +260,9 @@ type AppConfig struct {
     DB     DBConfig     `yaml:"database"`
 }
 
-// Load from file
-cfg, _ := config.LoadString[AppConfig](yamlContent)
-
-// Or from string
-yamlStr := `
-server:
-  port: 8080
-database:
-  host: localhost
-`
-cfg, _ := config.LoadString[AppConfig](yamlStr)
+// Load from string with environment variable overrides (prefix: APP)
+cfg, _ := config.LoadString[AppConfig](yamlContent, "APP")
+// Override via env: APP_SERVER_PORT=9090
 ```
 
 **Features:** Hot-reload, validation, environment overrides
@@ -296,7 +282,7 @@ otelCfg := &otel.Config{
 }
 
 // Or use legacy zerolog
-logging.Initialize("my-service", false)
+_ = logging.Initialize("my-service", false)
 log.Info().Str("user", "john").Msg("User logged in")
 ```
 
@@ -390,6 +376,48 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 **Features:** Multiple connection modes, functional options, OTel support, proper error handling
 **[Examples](./argo/examples/)** | **[Documentation](./argo/README.md)**
 
+#### [retry](./retry/) - Retry with Exponential Backoff
+Production-ready retry mechanism using `cenkalti/backoff/v4` with OTel instrumentation.
+
+```go
+cfg := retry.DefaultConfig().
+    WithName("db.connect").
+    WithMaxRetries(3).
+    WithOTel(otelConfig)
+
+err := retry.Do(ctx, cfg, func(ctx context.Context) error {
+    return db.Ping(ctx)
+})
+
+// For non-retryable errors:
+return retry.Permanent(fmt.Errorf("invalid config"))
+```
+
+**Features:** Exponential backoff, context-aware, OTel tracing, permanent error marking
+**[Documentation](./retry/README.md)**
+
+#### [base32](./base32/) - Crockford Base32 Encoding
+Crockford Base32 encoding with CRC-10 checksums for human-readable, error-correcting identifiers.
+
+```go
+// Encode a value to fixed-length Base32
+id := base32.EncodeBase32(12345, 8) // "0000C1P9"
+
+// Add checksum for error detection
+idWithChecksum := base32.AppendChecksum(id)
+
+// Validate and decode
+if base32.ValidateChecksum(idWithChecksum) {
+    value, _ := base32.DecodeBase32(base32.StripChecksum(idWithChecksum))
+}
+
+// Normalize user input (handles case, dashes, common typos)
+normalized := base32.NormalizeBase32("ab-CD iL o9") // "ABCD1109"
+```
+
+**Features:** URL-safe alphabet, automatic error correction, CRC-10 checksums, compact encoding
+**[Examples](./base32/examples/)** | **[Documentation](./base32/README.md)**
+
 ### HTTP & gRPC
 
 #### [server](./server/) - HTTP Server
@@ -405,11 +433,12 @@ shutdown := func(e *echo.Echo) {
 }
 
 config := server.DefaultConfig(8080, operation, shutdown)
-config.OTelConfig = otelConfig
-server.StartWithConfig(config)
+if err := server.StartWithConfig(config); err != nil {
+    log.Fatal().Err(err).Msg("server failed")
+}
 ```
 
-**Features:** Health checks, Prometheus metrics, graceful shutdown, middleware
+**Features:** Health checks, graceful shutdown, middleware
 **Coverage:** 83.0% | **[Examples](./server/examples/)** | **[Documentation](./server/README.md)**
 
 #### [grpc](./grpc/) - gRPC Server
@@ -471,7 +500,7 @@ funcs := map[string]concurrent.Func[string]{
 results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
 ```
 
-**Features:** Go 1.25+ generics, error aggregation, context support
+**Features:** Go 1.24+ generics, error aggregation, context support
 **Coverage:** 100% | **[Examples](./concurrent/examples/)** | **[Documentation](./concurrent/README.md)**
 
 #### [temporal](./temporal/) - Workflow Orchestration
@@ -531,7 +560,7 @@ compress.TarGz("/path/to/directory", outputFile)
 **Features:** ZIP, tar.gz, security validation, path traversal protection
 **Coverage:** 86.3% | **[Examples](./compress/examples/)** | **[Documentation](./compress/README.md)**
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
 
@@ -557,9 +586,8 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 4. **Make Changes & Test**
    ```bash
    task test           # Unit tests
-   task test:all       # Full coverage
+   task test:complete  # Full coverage
    task lint           # Code quality
-   task security       # Security check
    ```
 
 5. **Commit with Conventional Commits**
@@ -592,42 +620,15 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to v2 migration instructions.
 
-## 📈 Roadmap
+## Roadmap
 
-### ✅ Completed
-- [x] Core packages (11 components)
-- [x] OpenTelemetry instrumentation
-- [x] 85% test coverage (unit + integration)
-- [x] Integration examples
-- [x] Task-based development workflow
-- [x] CI/CD pipeline with automated testing
-- [x] Comprehensive documentation
-- [x] gRPC & Protobuf support with Echo gateway
-- [x] Testcontainer-based integration tests
-
-### ✅ v2.0.0 GA Released
-- [x] Review and update all package READMEs
-- [x] Review and update all example READMEs
-- [x] Ensure all examples demonstrate OTel integration
-- [x] Create fullstack OTel example application (examples/fullstack-otel)
-- [x] v2.0.0 GA release
-
-### ✅ Completed (Post v2.0 GA)
-- [x] **Docker Executor Package** - Production-ready Docker execution helper with testcontainer-compatible API
-  - Dual API: functional options + struct-based (testcontainers-like)
-  - Lifecycle management: Start, Stop, Restart, Terminate, Wait
-  - Wait strategies: log patterns, port listening, HTTP health checks
-  - Log streaming with filtering
-  - OpenTelemetry v2 instrumentation
-  - 83.9% test coverage, zero lint issues
-
-### 📝 Planned
+### Planned
 - [ ] **Temporal Docker Workflows** - Reusable Temporal workflows for Docker container execution
   - Pre-built workflow templates for containerized jobs
   - Integration with docker executor package
   - Observability and error handling patterns
 
-## 🔗 Links
+## Links
 
 - **Documentation:** [Browse Package Docs](./docs/)
 - **Examples:** [All Examples](./examples/)
@@ -636,7 +637,7 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to
 - **Changelog:** [Releases](https://github.com/jasoet/pkg/releases)
 - **Issues:** [GitHub Issues](https://github.com/jasoet/pkg/issues)
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 

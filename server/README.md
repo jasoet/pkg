@@ -1,61 +1,9 @@
 # HTTP Server Package (v2)
 
-A clean, production-ready HTTP server implementation using the Echo framework with built-in support for OpenTelemetry, health checks, and graceful shutdown.
+A clean, production-ready HTTP server implementation using the Echo framework with built-in health checks and graceful shutdown.
 
-## 🚨 v2 Breaking Changes
-
-**Version 2.x** introduces OpenTelemetry as the standard for observability, replacing Prometheus metrics.
-
-### Removed from v1:
-- `EnableMetrics` field
-- `MetricsPath` field
-- `MetricsSubsystem` field
-- Prometheus integration
-- `github.com/rs/zerolog` logging
-
-### Added in v2:
-- `OTelConfig *otel.Config` - OpenTelemetry configuration
-- Support for traces, metrics, and logs via OpenTelemetry
-- Default LoggerProvider (stdout) when using `otel.NewConfig()`
-- Independent control of telemetry pillars
-- Simple `fmt` logging for server lifecycle events
-
-### Migration from v1 to v2
-
-**Before (v1):**
-```go
-config := server.Config{
-    Port: 8080,
-    EnableMetrics: true,
-    MetricsPath: "/metrics",
-    MetricsSubsystem: "my_service",
-}
-server.StartWithConfig(config)
-```
-
-**After (v2):**
-```go
-// Option 1: Without telemetry
-operation := func(e *echo.Echo) {
-    // Your routes
-}
-shutdown := func(e *echo.Echo) {
-    // Cleanup
-}
-config := server.DefaultConfig(8080, operation, shutdown)
-server.StartWithConfig(config)
-
-// Option 2: With OpenTelemetry logging (default)
-otelCfg := otel.NewConfig("my-service")  // Logs to stdout by default
-config.OTelConfig = otelCfg
-
-// Option 3: With full OpenTelemetry (traces + metrics + logs)
-otelCfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider).
-    WithServiceVersion("1.0.0")
-config.OTelConfig = otelCfg
-```
+> **Note:** `Start` and `StartWithConfig` return `error` instead of calling `os.Exit(1)`.
+> Callers must handle the returned error. See examples below.
 
 ## Quick Start
 
@@ -84,100 +32,10 @@ func main() {
     }
 
     // Start server on port 8080
-    server.Start(8080, operation, shutdown)
+    if err := server.Start(8080, operation, shutdown); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
-```
-
-## OpenTelemetry Integration
-
-Version 2 uses OpenTelemetry for all observability needs.
-
-### Basic Usage (Logging Only)
-
-```go
-import (
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/server"
-    "github.com/labstack/echo/v4"
-)
-
-func main() {
-    // Create OTel config with default stdout logging
-    otelCfg := otel.NewConfig("my-service").
-        WithServiceVersion("1.0.0")
-
-    operation := func(e *echo.Echo) {
-        e.GET("/api/users", getUsersHandler)
-    }
-
-    shutdown := func(e *echo.Echo) {
-        // Cleanup
-    }
-
-    config := server.DefaultConfig(8080, operation, shutdown)
-    config.OTelConfig = otelCfg
-
-    server.StartWithConfig(config)
-}
-```
-
-### Full Telemetry (Traces + Metrics + Logs)
-
-```go
-import (
-    "context"
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/server"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-    "go.opentelemetry.io/otel/sdk/metric"
-    "go.opentelemetry.io/otel/sdk/trace"
-)
-
-func main() {
-    ctx := context.Background()
-
-    // Setup TracerProvider
-    traceExporter, _ := otlptracehttp.New(ctx)
-    tracerProvider := trace.NewTracerProvider(
-        trace.WithBatcher(traceExporter),
-    )
-
-    // Setup MeterProvider
-    meterProvider := metric.NewMeterProvider()
-
-    // Create OTel config with all pillars
-    otelCfg := otel.NewConfig("my-service").
-        WithTracerProvider(tracerProvider).
-        WithMeterProvider(meterProvider).
-        WithServiceVersion("1.0.0")
-
-    operation := func(e *echo.Echo) {
-        e.GET("/api/users", getUsersHandler)
-    }
-
-    shutdown := func(e *echo.Echo) {
-        // Shutdown OTel providers
-        otelCfg.Shutdown(ctx)
-    }
-
-    config := server.DefaultConfig(8080, operation, shutdown)
-    config.OTelConfig = otelCfg
-
-    server.StartWithConfig(config)
-}
-```
-
-### Disabling Telemetry
-
-```go
-// Option 1: No OTelConfig (nil)
-config := server.DefaultConfig(8080, operation, shutdown)
-// config.OTelConfig is nil - no telemetry
-
-// Option 2: Disable logging specifically
-otelCfg := otel.NewConfig("my-service").
-    WithoutLogging()  // Disables default stdout logging
-config.OTelConfig = otelCfg
 ```
 
 ## Configuration Options
@@ -190,7 +48,6 @@ The server can be customized using the `Config` struct:
 | Operation | func(e *echo.Echo) | Function to run when server starts | - |
 | Shutdown | func(e *echo.Echo) | Function to run when server stops | - |
 | Middleware | []echo.MiddlewareFunc | Custom middleware to apply | [] |
-| OTelConfig | *otel.Config | OpenTelemetry configuration | nil |
 | ShutdownTimeout | time.Duration | Timeout for graceful shutdown | 10s |
 | EchoConfigurer | func(e *echo.Echo) | Function to configure Echo instance | nil |
 
@@ -199,8 +56,9 @@ Example with custom configuration:
 ```go
 config := server.DefaultConfig(8080, operation, shutdown)
 config.ShutdownTimeout = 30 * time.Second
-config.OTelConfig = otel.NewConfig("my-service")
-server.StartWithConfig(config)
+if err := server.StartWithConfig(config); err != nil {
+    log.Fatal().Err(err).Msg("server failed")
+}
 ```
 
 ### Using EchoConfigurer
@@ -222,7 +80,9 @@ config.EchoConfigurer = func(e *echo.Echo) {
     e.Debug = true
 }
 
-server.StartWithConfig(config)
+if err := server.StartWithConfig(config); err != nil {
+    log.Fatal().Err(err).Msg("server failed")
+}
 ```
 
 ## Middleware Examples
@@ -259,7 +119,9 @@ func main() {
     })
 
     // Start server with middleware
-    server.Start(8080, operation, shutdown, corsMiddleware, rateLimiter)
+    if err := server.Start(8080, operation, shutdown, corsMiddleware, rateLimiter); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
 ```
 
@@ -296,10 +158,12 @@ func main() {
     }
 
     // Start server with custom middleware
-    server.Start(8080,
+    if err := server.Start(8080,
         func(e *echo.Echo) {},
         func(e *echo.Echo) {},
-        timingMiddleware)
+        timingMiddleware); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
 ```
 
@@ -345,21 +209,6 @@ operation := func(e *echo.Echo) {
     })
 }
 ```
-
-## OpenTelemetry Metrics
-
-When `OTelConfig` is provided with a `MeterProvider`, the server automatically collects HTTP metrics:
-
-### Default Metrics
-
-- `http.server.request.count` - Total number of HTTP requests
-- `http.server.request.duration` - HTTP request duration (histogram)
-- `http.server.active_requests` - Number of active HTTP requests (up/down counter)
-
-All metrics include semantic convention attributes:
-- `http.request.method` - HTTP method
-- `http.route` - Route pattern
-- `http.response.status_code` - HTTP status code
 
 ## Graceful Shutdown
 
@@ -420,7 +269,9 @@ func main() {
     config := server.DefaultConfig(8080, func(e *echo.Echo) {}, shutdown)
     config.ShutdownTimeout = 30 * time.Second
 
-    server.StartWithConfig(config)
+    if err := server.StartWithConfig(config); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
 ```
 
@@ -474,7 +325,9 @@ func main() {
     }
 
     // Start the server
-    server.Start(8080, operation, shutdown)
+    if err := server.Start(8080, operation, shutdown); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
 ```
 
@@ -540,7 +393,9 @@ func main() {
     }
 
     // Start the server
-    server.StartWithConfig(config)
+    if err := server.StartWithConfig(config); err != nil {
+        log.Fatal().Err(err).Msg("server failed")
+    }
 }
 ```
 
@@ -550,7 +405,6 @@ For complete, runnable examples, see the [examples directory](../examples/server
 
 The examples demonstrate:
 - Basic server setup
-- OpenTelemetry configuration (traces, metrics, logs)
 - Custom routes and middleware
 - Health check implementations
 - Graceful shutdown patterns
@@ -577,35 +431,24 @@ shutdown := func(e *echo.Echo) {
     db.Close()
 }
 
-server.Start(8080, operation, shutdown)
+if err := server.Start(8080, operation, shutdown); err != nil {
+    log.Fatal().Err(err).Msg("server failed")
+}
 ```
 
-### 2. Enable OpenTelemetry for Production
-
-```go
-// Production configuration
-otelCfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider).
-    WithServiceVersion(version)
-
-config := server.DefaultConfig(8080, operation, shutdown)
-config.OTelConfig = otelCfg
-config.ShutdownTimeout = 30 * time.Second
-server.StartWithConfig(config)
-```
-
-### 3. Use Middleware for Cross-Cutting Concerns
+### 2. Use Middleware for Cross-Cutting Concerns
 
 ```go
 // Apply middleware for auth, logging, rate limiting, etc.
 authMiddleware := createAuthMiddleware()
 rateLimiter := middleware.RateLimiterWithConfig(...)
 
-server.Start(8080, operation, shutdown, authMiddleware, rateLimiter)
+if err := server.Start(8080, operation, shutdown, authMiddleware, rateLimiter); err != nil {
+    log.Fatal().Err(err).Msg("server failed")
+}
 ```
 
-### 4. Implement Proper Health Checks
+### 3. Implement Proper Health Checks
 
 ```go
 operation := func(e *echo.Echo) {
@@ -626,11 +469,11 @@ operation := func(e *echo.Echo) {
 
 ### Functions
 
-#### `Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc)`
-Starts the HTTP server with simplified configuration.
+#### `Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) error`
+Starts the HTTP server with simplified configuration. Returns an error if the server fails to start or shut down.
 
-#### `StartWithConfig(config Config)`
-Starts the HTTP server with the given configuration.
+#### `StartWithConfig(config Config) error`
+Starts the HTTP server with the given configuration. Returns an error if the server fails to start or shut down.
 
 #### `DefaultConfig(port int, operation Operation, shutdown Shutdown) Config`
 Returns a default server configuration.
@@ -652,11 +495,6 @@ Function to configure the Echo instance directly.
 - Check if the port is already in use
 - Verify Operation function doesn't have errors
 - Check for panics in route handlers
-
-### Telemetry not working
-- Verify `OTelConfig` is not nil
-- Check that providers are properly initialized
-- Use `otel.NewConfig()` for default stdout logging
 
 ### Graceful shutdown timeout
 - Increase `ShutdownTimeout` in config
