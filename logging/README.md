@@ -24,8 +24,10 @@ import (
 
 func main() {
     // Initialize with console output
-    logging.Initialize("my-service", true) // debug=true
-    
+    if err := logging.Initialize("my-service", true); err != nil { // debug=true
+        log.Fatal().Err(err).Msg("failed to initialize logging")
+    }
+
     // Use global logger
     log.Info().Msg("Service started")
     log.Debug().Str("config", "loaded").Msg("Configuration loaded")
@@ -39,12 +41,14 @@ import "github.com/jasoet/pkg/v2/logging"
 
 func main() {
     // All logs go to file (no console output)
-    logging.InitializeWithFile("my-service", false,
+    if err := logging.InitializeWithFile("my-service", false,
         logging.OutputFile,
         &logging.FileConfig{
             Path: "/var/log/myapp/app.log",
-        })
-    
+        }); err != nil {
+        log.Fatal().Err(err).Msg("failed to initialize logging")
+    }
+
     log.Info().Msg("This goes to file only")
 }
 ```
@@ -56,12 +60,14 @@ import "github.com/jasoet/pkg/v2/logging"
 
 func main() {
     // Logs appear in both console and file
-    logging.InitializeWithFile("my-service", true,
+    if err := logging.InitializeWithFile("my-service", true,
         logging.OutputConsole | logging.OutputFile, // Bitwise OR
         &logging.FileConfig{
             Path: "/var/log/myapp/app.log",
-        })
-    
+        }); err != nil {
+        log.Fatal().Err(err).Msg("failed to initialize logging")
+    }
+
     log.Info().Msg("Visible in console AND file")
 }
 ```
@@ -71,10 +77,10 @@ func main() {
 ### Initialize
 
 ```go
-func Initialize(serviceName string, debug bool)
+func Initialize(serviceName string, debug bool) error
 ```
 
-Sets up console-only logging (backward compatible).
+Sets up console-only logging. Returns an error if initialization fails.
 
 **Parameters:**
 - `serviceName`: Service name added to all logs
@@ -82,16 +88,19 @@ Sets up console-only logging (backward compatible).
 
 **Example:**
 ```go
-logging.Initialize("my-service", true)
+if err := logging.Initialize("my-service", true); err != nil {
+    log.Fatal().Err(err).Msg("failed to initialize logging")
+}
 ```
 
 ### InitializeWithFile
 
 ```go
-func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig)
+func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) error
 ```
 
-Sets up logging with flexible output destinations.
+Sets up logging with flexible output destinations. Returns an error if the configuration
+is invalid or the log file cannot be opened.
 
 **Parameters:**
 - `serviceName`: Service name added to all logs
@@ -106,15 +115,15 @@ Sets up logging with flexible output destinations.
 **Examples:**
 ```go
 // Console only
-logging.InitializeWithFile("service", true, logging.OutputConsole, nil)
+err := logging.InitializeWithFile("service", true, logging.OutputConsole, nil)
 
 // File only
-logging.InitializeWithFile("service", false, 
+err := logging.InitializeWithFile("service", false,
     logging.OutputFile,
     &logging.FileConfig{Path: "app.log"})
 
 // Both
-logging.InitializeWithFile("service", true,
+err := logging.InitializeWithFile("service", true,
     logging.OutputConsole | logging.OutputFile,
     &logging.FileConfig{Path: "app.log"})
 ```
@@ -204,19 +213,23 @@ import (
 func main() {
     env := os.Getenv("ENV")
     
+    var err error
     if env == "production" {
         // Production: file only, info level
-        logging.InitializeWithFile("my-service", false,
+        err = logging.InitializeWithFile("my-service", false,
             logging.OutputFile,
             &logging.FileConfig{Path: "/var/log/myapp/app.log"})
     } else if env == "staging" {
         // Staging: both console and file, debug level
-        logging.InitializeWithFile("my-service", true,
+        err = logging.InitializeWithFile("my-service", true,
             logging.OutputConsole | logging.OutputFile,
             &logging.FileConfig{Path: "/var/log/myapp/app.log"})
     } else {
         // Development: console only, debug level
-        logging.Initialize("my-service", true)
+        err = logging.Initialize("my-service", true)
+    }
+    if err != nil {
+        log.Fatal().Err(err).Msg("failed to initialize logging")
     }
 }
 ```
@@ -329,10 +342,12 @@ log.Panic().Msg("Unrecoverable error")
 ```go
 func main() {
     // Initialize logging first
-    logging.InitializeWithFile("my-service", true,
+    if err := logging.InitializeWithFile("my-service", true,
         logging.OutputConsole | logging.OutputFile,
-        &logging.FileConfig{Path: "app.log"})
-    
+        &logging.FileConfig{Path: "app.log"}); err != nil {
+        log.Fatal().Err(err).Msg("failed to initialize logging")
+    }
+
     // Then start your application
     startServer()
 }
@@ -388,21 +403,30 @@ log.Info().Msg("User 123 has 5 orders")
 
 ## Migration from v1
 
-No changes needed! The `Initialize()` function remains backward compatible:
+`Initialize` and `InitializeWithFile` now return `error` instead of panicking.
+Existing code that discards the return value will still compile, but you should
+handle the error to avoid silent failures:
 
-**v1 code:**
+**v1 code (still compiles but error is ignored):**
 ```go
 logging.Initialize("my-service", true)
-log.Info().Msg("Hello")
 ```
 
-**Still works in v2!** To add file logging:
+**Recommended v2 code:**
+```go
+if err := logging.Initialize("my-service", true); err != nil {
+    log.Fatal().Err(err).Msg("failed to initialize logging")
+}
+```
+
+To add file logging:
 
 ```go
-logging.InitializeWithFile("my-service", true,
+if err := logging.InitializeWithFile("my-service", true,
     logging.OutputConsole | logging.OutputFile,
-    &logging.FileConfig{Path: "app.log"})
-log.Info().Msg("Hello")
+    &logging.FileConfig{Path: "app.log"}); err != nil {
+    log.Fatal().Err(err).Msg("failed to initialize logging")
+}
 ```
 
 ## Testing
@@ -413,14 +437,15 @@ When writing tests, you can redirect logs to a test file:
 func TestMyFunction(t *testing.T) {
     tempDir := t.TempDir()
     logFile := filepath.Join(tempDir, "test.log")
-    
-    logging.InitializeWithFile("test-service", true,
+
+    err := logging.InitializeWithFile("test-service", true,
         logging.OutputFile,
         &logging.FileConfig{Path: logFile})
-    
+    require.NoError(t, err)
+
     // Run your test
     MyFunction()
-    
+
     // Verify logs
     content, _ := os.ReadFile(logFile)
     assert.Contains(t, string(content), "expected log message")
