@@ -89,9 +89,10 @@ func NestedEnvVars(prefix string, keyDepth int, configPath string, viperConfig *
 	for entityName, fields := range nestedEnvVars {
 		entityKey := configPath + "." + entityName
 
-		if !viperConfig.IsSet(entityKey) {
-			for fieldName, fieldValue := range fields {
-				viperConfig.Set(entityKey+"."+fieldName, fieldValue)
+		for fieldName, fieldValue := range fields {
+			fieldKey := entityKey + "." + fieldName
+			if !viperConfig.IsSet(fieldKey) {
+				viperConfig.Set(fieldKey, fieldValue)
 			}
 		}
 	}
