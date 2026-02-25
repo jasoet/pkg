@@ -5,6 +5,7 @@ import (
 
 	"github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -160,10 +161,10 @@ func (i *otelInstrumentation) setSpanStatus(ctx context.Context, code int, descr
 	}
 
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
-		// OpenTelemetry removed codes.Code, using simpler approach
 		if code != 0 {
-			span.RecordError(nil)
-			span.SetAttributes(attribute.String("status.description", description))
+			span.SetStatus(codes.Error, description)
+		} else {
+			span.SetStatus(codes.Ok, description)
 		}
 	}
 }
