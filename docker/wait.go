@@ -60,27 +60,25 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, con
 	}
 	defer logs.Close()
 
-	// Read logs line by line
+	// Read logs — ContainerLogs respects context cancellation, so blocking
+	// reads will unblock when the timeout fires. No select/default needed.
 	buf := make([]byte, 8192)
 	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for log pattern: %s", w.pattern.String())
-		default:
-			n, err := logs.Read(buf)
-			if err != nil {
-				if err == io.EOF {
-					// Container stopped before pattern found
-					return fmt.Errorf("container stopped before log pattern found: %s", w.pattern.String())
-				}
-				return fmt.Errorf("error reading logs: %w", err)
-			}
-
-			// Check if pattern matches
-			line := string(buf[:n])
-			if w.pattern.MatchString(line) {
+		n, err := logs.Read(buf)
+		if n > 0 {
+			if w.pattern.MatchString(string(buf[:n])) {
 				return nil
 			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return fmt.Errorf("container stopped before log pattern found: %s", w.pattern.String())
+			}
+			// Context cancellation surfaces as a read error
+			if ctx.Err() != nil {
+				return fmt.Errorf("timeout waiting for log pattern: %s", w.pattern.String())
+			}
+			return fmt.Errorf("error reading logs: %w", err)
 		}
 	}
 }
