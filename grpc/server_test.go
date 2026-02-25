@@ -381,11 +381,16 @@ func TestServerTrackUptime(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Test uptime tracking
+	// C11: trackUptime must exit when stopUptime is closed
+	server.stopUptime = make(chan struct{})
 	go server.trackUptime()
 
 	// Let it run briefly
 	time.Sleep(50 * time.Millisecond)
+
+	// Close the stop channel — goroutine should exit
+	close(server.stopUptime)
+	time.Sleep(50 * time.Millisecond) // give it time to exit
 
 	// Get metrics to verify uptime is being tracked
 	mm := server.GetMetricsManager()
