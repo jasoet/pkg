@@ -252,6 +252,7 @@ func TestDoWithNotify_AllFailed(t *testing.T) {
 	err := DoWithNotify(ctx, cfg, operation, notifyFunc)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, expectedErr)
+	assert.Contains(t, err.Error(), "failed after")
 	assert.Len(t, notifications, 2) // Notified on both retries
 }
 
@@ -273,6 +274,47 @@ func TestPermanent(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, permanentErr)
 	assert.Equal(t, 1, attempts) // Should not retry
+}
+
+func TestConfigWithRandomizationFactor(t *testing.T) {
+	cfg := DefaultConfig().WithRandomizationFactor(0.0)
+	assert.Equal(t, 0.0, cfg.RandomizationFactor)
+
+	cfg = DefaultConfig().WithRandomizationFactor(0.8)
+	assert.Equal(t, 0.8, cfg.RandomizationFactor)
+}
+
+func TestDefaultConfigHasRandomizationFactor(t *testing.T) {
+	cfg := DefaultConfig()
+	assert.Equal(t, 0.5, cfg.RandomizationFactor)
+}
+
+func TestDoWithNotify_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cfg := DefaultConfig().
+		WithName("test.notify.cancel").
+		WithMaxRetries(5).
+		WithInitialInterval(100 * time.Millisecond)
+
+	var notifications []error
+	notifyFunc := func(err error, backoff time.Duration) {
+		notifications = append(notifications, err)
+	}
+
+	attempts := 0
+	operation := func(ctx context.Context) error {
+		attempts++
+		if attempts == 2 {
+			cancel()
+		}
+		return errors.New("error")
+	}
+
+	err := DoWithNotify(ctx, cfg, operation, notifyFunc)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, err.Error(), "cancelled")
+	assert.LessOrEqual(t, attempts, 3)
 }
 
 func TestDo_MaxIntervalCap(t *testing.T) {
