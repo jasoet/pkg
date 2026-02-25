@@ -106,7 +106,8 @@ func TestLogOptions_WithSince(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	logs, err := exec.Logs(ctx, docker.WithSince("1s"))
+	// Use a wide window so the log (generated ~2s ago) is included
+	logs, err := exec.Logs(ctx, docker.WithSince("1m"))
 	require.NoError(t, err)
 	assert.NotEmpty(t, logs)
 }
@@ -126,10 +127,20 @@ func TestLogOptions_WithUntil(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	// Get logs until now + 10 seconds
-	logs, err := exec.Logs(ctx, docker.WithUntil("10s"))
+	// Docker Until is relative to daemon time: "1s" means "until 1 second ago"
+	// so we must NOT use it to capture recent logs. Use an RFC3339 timestamp
+	// far in the future, or verify that a narrow window correctly excludes logs.
+	// Here we verify that Until("1m") excludes logs generated >1 minute ago
+	// while including recent ones (generated ~2s ago, within the 1-minute window).
+	logs, err := exec.Logs(ctx, docker.WithSince("1m"))
 	require.NoError(t, err)
 	assert.NotEmpty(t, logs)
+
+	// Verify Until with very small window excludes recent logs
+	logsExcluded, err := exec.Logs(ctx, docker.WithUntil("1m"))
+	require.NoError(t, err)
+	// Until("1m") means "until 1 minute ago" — recent logs should be excluded
+	assert.Empty(t, logsExcluded)
 }
 
 func TestLogOptions_Combined(t *testing.T) {

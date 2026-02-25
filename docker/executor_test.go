@@ -573,9 +573,9 @@ func TestExecutor_GetLogsSince(t *testing.T) {
 
 	time.Sleep(4 * time.Second)
 
-	logs, err := exec.GetLogsSince(ctx, "1s")
+	// Use a wide window (1 minute) to capture logs generated ~2-4s ago
+	logs, err := exec.GetLogsSince(ctx, "1m")
 	require.NoError(t, err)
-	// Should contain recent logs
 	assert.NotEmpty(t, logs)
 }
 
