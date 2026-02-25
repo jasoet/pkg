@@ -2,6 +2,7 @@ package template
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	"github.com/jasoet/pkg/v2/otel"
@@ -285,16 +286,32 @@ func (c *Container) Templates() ([]v1alpha1.Template, error) {
 		}
 
 		if c.cpuRequest != "" {
-			container.Resources.Requests[corev1.ResourceCPU] = resource.MustParse(c.cpuRequest)
+			q, err := resource.ParseQuantity(c.cpuRequest)
+			if err != nil {
+				return nil, fmt.Errorf("invalid cpuRequest %q: %w", c.cpuRequest, err)
+			}
+			container.Resources.Requests[corev1.ResourceCPU] = q
 		}
 		if c.cpuLimit != "" {
-			container.Resources.Limits[corev1.ResourceCPU] = resource.MustParse(c.cpuLimit)
+			q, err := resource.ParseQuantity(c.cpuLimit)
+			if err != nil {
+				return nil, fmt.Errorf("invalid cpuLimit %q: %w", c.cpuLimit, err)
+			}
+			container.Resources.Limits[corev1.ResourceCPU] = q
 		}
 		if c.memoryRequest != "" {
-			container.Resources.Requests[corev1.ResourceMemory] = resource.MustParse(c.memoryRequest)
+			q, err := resource.ParseQuantity(c.memoryRequest)
+			if err != nil {
+				return nil, fmt.Errorf("invalid memoryRequest %q: %w", c.memoryRequest, err)
+			}
+			container.Resources.Requests[corev1.ResourceMemory] = q
 		}
 		if c.memoryLimit != "" {
-			container.Resources.Limits[corev1.ResourceMemory] = resource.MustParse(c.memoryLimit)
+			q, err := resource.ParseQuantity(c.memoryLimit)
+			if err != nil {
+				return nil, fmt.Errorf("invalid memoryLimit %q: %w", c.memoryLimit, err)
+			}
+			container.Resources.Limits[corev1.ResourceMemory] = q
 		}
 	}
 

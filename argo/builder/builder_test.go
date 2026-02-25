@@ -448,6 +448,31 @@ func TestWorkflowBuilder_BuildWithEntrypoint(t *testing.T) {
 	})
 }
 
+func TestWorkflowBuilder_Build_Reentrant(t *testing.T) {
+	// I43: Build() must be safe to call multiple times without duplicating templates.
+	builder := NewWorkflowBuilder("test", "argo").
+		Add(template.NewContainer("step1", "alpine:latest"))
+
+	wf1, err := builder.Build()
+	require.NoError(t, err)
+
+	wf2, err := builder.Build()
+	require.NoError(t, err)
+
+	// Both builds should produce the same number of templates.
+	assert.Equal(t, len(wf1.Spec.Templates), len(wf2.Spec.Templates),
+		"calling Build() twice must not duplicate templates")
+
+	// Count "main" templates — there should be exactly one
+	mainCount := 0
+	for _, tmpl := range wf2.Spec.Templates {
+		if tmpl.Name == "main" {
+			mainCount++
+		}
+	}
+	assert.Equal(t, 1, mainCount, "there should be exactly one 'main' template")
+}
+
 // mockParallelSource implements WorkflowSourceV2 for testing
 type mockParallelSource struct {
 	parallelSteps    []v1alpha1.ParallelSteps
