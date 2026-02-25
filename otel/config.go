@@ -2,13 +2,13 @@ package otel
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jasoet/pkg/v2/logging"
 	"go.opentelemetry.io/otel/log"
 	noopl "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
 	noopm "go.opentelemetry.io/otel/metric/noop"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/trace"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 )
@@ -20,6 +20,10 @@ const configContextKey contextKey = "otel.config"
 // Config holds OpenTelemetry configuration for instrumentation.
 // TracerProvider and MeterProvider are optional - nil values result in no-op implementations.
 // LoggerProvider defaults to zerolog-based provider when using NewConfig().
+//
+// Config should be treated as immutable after creation and initial configuration
+// via With* methods. Do not modify fields directly after passing Config to consumers,
+// as concurrent access is not synchronized.
 type Config struct {
 	// TracerProvider for distributed tracing
 	// If nil, tracing will be disabled (no-op tracer)
@@ -108,12 +112,6 @@ func (c *Config) DisableMetrics() *Config {
 	return c
 }
 
-// DisableLogging disables logging by setting LoggerProvider to nil
-func (c *Config) DisableLogging() *Config {
-	c.LoggerProvider = nil
-	return c
-}
-
 // ContextWithConfig stores the OTel config in the context.
 // This allows nested layers to access the config without explicit parameter passing.
 //
@@ -157,28 +155,48 @@ func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
 	if debug {
 		opts = append(opts, WithLogLevel(logging.LogLevelDebug))
 	}
-	provider, _ := NewLoggerProviderWithOptions(serviceName, opts...)
+	provider, err := NewLoggerProviderWithOptions(serviceName, opts...)
+	if err != nil {
+		// Fall back to no-op provider if creation fails
+		return noopl.NewLoggerProvider()
+	}
 	return provider
 }
 
-// Shutdown gracefully shuts down all configured providers
-// Call this when your application exits to flush any pending telemetry
+// shutdownable is implemented by SDK providers that support graceful shutdown.
+type shutdownable interface {
+	Shutdown(ctx context.Context) error
+}
+
+// Shutdown gracefully shuts down all configured providers (tracer, meter, logger).
+// Call this when your application exits to flush any pending telemetry.
+// Returns a combined error if any provider shutdown fails.
 func (c *Config) Shutdown(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
 
-	// Shutdown logger provider if it supports it
-	if lp, ok := c.LoggerProvider.(*sdklog.LoggerProvider); ok {
-		if err := lp.Shutdown(ctx); err != nil {
-			return err
+	var errs []error
+
+	if s, ok := c.TracerProvider.(shutdownable); ok {
+		if err := s.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	// Note: TracerProvider and MeterProvider shutdown
-	// should be handled by the user who created them
+	if s, ok := c.MeterProvider.(shutdownable); ok {
+		if err := s.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
 
-	return nil
+	if s, ok := c.LoggerProvider.(shutdownable); ok {
+		if err := s.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // IsTracingEnabled returns true if tracing is configured
