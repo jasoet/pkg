@@ -7,6 +7,7 @@ import (
 
 	"github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -172,19 +173,18 @@ func TestOTelInstrumentation_SetSpanStatus(t *testing.T) {
 
 				span := spans[0]
 
-				// Check if status.description attribute is set when code != 0
 				if tt.code != 0 {
-					found := false
-					for _, attr := range span.Attributes {
-						if attr.Key == "status.description" {
-							found = true
-							if attr.Value.AsString() != tt.description {
-								t.Errorf("status.description = %v, want %v", attr.Value.AsString(), tt.description)
-							}
-						}
+					// Should set Error status via span.SetStatus
+					if span.Status.Code != codes.Error {
+						t.Errorf("span status code = %v, want Error", span.Status.Code)
 					}
-					if !found && tt.wantError {
-						t.Error("expected status.description attribute not found")
+					if span.Status.Description != tt.description {
+						t.Errorf("span status description = %v, want %v", span.Status.Description, tt.description)
+					}
+				} else {
+					// Should set Ok status
+					if span.Status.Code != codes.Ok {
+						t.Errorf("span status code = %v, want Ok", span.Status.Code)
 					}
 				}
 			}
