@@ -58,11 +58,14 @@
 //	    config.HostPort = container.HostPort()
 //	    config.MetricsListenAddress = "0.0.0.0:0"
 //
-//	    client, err := temporal.NewClient(config)
+//	    client, closer, err := temporal.NewClient(config)
 //	    if err != nil {
 //	        t.Fatalf("Failed to create client: %v", err)
 //	    }
 //	    defer client.Close()
+//	    if closer != nil {
+//	        defer closer.Close()
+//	    }
 //
 //	    // Run tests...
 //	}

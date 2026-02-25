@@ -479,9 +479,14 @@ func TestE2ETemporalIntegration(t *testing.T) {
 		// Test the full Temporal stack integration
 
 		// 1. Create client
-		temporalClient, err := NewClient(config)
+		temporalClient, closer, err := NewClient(config)
 		require.NoError(t, err, "Failed to create Temporal client")
-		defer temporalClient.Close()
+		defer func() {
+			temporalClient.Close()
+			if closer != nil {
+				closer.Close()
+			}
+		}()
 
 		// 2. Create worker manager
 		wm, err := NewWorkerManager(config)
@@ -489,7 +494,8 @@ func TestE2ETemporalIntegration(t *testing.T) {
 		defer wm.Close()
 
 		// 3. Create schedule manager
-		sm := NewScheduleManager(temporalClient)
+		sm, err := NewScheduleManager(temporalClient)
+		require.NoError(t, err, "Failed to create ScheduleManager")
 		require.NotNil(t, sm, "ScheduleManager should not be nil")
 
 		// 4. Test basic connectivity
