@@ -5,73 +5,64 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
 
 func TestNew(t *testing.T) {
 	t.Run("creates tunnel with provided config", func(t *testing.T) {
 		config := Config{
-			Host:       "example.com",
-			Port:       22,
-			User:       "testuser",
-			Password:   "testpass",
-			RemoteHost: "remote.example.com",
-			RemotePort: 3306,
-			LocalPort:  3307,
-			Timeout:    10 * time.Second,
+			Host:                  "example.com",
+			Port:                  22,
+			User:                  "testuser",
+			Password:              "testpass",
+			RemoteHost:            "remote.example.com",
+			RemotePort:            3306,
+			LocalPort:             3307,
+			Timeout:               10 * time.Second,
+			InsecureIgnoreHostKey: true,
 		}
 
 		tunnel := New(config)
-		if tunnel == nil {
-			t.Fatal("Expected non-nil tunnel")
-		}
-		if tunnel.config.Host != config.Host {
-			t.Errorf("Expected host %s, got %s", config.Host, tunnel.config.Host)
-		}
-		if tunnel.config.Timeout != config.Timeout {
-			t.Errorf("Expected timeout %v, got %v", config.Timeout, tunnel.config.Timeout)
-		}
+		require.NotNil(t, tunnel)
+		assert.Equal(t, config.Host, tunnel.config.Host)
+		assert.Equal(t, config.Timeout, tunnel.config.Timeout)
 	})
 
 	t.Run("sets default timeout when not specified", func(t *testing.T) {
 		config := Config{
-			Host:       "example.com",
-			Port:       22,
-			User:       "testuser",
-			Password:   "testpass",
-			RemoteHost: "remote.example.com",
-			RemotePort: 3306,
-			LocalPort:  3307,
-			// Timeout not specified
+			Host:                  "example.com",
+			Port:                  22,
+			User:                  "testuser",
+			Password:              "testpass",
+			RemoteHost:            "remote.example.com",
+			RemotePort:            3306,
+			LocalPort:             3307,
+			InsecureIgnoreHostKey: true,
 		}
 
 		tunnel := New(config)
-		if tunnel == nil {
-			t.Fatal("Expected non-nil tunnel")
-		}
-		expectedTimeout := 5 * time.Second
-		if tunnel.config.Timeout != expectedTimeout {
-			t.Errorf("Expected default timeout %v, got %v", expectedTimeout, tunnel.config.Timeout)
-		}
+		require.NotNil(t, tunnel)
+		assert.Equal(t, 5*time.Second, tunnel.config.Timeout)
 	})
 
 	t.Run("does not override non-zero timeout", func(t *testing.T) {
 		customTimeout := 15 * time.Second
 		config := Config{
-			Host:       "example.com",
-			Port:       22,
-			User:       "testuser",
-			Password:   "testpass",
-			RemoteHost: "remote.example.com",
-			RemotePort: 3306,
-			LocalPort:  3307,
-			Timeout:    customTimeout,
+			Host:                  "example.com",
+			Port:                  22,
+			User:                  "testuser",
+			Password:              "testpass",
+			RemoteHost:            "remote.example.com",
+			RemotePort:            3306,
+			LocalPort:             3307,
+			Timeout:               customTimeout,
+			InsecureIgnoreHostKey: true,
 		}
 
 		tunnel := New(config)
-		if tunnel.config.Timeout != customTimeout {
-			t.Errorf("Expected timeout %v, got %v", customTimeout, tunnel.config.Timeout)
-		}
+		assert.Equal(t, customTimeout, tunnel.config.Timeout)
 	})
 
 	t.Run("preserves all config fields", func(t *testing.T) {
@@ -89,33 +80,15 @@ func TestNew(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		if tunnel.config.Host != config.Host {
-			t.Error("Host not preserved")
-		}
-		if tunnel.config.Port != config.Port {
-			t.Error("Port not preserved")
-		}
-		if tunnel.config.User != config.User {
-			t.Error("User not preserved")
-		}
-		if tunnel.config.Password != config.Password {
-			t.Error("Password not preserved")
-		}
-		if tunnel.config.RemoteHost != config.RemoteHost {
-			t.Error("RemoteHost not preserved")
-		}
-		if tunnel.config.RemotePort != config.RemotePort {
-			t.Error("RemotePort not preserved")
-		}
-		if tunnel.config.LocalPort != config.LocalPort {
-			t.Error("LocalPort not preserved")
-		}
-		if tunnel.config.KnownHostsFile != config.KnownHostsFile {
-			t.Error("KnownHostsFile not preserved")
-		}
-		if tunnel.config.InsecureIgnoreHostKey != config.InsecureIgnoreHostKey {
-			t.Error("InsecureIgnoreHostKey not preserved")
-		}
+		assert.Equal(t, config.Host, tunnel.config.Host)
+		assert.Equal(t, config.Port, tunnel.config.Port)
+		assert.Equal(t, config.User, tunnel.config.User)
+		assert.Equal(t, config.Password, tunnel.config.Password)
+		assert.Equal(t, config.RemoteHost, tunnel.config.RemoteHost)
+		assert.Equal(t, config.RemotePort, tunnel.config.RemotePort)
+		assert.Equal(t, config.LocalPort, tunnel.config.LocalPort)
+		assert.Equal(t, config.KnownHostsFile, tunnel.config.KnownHostsFile)
+		assert.Equal(t, config.InsecureIgnoreHostKey, tunnel.config.InsecureIgnoreHostKey)
 	})
 }
 
@@ -130,21 +103,16 @@ func TestGetHostKeyCallback(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		callback := tunnel.getHostKeyCallback()
-
-		if callback == nil {
-			t.Fatal("Expected non-nil host key callback")
-		}
+		callback, err := tunnel.getHostKeyCallback()
+		require.NoError(t, err)
+		require.NotNil(t, callback)
 
 		// The callback should be ssh.InsecureIgnoreHostKey which always returns nil
-		// We can't directly compare function pointers, but we can test its behavior
-		err := callback("example.com", &net.TCPAddr{}, &mockPublicKey{})
-		if err != nil {
-			t.Errorf("InsecureIgnoreHostKey should always return nil, got: %v", err)
-		}
+		err = callback("example.com", &net.TCPAddr{}, &mockPublicKey{})
+		assert.NoError(t, err)
 	})
 
-	t.Run("returns warning callback when InsecureIgnoreHostKey is false", func(t *testing.T) {
+	t.Run("returns error when no host key verification configured", func(t *testing.T) {
 		config := Config{
 			Host:                  "example.com",
 			Port:                  22,
@@ -154,38 +122,103 @@ func TestGetHostKeyCallback(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		callback := tunnel.getHostKeyCallback()
-
-		if callback == nil {
-			t.Fatal("Expected non-nil host key callback")
-		}
-
-		// The default callback should still accept the key but log a warning
-		err := callback("example.com", &net.TCPAddr{}, &mockPublicKey{})
-		if err != nil {
-			t.Errorf("Default callback should accept key and return nil, got: %v", err)
-		}
+		callback, err := tunnel.getHostKeyCallback()
+		assert.Error(t, err)
+		assert.Nil(t, callback)
+		assert.Contains(t, err.Error(), "host key verification required")
 	})
 
-	t.Run("callback works with different host names", func(t *testing.T) {
+	t.Run("returns error for non-existent known hosts file", func(t *testing.T) {
+		config := Config{
+			Host:           "example.com",
+			Port:           22,
+			User:           "testuser",
+			Password:       "testpass",
+			KnownHostsFile: "/nonexistent/known_hosts",
+		}
+
+		tunnel := New(config)
+		callback, err := tunnel.getHostKeyCallback()
+		assert.Error(t, err)
+		assert.Nil(t, callback)
+		assert.Contains(t, err.Error(), "failed to load known hosts file")
+	})
+
+	t.Run("InsecureIgnoreHostKey works with different hosts", func(t *testing.T) {
 		config := Config{
 			Host:                  "example.com",
 			Port:                  22,
 			User:                  "testuser",
 			Password:              "testpass",
-			InsecureIgnoreHostKey: false,
+			InsecureIgnoreHostKey: true,
 		}
 
 		tunnel := New(config)
-		callback := tunnel.getHostKeyCallback()
+		callback, err := tunnel.getHostKeyCallback()
+		require.NoError(t, err)
 
 		testHosts := []string{"localhost", "example.com", "192.168.1.1", "ssh.example.org"}
 		for _, host := range testHosts {
 			err := callback(host, &net.TCPAddr{}, &mockPublicKey{})
-			if err != nil {
-				t.Errorf("Callback should accept host %s, got error: %v", host, err)
-			}
+			assert.NoError(t, err, "callback should accept host %s", host)
 		}
+	})
+}
+
+func TestGetAuthMethods(t *testing.T) {
+	t.Run("returns password auth when password is set", func(t *testing.T) {
+		tunnel := New(Config{
+			Password:              "testpass",
+			InsecureIgnoreHostKey: true,
+		})
+		methods, err := tunnel.getAuthMethods()
+		require.NoError(t, err)
+		assert.Len(t, methods, 1)
+	})
+
+	t.Run("returns error when no auth method configured", func(t *testing.T) {
+		tunnel := New(Config{
+			InsecureIgnoreHostKey: true,
+		})
+		methods, err := tunnel.getAuthMethods()
+		assert.Error(t, err)
+		assert.Nil(t, methods)
+		assert.Contains(t, err.Error(), "no authentication method configured")
+	})
+
+	t.Run("returns key auth when private key is set", func(t *testing.T) {
+		// Use a test RSA key (generated for testing only)
+		testKey := generateTestKey(t)
+		tunnel := New(Config{
+			PrivateKey:            testKey,
+			InsecureIgnoreHostKey: true,
+		})
+		methods, err := tunnel.getAuthMethods()
+		require.NoError(t, err)
+		assert.Len(t, methods, 1)
+	})
+
+	t.Run("returns both auth methods when both configured", func(t *testing.T) {
+		testKey := generateTestKey(t)
+		tunnel := New(Config{
+			Password:              "testpass",
+			PrivateKey:            testKey,
+			InsecureIgnoreHostKey: true,
+		})
+		methods, err := tunnel.getAuthMethods()
+		require.NoError(t, err)
+		assert.Len(t, methods, 2)
+	})
+
+	t.Run("returns error for invalid private key", func(t *testing.T) {
+		tunnel := New(Config{
+			PrivateKey:            []byte("invalid-key-data"),
+			InsecureIgnoreHostKey: true,
+		})
+		methods, err := tunnel.getAuthMethods()
+		assert.Error(t, err)
+		assert.Nil(t, methods)
+		assert.Contains(t, err.Error(), "failed to parse SSH private key")
 	})
 }
 
@@ -200,9 +233,7 @@ func TestClose(t *testing.T) {
 		}
 
 		err := tunnel.Close()
-		if err != nil {
-			t.Errorf("Expected nil error when client is nil, got: %v", err)
-		}
+		assert.NoError(t, err)
 	})
 
 	t.Run("is safe to call multiple times", func(t *testing.T) {
@@ -214,20 +245,9 @@ func TestClose(t *testing.T) {
 			client: nil,
 		}
 
-		// Call Close multiple times
-		err1 := tunnel.Close()
-		err2 := tunnel.Close()
-		err3 := tunnel.Close()
-
-		if err1 != nil {
-			t.Errorf("First Close returned error: %v", err1)
-		}
-		if err2 != nil {
-			t.Errorf("Second Close returned error: %v", err2)
-		}
-		if err3 != nil {
-			t.Errorf("Third Close returned error: %v", err3)
-		}
+		assert.NoError(t, tunnel.Close())
+		assert.NoError(t, tunnel.Close())
+		assert.NoError(t, tunnel.Close())
 	})
 }
 
@@ -246,54 +266,24 @@ func TestConfig(t *testing.T) {
 			InsecureIgnoreHostKey: false,
 		}
 
-		// Verify all fields can be set and read
-		if config.Host != "ssh.example.com" {
-			t.Error("Host field not working")
-		}
-		if config.Port != 2222 {
-			t.Error("Port field not working")
-		}
-		if config.User != "admin" {
-			t.Error("User field not working")
-		}
-		if config.Password != "secret" {
-			t.Error("Password field not working")
-		}
-		if config.RemoteHost != "db.internal" {
-			t.Error("RemoteHost field not working")
-		}
-		if config.RemotePort != 3306 {
-			t.Error("RemotePort field not working")
-		}
-		if config.LocalPort != 3307 {
-			t.Error("LocalPort field not working")
-		}
-		if config.Timeout != 10*time.Second {
-			t.Error("Timeout field not working")
-		}
-		if config.KnownHostsFile != "/home/user/.ssh/known_hosts" {
-			t.Error("KnownHostsFile field not working")
-		}
-		if config.InsecureIgnoreHostKey != false {
-			t.Error("InsecureIgnoreHostKey field not working")
-		}
+		assert.Equal(t, "ssh.example.com", config.Host)
+		assert.Equal(t, 2222, config.Port)
+		assert.Equal(t, "admin", config.User)
+		assert.Equal(t, "secret", config.Password)
+		assert.Equal(t, "db.internal", config.RemoteHost)
+		assert.Equal(t, 3306, config.RemotePort)
+		assert.Equal(t, 3307, config.LocalPort)
+		assert.Equal(t, 10*time.Second, config.Timeout)
+		assert.Equal(t, "/home/user/.ssh/known_hosts", config.KnownHostsFile)
+		assert.False(t, config.InsecureIgnoreHostKey)
 	})
 
 	t.Run("Config with zero values", func(t *testing.T) {
 		config := Config{}
-
-		if config.Host != "" {
-			t.Error("Expected empty Host")
-		}
-		if config.Port != 0 {
-			t.Error("Expected zero Port")
-		}
-		if config.Timeout != 0 {
-			t.Error("Expected zero Timeout")
-		}
-		if config.InsecureIgnoreHostKey != false {
-			t.Error("Expected false InsecureIgnoreHostKey")
-		}
+		assert.Empty(t, config.Host)
+		assert.Zero(t, config.Port)
+		assert.Zero(t, config.Timeout)
+		assert.False(t, config.InsecureIgnoreHostKey)
 	})
 }
 
@@ -309,13 +299,29 @@ func TestTunnelStruct(t *testing.T) {
 			client: nil,
 		}
 
-		if tunnel.config.Host != "example.com" {
-			t.Error("Config not properly stored")
-		}
-		if tunnel.client != nil {
-			t.Error("Expected nil client")
-		}
+		assert.Equal(t, "example.com", tunnel.config.Host)
+		assert.Nil(t, tunnel.client)
+		assert.Nil(t, tunnel.listener)
 	})
+}
+
+// ============================================================================
+// Helper functions for testing
+// ============================================================================
+
+// generateTestKey generates a test Ed25519 SSH private key
+func generateTestKey(t *testing.T) []byte {
+	t.Helper()
+	// Pre-generated Ed25519 test key (not used in production)
+	key := `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACA08n7gs4YIb2GUXZimqMUHm8XhtSFnaDjtyxNZGHVcDAAAAKgDzd9hA83f
+YQAAAAtzc2gtZWQyNTUxOQAAACA08n7gs4YIb2GUXZimqMUHm8XhtSFnaDjtyxNZGHVcDA
+AAAEDNaMtMq/J8fWuoxBg9hFGUKGRkpSNkLAfHFkjERLyg/TTyfuCzhghvYZRdmKaoxQeb
+xeG1IWdoOO3LE1kYdVwMAAAAIGphc29ldEBKYXNvZXRzLU1hY0Jvb2stQWlyLmxvY2FsAQ
+IDBAU=
+-----END OPENSSH PRIVATE KEY-----`
+	return []byte(key)
 }
 
 // ============================================================================
@@ -342,9 +348,10 @@ func (m *mockPublicKey) Verify(data []byte, sig *ssh.Signature) error {
 // be mocked. The current tests cover:
 // - Configuration and setup (New, Config struct)
 // - Host key callback generation (getHostKeyCallback)
+// - Authentication method configuration (getAuthMethods)
 // - Close behavior with nil client
 //
 // Integration tests would be needed to fully test:
 // - Start() - establishing SSH connection
 // - forward() - bidirectional port forwarding
-// - Close() - with actual SSH client
+// - Close() - with actual SSH client and listener
