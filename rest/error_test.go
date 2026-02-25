@@ -42,6 +42,13 @@ func TestUnauthorizedError(t *testing.T) {
 			t.Errorf("Expected Error() to return %q, got %q", msg, err.Error())
 		}
 	})
+
+	t.Run("Unwrap returns sentinel", func(t *testing.T) {
+		err := NewUnauthorizedError(401, "test", "body")
+		if !errors.Is(err, ErrUnauthorized) {
+			t.Error("Expected errors.Is(err, ErrUnauthorized) to be true")
+		}
+	})
 }
 
 func TestExecutionError(t *testing.T) {
@@ -134,6 +141,13 @@ func TestServerError(t *testing.T) {
 			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
 		}
 	})
+
+	t.Run("Unwrap returns sentinel", func(t *testing.T) {
+		err := NewServerError(500, "test", "body")
+		if !errors.Is(err, ErrServer) {
+			t.Error("Expected errors.Is(err, ErrServer) to be true")
+		}
+	})
 }
 
 func TestResponseError(t *testing.T) {
@@ -175,6 +189,13 @@ func TestResponseError(t *testing.T) {
 			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
 		}
 	})
+
+	t.Run("Unwrap returns sentinel", func(t *testing.T) {
+		err := NewResponseError(400, "test", "body")
+		if !errors.Is(err, ErrResponse) {
+			t.Error("Expected errors.Is(err, ErrResponse) to be true")
+		}
+	})
 }
 
 func TestResourceNotFoundError(t *testing.T) {
@@ -214,6 +235,13 @@ func TestResourceNotFoundError(t *testing.T) {
 		expected := msg + ": " + respBody
 		if err.Error() != expected {
 			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
+		}
+	})
+
+	t.Run("Unwrap returns sentinel", func(t *testing.T) {
+		err := NewResourceNotFoundError(404, "test", "body")
+		if !errors.Is(err, ErrResourceNotFound) {
+			t.Error("Expected errors.Is(err, ErrResourceNotFound) to be true")
 		}
 	})
 }
