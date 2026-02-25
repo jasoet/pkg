@@ -309,6 +309,13 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Flush implements http.Flusher so streaming responses work through the metrics middleware.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // EchoMetricsMiddleware returns Echo middleware that records HTTP metrics
 func (m *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -354,8 +361,9 @@ func (m *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
 }
 
 // RegisterEchoMetrics registers the Prometheus metrics endpoint with Echo
+// using the MetricsManager's custom registry (not the global default).
 func (m *MetricsManager) RegisterEchoMetrics(e *echo.Echo, path string) {
-	e.GET(path, echo.WrapHandler(promhttp.Handler()))
+	e.GET(path, echo.WrapHandler(m.CreateMetricsHandler()))
 }
 
 // EchoUptimeMiddleware can be used to track server uptime via Echo

@@ -353,6 +353,19 @@ func TestMetricsRegistry(t *testing.T) {
 	}
 }
 
+func TestResponseWriterFlush(t *testing.T) {
+	// I12: responseWriter should delegate Flush to the underlying writer
+	w := httptest.NewRecorder()
+	rw := &responseWriter{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+	}
+
+	// httptest.ResponseRecorder implements http.Flusher
+	assert.NotPanics(t, func() { rw.Flush() })
+	assert.True(t, w.Flushed, "Expected underlying writer to be flushed")
+}
+
 func TestMetricsWithZeroSizes(t *testing.T) {
 	mm := NewMetricsManager("test")
 

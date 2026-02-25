@@ -36,6 +36,7 @@ type Server struct {
 	shutdownOnce   sync.Once
 	running        bool
 	mu             sync.RWMutex
+	stopUptime     chan struct{} // signals trackUptime goroutine to exit
 }
 
 // New creates a new server instance with the given options
@@ -208,6 +209,7 @@ func (s *Server) Start() error {
 
 	// Start metrics uptime tracking
 	if s.config.enableMetrics {
+		s.stopUptime = make(chan struct{})
 		go s.trackUptime()
 	}
 
@@ -306,6 +308,11 @@ func (s *Server) Stop() error {
 	s.shutdownOnce.Do(func() {
 		log.Println("Stopping server gracefully...")
 
+		// Stop uptime goroutine
+		if s.stopUptime != nil {
+			close(s.stopUptime)
+		}
+
 		// Create shutdown context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), s.config.shutdownTimeout)
 		defer cancel()
@@ -381,13 +388,18 @@ func (s *Server) IsRunning() bool {
 	return s.running
 }
 
-// trackUptime periodically updates the uptime metric
+// trackUptime periodically updates the uptime metric until stopUptime is closed.
 func (s *Server) trackUptime() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		s.metricsManager.UpdateUptime()
+	for {
+		select {
+		case <-ticker.C:
+			s.metricsManager.UpdateUptime()
+		case <-s.stopUptime:
+			return
+		}
 	}
 }
 
@@ -419,16 +431,33 @@ func Start(port string, serviceRegistrar func(*grpc.Server), opts ...Option) err
 	return server.Start()
 }
 
-// StartH2C creates and starts a server in H2C mode with custom service registrar
+// StartH2C creates and starts a server in H2C mode with custom service registrar.
 func StartH2C(port string, serviceRegistrar func(*grpc.Server), opts ...Option) error {
-	// Prepend required options
+	// Prepend required options; we create the server directly to avoid
+	// Start() prepending the same port/registrar options a second time.
 	allOpts := append([]Option{
 		WithH2CMode(),
 		WithGRPCPort(port),
 		WithServiceRegistrar(serviceRegistrar),
 	}, opts...)
 
-	return Start(port, serviceRegistrar, allOpts...)
+	server, err := New(allOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		log.Printf("Received signal: %v", sig)
+		if err := server.Stop(); err != nil {
+			log.Printf("Error stopping server: %v", err)
+		}
+	}()
+
+	return server.Start()
 }
 
 // StartSeparate creates and starts a server in separate mode with custom service registrar

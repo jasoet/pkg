@@ -98,21 +98,22 @@ func (hm *HealthManager) CheckHealth() map[string]HealthCheckResult {
 	return results
 }
 
-// GetOverallStatus returns the overall health status
-func (hm *HealthManager) GetOverallStatus() HealthStatus {
-	results := hm.CheckHealth()
-
+// overallStatusFromResults derives the aggregate status from a set of results.
+func overallStatusFromResults(results map[string]HealthCheckResult) HealthStatus {
 	if len(results) == 0 {
 		return HealthStatusUp // No checks means healthy
 	}
-
 	for _, result := range results {
 		if result.Status == HealthStatusDown {
 			return HealthStatusDown
 		}
 	}
-
 	return HealthStatusUp
+}
+
+// GetOverallStatus returns the overall health status.
+func (hm *HealthManager) GetOverallStatus() HealthStatus {
+	return overallStatusFromResults(hm.CheckHealth())
 }
 
 // CreateHealthHandlers creates HTTP handlers for health check endpoints
@@ -122,7 +123,7 @@ func (hm *HealthManager) CreateHealthHandlers(basePath string) map[string]http.H
 	// Main health endpoint - returns detailed health information
 	handlers[basePath] = func(w http.ResponseWriter, r *http.Request) {
 		results := hm.CheckHealth()
-		overallStatus := hm.GetOverallStatus()
+		overallStatus := overallStatusFromResults(results)
 
 		response := map[string]interface{}{
 			"status":    overallStatus,
@@ -198,7 +199,7 @@ func (h *HealthManager) RegisterEchoHealthChecks(e *echo.Echo, basePath string) 
 	// Overall health endpoint
 	e.GET(basePath, func(c echo.Context) error {
 		results := h.CheckHealth()
-		overallStatus := h.GetOverallStatus()
+		overallStatus := overallStatusFromResults(results)
 
 		response := map[string]interface{}{
 			"status":    overallStatus,
@@ -244,12 +245,33 @@ func (h *HealthManager) RegisterEchoHealthChecks(e *echo.Echo, basePath string) 
 	})
 }
 
-// EchoHealthCheckMiddleware adds health check headers to responses
+// EchoHealthCheckMiddleware adds health check headers to responses.
+// Health status is cached for 5 seconds to avoid running all health checks
+// on every HTTP request.
 func (h *HealthManager) EchoHealthCheckMiddleware() echo.MiddlewareFunc {
+	var (
+		cacheMu     sync.RWMutex
+		cachedAt    time.Time
+		cachedValue HealthStatus
+	)
+	const cacheTTL = 5 * time.Second
+
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Add health-related headers
-			c.Response().Header().Set("X-Health-Status", string(h.GetOverallStatus()))
+			cacheMu.RLock()
+			status := cachedValue
+			valid := time.Since(cachedAt) < cacheTTL
+			cacheMu.RUnlock()
+
+			if !valid {
+				status = h.GetOverallStatus()
+				cacheMu.Lock()
+				cachedValue = status
+				cachedAt = time.Now()
+				cacheMu.Unlock()
+			}
+
+			c.Response().Header().Set("X-Health-Status", string(status))
 			return next(c)
 		}
 	}
