@@ -59,12 +59,24 @@ func orderIDExample() {
 	sequence := uint64(12345)
 
 	// Encode components
-	timeCode := base32.EncodeBase32(timestamp, 8)
-	seqCode := base32.EncodeBase32(sequence, 4)
+	timeCode, err := base32.EncodeBase32(timestamp, 8)
+	if err != nil {
+		fmt.Printf("Error encoding timestamp: %v\n", err)
+		return
+	}
+	seqCode, err := base32.EncodeBase32(sequence, 4)
+	if err != nil {
+		fmt.Printf("Error encoding sequence: %v\n", err)
+		return
+	}
 
 	// Combine with checksum
 	orderData := "ORD-" + timeCode + "-" + seqCode
-	orderID := base32.AppendChecksum(orderData)
+	orderID, err := base32.AppendChecksum(orderData)
+	if err != nil {
+		fmt.Printf("Error appending checksum: %v\n", err)
+		return
+	}
 
 	fmt.Printf("Order ID: %s\n", orderID)
 	fmt.Printf("Timestamp: %d\n", timestamp)
@@ -89,13 +101,13 @@ func licenseKeyExample() {
 	expiryDate := uint64(time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC).Unix())
 
 	// Encode each component
-	product := base32.EncodeBase32(productID, 2)
-	customer := base32.EncodeBase32(customerID, 4)
-	expiry := base32.EncodeBase32(expiryDate, 8)
+	product, _ := base32.EncodeBase32(productID, 2)
+	customer, _ := base32.EncodeBase32(customerID, 4)
+	expiry, _ := base32.EncodeBase32(expiryDate, 8)
 
 	// Create license key with dashes for readability
 	licenseData := product + customer + expiry
-	licenseKey := base32.AppendChecksum(licenseData)
+	licenseKey, _ := base32.AppendChecksum(licenseData)
 
 	// Format with dashes (groups of 5)
 	formatted := formatLicenseKey(licenseKey)
@@ -148,7 +160,7 @@ func checksumValidationExample() {
 
 	// Create a valid ID
 	data := "ABC123"
-	validID := base32.AppendChecksum(data)
+	validID, _ := base32.AppendChecksum(data)
 	fmt.Printf("Valid ID: %s\n", validID)
 
 	// Test valid ID

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCalculateChecksum(t *testing.T) {
@@ -20,18 +21,20 @@ func TestCalculateChecksum(t *testing.T) {
 		{"mixed", "A1B2C3D4"},
 		{"single char", "A"},
 		{"two chars", "AB"},
-		{"long string", "0123456789ABCDEFGHIJKLMNPQRSTUV"},
+		{"long string", "0123456789ABCDEFGHJKMNPQRSTVWXYZ"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			checksum := CalculateChecksum(tt.data)
+			checksum, err := CalculateChecksum(tt.data)
+			require.NoError(t, err)
 
 			// Checksum should always be 2 characters
 			assert.Len(t, checksum, 2)
 
 			// Checksum should be deterministic
-			checksum2 := CalculateChecksum(tt.data)
+			checksum2, err := CalculateChecksum(tt.data)
+			require.NoError(t, err)
 			assert.Equal(t, checksum, checksum2)
 
 			// Checksum should only contain valid Base32 characters
@@ -48,22 +51,32 @@ func TestCalculateChecksumDifferentInputs(t *testing.T) {
 	data2 := "ABC124"
 	data3 := "XYZ789"
 
-	checksum1 := CalculateChecksum(data1)
-	checksum2 := CalculateChecksum(data2)
-	checksum3 := CalculateChecksum(data3)
+	checksum1, err := CalculateChecksum(data1)
+	require.NoError(t, err)
+	checksum2, err := CalculateChecksum(data2)
+	require.NoError(t, err)
+	checksum3, err := CalculateChecksum(data3)
+	require.NoError(t, err)
 
 	assert.NotEqual(t, checksum1, checksum2, "different data should have different checksums")
 	assert.NotEqual(t, checksum1, checksum3, "different data should have different checksums")
 	assert.NotEqual(t, checksum2, checksum3, "different data should have different checksums")
 }
 
+func TestCalculateChecksumInvalidInput(t *testing.T) {
+	_, err := CalculateChecksum("A#C")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid Base32 character '#' at position 1")
+}
+
 func TestValidateChecksum(t *testing.T) {
 	// Generate valid checksummed strings
-	testData := []string{"ABC123", "000000", "HELLO", "12345", "ZYXWVU"}
+	testData := []string{"ABC123", "000000", "HE110", "12345", "ZYXWV0"}
 
 	for _, data := range testData {
 		t.Run(data, func(t *testing.T) {
-			checksum := CalculateChecksum(data)
+			checksum, err := CalculateChecksum(data)
+			require.NoError(t, err)
 			fullString := data + checksum
 
 			// Valid checksum should pass
@@ -94,7 +107,8 @@ func TestValidateChecksumEdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// For the minimum valid case, we need to actually compute it
 			if tt.name == "minimum valid" {
-				checksum := CalculateChecksum("A")
+				checksum, err := CalculateChecksum("A")
+				require.NoError(t, err)
 				input := "A" + checksum
 				assert.True(t, ValidateChecksum(input))
 			} else {
@@ -106,7 +120,8 @@ func TestValidateChecksumEdgeCases(t *testing.T) {
 
 func TestValidateChecksumCaseInsensitive(t *testing.T) {
 	data := "ABC123"
-	checksum := CalculateChecksum(data)
+	checksum, err := CalculateChecksum(data)
+	require.NoError(t, err)
 	fullString := data + checksum
 
 	// Test case insensitivity
@@ -122,11 +137,12 @@ func TestValidateChecksumCaseInsensitive(t *testing.T) {
 }
 
 func TestAppendChecksum(t *testing.T) {
-	tests := []string{"ABC123", "000000", "HELLO", "12345"}
+	tests := []string{"ABC123", "000000", "HE110", "12345"}
 
 	for _, data := range tests {
 		t.Run(data, func(t *testing.T) {
-			result := AppendChecksum(data)
+			result, err := AppendChecksum(data)
+			require.NoError(t, err)
 
 			// Result should be data + 2 chars
 			assert.Len(t, result, len(data)+2)
@@ -138,6 +154,11 @@ func TestAppendChecksum(t *testing.T) {
 			assert.True(t, ValidateChecksum(result))
 		})
 	}
+}
+
+func TestAppendChecksumInvalidInput(t *testing.T) {
+	_, err := AppendChecksum("A#C")
+	assert.Error(t, err)
 }
 
 func TestStripChecksum(t *testing.T) {
@@ -185,11 +206,12 @@ func TestExtractChecksum(t *testing.T) {
 }
 
 func TestAppendStripRoundTrip(t *testing.T) {
-	testData := []string{"ABC123", "000000", "HELLO", "12345", "ZYXWVU"}
+	testData := []string{"ABC123", "000000", "HE110", "12345", "ZYXWV0"}
 
 	for _, data := range testData {
 		t.Run(data, func(t *testing.T) {
-			withChecksum := AppendChecksum(data)
+			withChecksum, err := AppendChecksum(data)
+			require.NoError(t, err)
 			stripped := StripChecksum(withChecksum)
 
 			assert.Equal(t, data, stripped)
@@ -199,7 +221,8 @@ func TestAppendStripRoundTrip(t *testing.T) {
 
 func TestChecksumErrorDetection(t *testing.T) {
 	originalData := "ABC123"
-	checksummed := AppendChecksum(originalData)
+	checksummed, err := AppendChecksum(originalData)
+	require.NoError(t, err)
 
 	// Test single character error detection
 	t.Run("single char error", func(t *testing.T) {
@@ -228,15 +251,15 @@ func TestChecksumErrorDetection(t *testing.T) {
 }
 
 func TestInvalidCharacterHandling(t *testing.T) {
-	// CalculateChecksum should handle invalid characters gracefully (treat as 0)
-	checksum1 := CalculateChecksum("ABC")
-	checksum2 := CalculateChecksum("A#C") // # is invalid, treated as 0
-	checksum3 := CalculateChecksum("A0C") // 0 is valid
+	// CalculateChecksum now returns an error for invalid characters
+	_, err := CalculateChecksum("A#C")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid Base32 character '#'")
 
-	// #treated as 0, so checksum2 should equal checksum3
-	assert.Equal(t, checksum3, checksum2)
-	// But should differ from ABC
-	assert.NotEqual(t, checksum1, checksum2)
+	// Valid characters should work fine
+	checksum, err := CalculateChecksum("ABC")
+	assert.NoError(t, err)
+	assert.Len(t, checksum, 2)
 }
 
 // Helper functions
@@ -271,13 +294,13 @@ func BenchmarkCalculateChecksum(b *testing.B) {
 	data := "0123456789ABCDEF"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		CalculateChecksum(data)
+		_, _ = CalculateChecksum(data)
 	}
 }
 
 func BenchmarkValidateChecksum(b *testing.B) {
 	data := "0123456789ABCDEF"
-	checksummed := AppendChecksum(data)
+	checksummed, _ := AppendChecksum(data)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ValidateChecksum(checksummed)
@@ -288,6 +311,6 @@ func BenchmarkAppendChecksum(b *testing.B) {
 	data := "0123456789ABCDEF"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		AppendChecksum(data)
+		_, _ = AppendChecksum(data)
 	}
 }
