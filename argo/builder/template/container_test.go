@@ -438,4 +438,23 @@ func TestContainerTemplates(t *testing.T) {
 		require.Len(t, templates, 1)
 		assert.Equal(t, v1alpha1.RetryPolicyOnFailure, templates[0].RetryStrategy.RetryPolicy)
 	})
+
+	t.Run("returns error for invalid CPU quantity", func(t *testing.T) {
+		// I41: invalid resource strings must return an error, not panic
+		tmpl := NewContainer("bad-cpu", "alpine:latest").
+			CPU("not-a-valid-cpu", "500m")
+
+		_, err := tmpl.Templates()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid cpuRequest")
+	})
+
+	t.Run("returns error for invalid memory quantity", func(t *testing.T) {
+		tmpl := NewContainer("bad-mem", "alpine:latest").
+			Memory("not-a-valid-memory", "512Mi")
+
+		_, err := tmpl.Templates()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid memoryRequest")
+	})
 }
