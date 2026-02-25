@@ -29,7 +29,11 @@ func RunIntervalScheduler() error {
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
 	config := temporal.DefaultConfig()
-	scheduleManager := temporal.NewScheduleManager(config)
+	scheduleManager, err := temporal.NewScheduleManager(config)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create schedule manager")
+		return err
+	}
 	defer scheduleManager.Close()
 
 	// Step 2: Create an interval-based schedule
@@ -87,7 +91,11 @@ func RunCronScheduler() error {
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
 	config := temporal.DefaultConfig()
-	scheduleManager := temporal.NewScheduleManager(config)
+	scheduleManager, err := temporal.NewScheduleManager(config)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create schedule manager")
+		return err
+	}
 	defer scheduleManager.Close()
 
 	// Step 2: Create a cron-based schedule
@@ -151,7 +159,11 @@ func RunOneTimeScheduler() error {
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
 	config := temporal.DefaultConfig()
-	scheduleManager := temporal.NewScheduleManager(config)
+	scheduleManager, err := temporal.NewScheduleManager(config)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create schedule manager")
+		return err
+	}
 	defer scheduleManager.Close()
 
 	// Step 2: Create a one-time schedule
@@ -217,7 +229,11 @@ func RunMultiScheduleManager() error {
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
 	config := temporal.DefaultConfig()
-	scheduleManager := temporal.NewScheduleManager(config)
+	scheduleManager, err := temporal.NewScheduleManager(config)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create schedule manager")
+		return err
+	}
 	defer scheduleManager.Close()
 
 	// Step 2: Create multiple schedules
@@ -237,7 +253,7 @@ func RunMultiScheduleManager() error {
 		Dur("interval", intervalOptions.Interval).
 		Msg("Creating interval-based schedule")
 
-	_, err := scheduleManager.CreateWorkflowSchedule(ctx, intervalScheduleName, intervalOptions)
+	_, err = scheduleManager.CreateWorkflowSchedule(ctx, intervalScheduleName, intervalOptions)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create interval schedule")
 		return err
