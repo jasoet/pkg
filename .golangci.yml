@@ -1,5 +1,5 @@
-# GoPKI golangci-lint configuration
-# Optimized for cryptographic library with focus on security and performance
+# golangci-lint configuration for github.com/jasoet/pkg/v2
+# Go utility library with focus on reliability, security, and performance
 
 run:
   timeout: 5m
@@ -14,11 +14,10 @@ output:
 linters-settings:
   # Security-focused settings
   gosec:
-    # Security rules for crypto libraries
     severity: "medium"
     confidence: "medium"
     excludes:
-      - G501  # Allow MD5 for non-security purposes (like checksums)
+      - G501  # Allow MD5 for non-security purposes (e.g., checksums)
     includes:
       - G101  # Look for hardcoded credentials
       - G102  # Bind to all interfaces
@@ -34,17 +33,17 @@ linters-settings:
   govet:
     enable-all: true
     disable:
-      - fieldalignment  # Struct field alignment can be relaxed for clarity
+      - fieldalignment  # Struct field alignment relaxed for readability
       - shadow         # Enable predeclared linter separately
 
   gocyclo:
-    min-complexity: 20  # Allow higher complexity for crypto operations and generics
+    min-complexity: 20  # Allow higher complexity for generics and builder patterns
 
   gofmt:
     simplify: true
 
   goimports:
-    local-prefixes: github.com/jasoet/gopki
+    local-prefixes: github.com/jasoet/pkg
 
   goconst:
     min-len: 3
@@ -58,7 +57,7 @@ linters-settings:
       - keypairs
 
   lll:
-    line-length: 190  # Accommodate complex generic crypto function signatures with validation
+    line-length: 190  # Accommodate complex generic function signatures with validation
 
   unused:
     check-exported: false  # Public API may have unused exported functions
@@ -67,7 +66,7 @@ linters-settings:
     checks: ["all"]
 
   errcheck:
-    check-type-assertions: false  # Disable for generic type assertions (safe by design)
+    check-type-assertions: false  # Generic type assertions are safe by design
     check-blank: true
     exclude-functions:
       - io/ioutil.ReadFile
@@ -87,7 +86,7 @@ linters-settings:
         severity: warning
         disabled: false
         arguments:
-          - ["ID", "URL", "HTTP", "JSON", "API", "PKI", "CA", "RSA", "ECDSA", "Ed25519", "X509", "PEM", "DER", "PKCS", "CMS", "OID"] # Allow crypto acronyms
+          - ["ID", "URL", "HTTP", "JSON", "API", "SQL", "DB", "OTel", "GRPC", "SSH", "DSN"] # Common acronyms
       - name: exported
         severity: warning
         disabled: false
@@ -107,7 +106,7 @@ linters:
     - typecheck
     - predeclared
 
-    # Security (critical for crypto library)
+    # Security
     - gosec
 
     # Performance
@@ -136,25 +135,25 @@ linters:
 
   disable:
     # Disabled linters with reasons
-    - dupl         # Crypto code may have similar patterns legitimately
-    - funlen       # Crypto functions can be long due to security checks
-    - gocognit     # Cognitive complexity can be high in crypto code
-    - nestif       # Deep nesting acceptable for security validations
+    - dupl         # Similar patterns are legitimate across packages
+    - funlen       # Builder/config functions can be long
+    - gocognit     # Cognitive complexity relaxed for builder patterns
+    - nestif       # Deep nesting acceptable for validation logic
     - cyclop       # Duplicate of gocyclo
-    - exhaustive   # Not all enum cases need handling in crypto contexts
-    - forbidigo    # May conflict with necessary crypto operations
-    - forcetypeassert # Type assertions are sometimes necessary in crypto
-    - godot        # Comment formatting can be relaxed
+    - exhaustive   # Not all enum cases need handling
+    - forbidigo    # fmt.Print needed in examples and logging
+    - forcetypeassert # Type assertions sometimes necessary with generics
+    - godot        # Comment formatting relaxed
     - godox        # Allow TODOs in development
     - gomoddirectives # Module directives are project-specific
     - gomodguard   # Module restrictions not needed
     - importas     # Import aliasing flexibility needed
-    - maintidx     # Maintainability index can be relaxed for crypto
+    - maintidx     # Maintainability index relaxed for utility code
     - nlreturn     # Newline returns formatting is subjective
-    - paralleltest # Crypto tests may need sequential execution
-    - testpackage  # Tests can be in same package for access to internals
-    - wrapcheck    # Error wrapping patterns can vary
-    - wsl          # Whitespace linting too opinionated for this codebase
+    - paralleltest # Some tests need sequential execution
+    - testpackage  # Tests in same package for access to internals
+    - wrapcheck    # Error wrapping patterns vary by package
+    - wsl          # Whitespace linting too opinionated
 
 issues:
   exclude-dirs:
@@ -168,16 +167,16 @@ issues:
     # Exclude some linters from running on tests files
     - path: _test\.go
       linters:
-        - gosec        # Security checks can be relaxed in tests
+        - gosec        # Security checks relaxed in tests
         - goconst      # Test constants can be repeated
         - lll          # Test lines can be longer
         - dupl         # Test code duplication is acceptable
-        - errcheck     # Test code can ignore errors intentionally with _
+        - errcheck     # Test code can ignore errors intentionally
         - gocyclo      # Test functions can have high complexity
-        - unconvert    # Type conversions may be explicit for test clarity
-        - govet        # unusedwrite acceptable in tests (struct initialization for error cases)
-        - staticcheck  # Possible nil dereference acceptable after nil check in tests
-        - gosimple     # Explicit fmt.Sprintf acceptable for consistency in table tests
+        - unconvert    # Type conversions may be explicit for clarity
+        - govet        # unusedwrite acceptable in tests
+        - staticcheck  # Nil dereference acceptable after nil check in tests
+        - gosimple     # Explicit fmt.Sprintf acceptable in table tests
 
     # Exclude predeclared warnings for min function (compatibility with pre-Go 1.21)
     - text: "function min has same name as predeclared identifier"
