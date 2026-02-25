@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	noopt "go.opentelemetry.io/otel/trace/noop"
+	"gorm.io/gorm/logger"
 )
 
 func TestDatabaseConfigValidation(t *testing.T) {
@@ -127,7 +128,47 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 				DbName:   "",
 				Timeout:  0 * time.Second,
 			},
-			wantDsn: "",
+			wantDsn: "", // Unknown DbType returns empty DSN
+		},
+		{
+			name: "MSSQL connection",
+			config: ConnectionConfig{
+				DbType:   MSSQL,
+				Host:     "localhost",
+				Port:     1433,
+				Username: "sa",
+				Password: "password",
+				DbName:   "test",
+				Timeout:  5 * time.Second,
+			},
+			wantDsn: "sqlserver://sa:password@localhost:1433?database=test&connectTimeout=5s&encrypt=disable",
+		},
+		{
+			name: "Postgres with custom SSLMode",
+			config: ConnectionConfig{
+				DbType:   Postgresql,
+				Host:     "localhost",
+				Port:     5432,
+				Username: "postgres",
+				Password: "password",
+				DbName:   "test",
+				Timeout:  3 * time.Second,
+				SSLMode:  "require",
+			},
+			wantDsn: "user=postgres password=password host=localhost port=5432 dbname=test sslmode=require connect_timeout=3",
+		},
+		{
+			name: "Zero timeout uses default 30s",
+			config: ConnectionConfig{
+				DbType:   Mysql,
+				Host:     "localhost",
+				Port:     3306,
+				Username: "root",
+				Password: "password",
+				DbName:   "test",
+				Timeout:  0,
+			},
+			wantDsn: "root:password@tcp(localhost:3306)/test?parseTime=true&timeout=30s",
 		},
 	}
 
@@ -143,6 +184,33 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 
 // TestExtractOperationType removed - extractOperationType is no longer used
 // The uptrace otelgorm library handles operation type extraction internally
+
+func TestEffectiveTimeout(t *testing.T) {
+	c := &ConnectionConfig{Timeout: 0}
+	assert.Equal(t, 30*time.Second, c.effectiveTimeout())
+
+	c.Timeout = 5 * time.Second
+	assert.Equal(t, 5*time.Second, c.effectiveTimeout())
+}
+
+func TestEffectiveSSLMode(t *testing.T) {
+	c := &ConnectionConfig{}
+	assert.Equal(t, "disable", c.effectiveSSLMode())
+
+	c.SSLMode = "require"
+	assert.Equal(t, "require", c.effectiveSSLMode())
+}
+
+func TestEffectiveGormLogLevel(t *testing.T) {
+	c := &ConnectionConfig{}
+	assert.Equal(t, logger.Silent, c.effectiveGormLogLevel())
+
+	c.GormLogLevel = int(logger.Info)
+	assert.Equal(t, logger.Info, c.effectiveGormLogLevel())
+
+	c.GormLogLevel = 99 // Invalid value
+	assert.Equal(t, logger.Silent, c.effectiveGormLogLevel())
+}
 
 func TestConnectionConfig_collectPoolMetrics_NilOTelConfig(t *testing.T) {
 	config := &ConnectionConfig{

@@ -15,6 +15,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// RunPostgresMigrationsWithGorm applies pending UP migrations using a GORM connection.
+//
+// Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrationsWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
 	logger := logging.ContextLogger(ctx, "db.migrations")
 	logger.Debug().Msg("Starting PostgreSQL migrations UP with GORM")
@@ -26,6 +29,9 @@ func RunPostgresMigrationsWithGorm(ctx context.Context, db *gorm.DB, migrationFs
 	return RunPostgresMigrations(ctx, sqlDb, migrationFs, migrationsPath)
 }
 
+// RunPostgresMigrationsDownWithGorm rolls back migrations using a GORM connection.
+//
+// Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrationsDownWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
 	logger := logging.ContextLogger(ctx, "db.migrations")
 	logger.Debug().Msg("Starting PostgreSQL migrations DOWN with GORM")
@@ -61,6 +67,9 @@ func setupMigration(ctx context.Context, db *sql.DB, migrationFs embed.FS, migra
 	return m, logger, nil
 }
 
+// RunPostgresMigrations applies pending UP migrations using a raw *sql.DB connection.
+//
+// Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrations(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) error {
 	m, logger, err := setupMigration(ctx, db, migrationFs, migrationsPath)
 	if err != nil {
@@ -76,6 +85,9 @@ func RunPostgresMigrations(ctx context.Context, db *sql.DB, migrationFs embed.FS
 	return nil
 }
 
+// RunPostgresMigrationsDown rolls back all migrations using a raw *sql.DB connection.
+//
+// Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrationsDown(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) error {
 	m, logger, err := setupMigration(ctx, db, migrationFs, migrationsPath)
 	if err != nil {
