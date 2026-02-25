@@ -117,7 +117,7 @@ func (h *LogHelper) WithFields(fields ...Field) *LogHelper {
 		function:   h.function,
 		logger:     h.logger,
 		otelLogger: h.otelLogger,
-		baseFields: append(h.baseFields, fields...),
+		baseFields: append(append(make([]Field, 0, len(h.baseFields)+len(fields)), h.baseFields...), fields...),
 	}
 	return newHelper
 }
@@ -154,7 +154,7 @@ func (h *LogHelper) Warn(msg string, fields ...Field) {
 
 // log is the internal method that handles both OTel and zerolog logging
 func (h *LogHelper) log(severity otellog.Severity, zerologFn func() *zerolog.Event, msg string, fields ...Field) {
-	allFields := append(h.baseFields, fields...)
+	allFields := append(append(make([]Field, 0, len(h.baseFields)+len(fields)), h.baseFields...), fields...)
 
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: severity}
@@ -196,7 +196,7 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 		}
 	}
 
-	allFields := append(h.baseFields, fields...)
+	allFields := append(append(make([]Field, 0, len(h.baseFields)+len(fields)), h.baseFields...), fields...)
 
 	if h.otelLogger != nil {
 		params := otellog.EnabledParameters{Severity: otellog.SeverityError}
