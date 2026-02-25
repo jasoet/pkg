@@ -233,6 +233,12 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 //	cleanup := template.NewScript("cleanup", "bash",
 //	    template.WithScript("echo 'Cleaning up resources...'"))
 //	builder.AddExitHandler(cleanup)
+// AddExitHandler adds an exit handler from a WorkflowSource. Exit handlers run
+// after the main workflow completes (regardless of success or failure).
+//
+// Steps whose name contains "destroy" or "cleanup" are automatically prioritized
+// and inserted at the beginning of the exit handler list, ensuring resource
+// cleanup runs before other exit steps.
 func (b *WorkflowBuilder) AddExitHandler(source WorkflowSource) *WorkflowBuilder {
 	ctx := context.Background()
 

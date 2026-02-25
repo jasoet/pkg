@@ -134,8 +134,15 @@ func extractTarDirectory(target string) error {
 	return nil
 }
 
+const (
+	// DefaultMaxFileSize is the default maximum size for a single extracted file (100 MB).
+	DefaultMaxFileSize int64 = 100 * 1024 * 1024
+	// DefaultMaxArchiveSize is the default maximum total extracted size for an archive (1 GB).
+	DefaultMaxArchiveSize int64 = 1024 * 1024 * 1024
+)
+
 // extractTarFile extracts a regular file from a tar entry
-func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header) (int64, error) {
+func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header, maxFileSize int64) (int64, error) {
 	// Ensure parent directory exists
 	parentDir := filepath.Dir(target)
 	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
@@ -157,8 +164,8 @@ func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header) (i
 	}
 	defer fileToWrite.Close()
 
-	// Limit decompression to prevent zip bombs (100MB limit)
-	limitedReader := io.LimitReader(tarReader, 100*1024*1024)
+	// Limit decompression to prevent zip bombs
+	limitedReader := io.LimitReader(tarReader, maxFileSize)
 	written, err := io.Copy(fileToWrite, limitedReader)
 	if err != nil {
 		return 0, err
@@ -167,11 +174,44 @@ func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header) (i
 	return written, nil
 }
 
+// ExtractOption configures extraction behavior for UnTar.
+type ExtractOption func(*extractConfig)
+
+type extractConfig struct {
+	maxFileSize    int64
+	maxArchiveSize int64
+}
+
+func defaultExtractConfig() extractConfig {
+	return extractConfig{
+		maxFileSize:    DefaultMaxFileSize,
+		maxArchiveSize: DefaultMaxArchiveSize,
+	}
+}
+
+// WithMaxFileSize sets the maximum allowed size for a single extracted file.
+// Default: 100 MB.
+func WithMaxFileSize(size int64) ExtractOption {
+	return func(c *extractConfig) { c.maxFileSize = size }
+}
+
+// WithMaxArchiveSize sets the maximum total extracted size for the entire archive.
+// Default: 1 GB.
+func WithMaxArchiveSize(size int64) ExtractOption {
+	return func(c *extractConfig) { c.maxArchiveSize = size }
+}
+
 // UnTar extracts a tar archive from src into destinationDir.
 //
 // Includes security protections: path traversal prevention, file mode validation,
-// and per-file size limit of 100 MB to prevent zip bombs.
-func UnTar(src io.Reader, destinationDir string) (written int64, err error) {
+// per-file size limit (default 100 MB), and total archive size limit (default 1 GB)
+// to prevent zip bombs. Use ExtractOption to customize limits.
+func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (written int64, err error) {
+	cfg := defaultExtractConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	info, err := os.Stat(destinationDir)
 	if err != nil {
 		return 0, err
@@ -210,11 +250,14 @@ func UnTar(src io.Reader, destinationDir string) (written int64, err error) {
 				return totalWritten, err
 			}
 		case tar.TypeReg:
-			written, err := extractTarFile(tarReader, target, header)
+			written, err := extractTarFile(tarReader, target, header, cfg.maxFileSize)
 			if err != nil {
 				return totalWritten, err
 			}
 			totalWritten += written
+			if totalWritten > cfg.maxArchiveSize {
+				return totalWritten, fmt.Errorf("archive extraction exceeded maximum total size of %d bytes", cfg.maxArchiveSize)
+			}
 		}
 	}
 

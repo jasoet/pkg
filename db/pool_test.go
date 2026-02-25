@@ -40,13 +40,11 @@ func TestDatabaseConfigValidation(t *testing.T) {
 
 	validate := validator.New()
 
-	if err := validate.Struct(validConfig); err != nil {
-		t.Errorf("validation of valid database config failed: %v", err)
-	}
+	err := validate.Struct(validConfig)
+	assert.NoError(t, err, "valid database config should pass validation")
 
-	if err := validate.Struct(invalidConfig); err == nil {
-		t.Error("validation of invalid database config passed unexpectedly")
-	}
+	err = validate.Struct(invalidConfig)
+	assert.Error(t, err, "invalid database config should fail validation")
 }
 
 func TestCustomValidationTags(t *testing.T) {
@@ -63,13 +61,11 @@ func TestCustomValidationTags(t *testing.T) {
 	validStruct := &CustomStruct{CustomField: "foo"}
 	invalidStruct := &CustomStruct{CustomField: "baz"}
 
-	if err := validate.Struct(validStruct); err != nil {
-		t.Errorf("validation of valid custom struct failed: %v", err)
-	}
+	err := validate.Struct(validStruct)
+	assert.NoError(t, err, "valid custom struct should pass validation")
 
-	if err := validate.Struct(invalidStruct); err == nil {
-		t.Error("validation of invalid custom struct passed unexpectedly")
-	}
+	err = validate.Struct(invalidStruct)
+	assert.Error(t, err, "invalid custom struct should fail validation")
 }
 
 func TestConnectionConfig_Dsn(t *testing.T) {
@@ -175,9 +171,7 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotDsn := tt.config.Dsn()
-			if gotDsn != tt.wantDsn {
-				t.Errorf("ConnectionConfig.Dsn() = %v, want %v", gotDsn, tt.wantDsn)
-			}
+			assert.Equal(t, tt.wantDsn, gotDsn)
 		})
 	}
 }
@@ -301,8 +295,7 @@ func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
 
 	_, err := config.Pool()
 	assert.Error(t, err)
-	// Invalid DB type results in empty DSN, which causes GORM to fail
-	assert.Contains(t, err.Error(), "dsn is empty")
+	assert.Contains(t, err.Error(), "unsupported database type")
 }
 
 func TestConnectionConfig_Pool_ConnectionFailure(t *testing.T) {
