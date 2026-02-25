@@ -72,7 +72,57 @@ func TestExecuteConcurrently(t *testing.T) {
 		assert.Nil(t, results)
 	})
 
-	// Test case 4: Functions with delays
+	// Test case 4: One function panics
+	t.Run("one function panics", func(t *testing.T) {
+		funcs := map[string]Func[float64]{
+			"func1": func(ctx context.Context) (float64, error) {
+				return 1.0, nil
+			},
+			"func2": func(ctx context.Context) (float64, error) {
+				panic("something went wrong")
+			},
+			"func3": func(ctx context.Context) (float64, error) {
+				return 3.0, nil
+			},
+		}
+
+		results, err := ExecuteConcurrently[float64](context.Background(), funcs)
+		assert.Error(t, err)
+		assert.Nil(t, results)
+		assert.Contains(t, err.Error(), "panic in")
+		assert.Contains(t, err.Error(), "something went wrong")
+	})
+
+	// Test case 5: Causal error preferred over context.Canceled
+	t.Run("causal error preferred over context canceled", func(t *testing.T) {
+		causalErr := errors.New("real failure")
+		funcs := map[string]Func[float64]{
+			"failing": func(ctx context.Context) (float64, error) {
+				return 0, causalErr
+			},
+			"waiting": func(ctx context.Context) (float64, error) {
+				<-ctx.Done()
+				return 0, ctx.Err()
+			},
+		}
+
+		results, err := ExecuteConcurrently[float64](context.Background(), funcs)
+		assert.Error(t, err)
+		assert.Nil(t, results)
+		// Should return the causal error, not context.Canceled
+		assert.Equal(t, causalErr, err)
+	})
+
+	// Test case 6: Empty function map
+	t.Run("empty function map", func(t *testing.T) {
+		funcs := map[string]Func[float64]{}
+
+		results, err := ExecuteConcurrently[float64](context.Background(), funcs)
+		assert.NoError(t, err)
+		assert.Empty(t, results)
+	})
+
+	// Test case 7: Functions with delays
 	t.Run("functions with delays", func(t *testing.T) {
 		funcs := map[string]Func[float64]{
 			"fast": func(ctx context.Context) (float64, error) {
