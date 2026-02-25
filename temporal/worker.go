@@ -3,6 +3,8 @@ package temporal
 import (
 	"context"
 	"fmt"
+	"io"
+	"sync"
 
 	"github.com/jasoet/pkg/v2/otel"
 	"go.temporal.io/sdk/client"
@@ -10,8 +12,10 @@ import (
 )
 
 type WorkerManager struct {
-	client  client.Client
-	workers []worker.Worker
+	client        client.Client
+	metricsCloser io.Closer
+	mu            sync.RWMutex
+	workers       []worker.Worker
 }
 
 func NewWorkerManager(config *Config) (*WorkerManager, error) {
@@ -22,7 +26,7 @@ func NewWorkerManager(config *Config) (*WorkerManager, error) {
 		otel.F("hostPort", config.HostPort),
 		otel.F("namespace", config.Namespace))
 
-	temporalClient, err := NewClient(config)
+	temporalClient, metricsCloser, err := NewClient(config)
 	if err != nil {
 		logger.Error(err, "Failed to create Temporal client for Worker Manager")
 		return nil, err
@@ -30,8 +34,9 @@ func NewWorkerManager(config *Config) (*WorkerManager, error) {
 
 	logger.Debug("Worker Manager created successfully")
 	return &WorkerManager{
-		client:  temporalClient,
-		workers: make([]worker.Worker, 0),
+		client:        temporalClient,
+		metricsCloser: metricsCloser,
+		workers:       make([]worker.Worker, 0),
 	}, nil
 }
 
@@ -39,15 +44,20 @@ func (wm *WorkerManager) Close() {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Close")
 
+	wm.mu.RLock()
 	workerCount := len(wm.workers)
+	wm.mu.RUnlock()
+
 	logger.Debug("Closing Worker Manager", otel.F("workerCount", workerCount))
 
 	if workerCount > 0 {
 		logger.Debug("Stopping all workers")
+		wm.mu.RLock()
 		for i, w := range wm.workers {
 			logger.Debug("Stopping worker", otel.F("workerIndex", i))
 			w.Stop()
 		}
+		wm.mu.RUnlock()
 		logger.Debug("All workers stopped")
 	} else {
 		logger.Debug("No workers to stop")
@@ -56,6 +66,10 @@ func (wm *WorkerManager) Close() {
 	if wm.client != nil {
 		logger.Debug("Closing Temporal client")
 		wm.client.Close()
+	}
+
+	if wm.metricsCloser != nil {
+		wm.metricsCloser.Close()
 	}
 
 	logger.Debug("Worker Manager closed")
@@ -70,12 +84,14 @@ func (wm *WorkerManager) Register(taskQueue string, options worker.Options) work
 	logger.Debug("Creating worker instance")
 	w := worker.New(wm.client, taskQueue, options)
 
-	logger.Debug("Adding worker to manager's workers list")
+	wm.mu.Lock()
 	wm.workers = append(wm.workers, w)
+	totalWorkers := len(wm.workers)
+	wm.mu.Unlock()
 
 	logger.Debug("Worker registered successfully",
 		otel.F("taskQueue", taskQueue),
-		otel.F("totalWorkers", len(wm.workers)))
+		otel.F("totalWorkers", totalWorkers))
 	return w
 }
 
@@ -83,14 +99,15 @@ func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Start")
 
 	// Try to get the task queue from the worker if possible
-	// This is a bit of a hack since the worker doesn't expose its task queue directly
 	var taskQueue string
+	wm.mu.RLock()
 	for i, registeredWorker := range wm.workers {
 		if registeredWorker == w {
 			taskQueue = fmt.Sprintf("worker-%d", i)
 			break
 		}
 	}
+	wm.mu.RUnlock()
 
 	if taskQueue != "" {
 		logger.Debug("Starting Temporal worker", otel.F("taskQueue", taskQueue))
@@ -111,7 +128,10 @@ func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
 func (wm *WorkerManager) StartAll(ctx context.Context) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.StartAll")
 
+	wm.mu.RLock()
 	workerCount := len(wm.workers)
+	wm.mu.RUnlock()
+
 	logger.Debug("Starting all Temporal workers", otel.F("workerCount", workerCount))
 
 	if workerCount == 0 {
@@ -119,15 +139,18 @@ func (wm *WorkerManager) StartAll(ctx context.Context) error {
 		return nil
 	}
 
+	wm.mu.RLock()
 	for i, w := range wm.workers {
 		logger.Debug("Starting worker", otel.F("workerIndex", i))
 		err := w.Start()
 		if err != nil {
+			wm.mu.RUnlock()
 			logger.Error(err, "Failed to start worker", otel.F("workerIndex", i))
 			return err
 		}
 		logger.Debug("Worker started successfully", otel.F("workerIndex", i))
 	}
+	wm.mu.RUnlock()
 
 	logger.Debug("All Temporal workers started successfully", otel.F("workerCount", workerCount))
 	return nil
@@ -138,5 +161,10 @@ func (wm *WorkerManager) GetClient() client.Client {
 }
 
 func (wm *WorkerManager) GetWorkers() []worker.Worker {
-	return wm.workers
+	wm.mu.RLock()
+	defer wm.mu.RUnlock()
+	// Return a copy to prevent concurrent slice access
+	workers := make([]worker.Worker, len(wm.workers))
+	copy(workers, wm.workers)
+	return workers
 }

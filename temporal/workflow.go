@@ -3,6 +3,9 @@ package temporal
 import (
 	"context"
 	"fmt"
+	"io"
+	"regexp"
+	"sort"
 	"time"
 
 	"github.com/jasoet/pkg/v2/otel"
@@ -14,8 +17,10 @@ import (
 
 // WorkflowManager provides workflow query and management operations
 type WorkflowManager struct {
-	client    client.Client
-	namespace string
+	client        client.Client
+	ownsClient    bool
+	metricsCloser io.Closer
+	namespace     string
 }
 
 // WorkflowFilter defines criteria for filtering workflows
@@ -55,6 +60,18 @@ type DashboardStats struct {
 	AverageDuration time.Duration
 }
 
+// safeIdentifier validates that a string is safe for use in visibility queries.
+// It allows only alphanumeric characters, hyphens, underscores, and dots.
+var safeIdentifier = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+// validateQueryParam validates a string is safe for use in visibility queries.
+func validateQueryParam(param string) error {
+	if !safeIdentifier.MatchString(param) {
+		return fmt.Errorf("invalid query parameter %q: must contain only alphanumeric characters, hyphens, underscores, and dots", param)
+	}
+	return nil
+}
+
 // NewWorkflowManager creates a new WorkflowManager instance
 // Accepts either a client.Client or *Config
 func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
@@ -62,28 +79,31 @@ func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewWorkflowManager")
 
 	var temporalClient client.Client
-
+	var ownsClient bool
+	var metricsCloser io.Closer
 	var namespace string
 
 	switch v := clientOrConfig.(type) {
 	case client.Client:
-		// If passed a client directly, use it
+		// If passed a client directly, use it (caller retains ownership)
 		temporalClient = v
+		ownsClient = false
 		namespace = "default" // Default namespace when client is provided
 		logger.Debug("Using provided Temporal client for Workflow Manager")
 	case *Config:
-		// If passed a config, create a new client
+		// If passed a config, create a new client (we own it)
 		logger.Debug("Creating new Workflow Manager with config",
 			otel.F("hostPort", v.HostPort),
 			otel.F("namespace", v.Namespace))
 
 		namespace = v.Namespace
 		var err error
-		temporalClient, err = NewClient(v)
+		temporalClient, metricsCloser, err = NewClient(v)
 		if err != nil {
 			logger.Error(err, "Failed to create Temporal client for Workflow Manager")
 			return nil, err
 		}
+		ownsClient = true
 	default:
 		logger.Error(nil, "Invalid argument type for NewWorkflowManager")
 		return nil, fmt.Errorf("invalid argument type: expected client.Client or *Config")
@@ -91,8 +111,10 @@ func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
 
 	logger.Debug("Workflow Manager created successfully")
 	return &WorkflowManager{
-		client:    temporalClient,
-		namespace: namespace,
+		client:        temporalClient,
+		ownsClient:    ownsClient,
+		metricsCloser: metricsCloser,
+		namespace:     namespace,
 	}, nil
 }
 
@@ -103,9 +125,13 @@ func (wm *WorkflowManager) Close() {
 
 	logger.Debug("Closing Workflow Manager")
 
-	if wm.client != nil {
+	if wm.ownsClient && wm.client != nil {
 		logger.Debug("Closing Temporal client")
 		wm.client.Close()
+	}
+
+	if wm.metricsCloser != nil {
+		wm.metricsCloser.Close()
 	}
 
 	logger.Debug("Workflow Manager closed")
@@ -340,7 +366,11 @@ func (wm *WorkflowManager) ListWorkflowsByStatus(ctx context.Context, status enu
 		otel.F("status", status.String()),
 		otel.F("pageSize", pageSize))
 
-	query := fmt.Sprintf("ExecutionStatus='%s'", status.String())
+	statusStr := status.String()
+	if err := validateQueryParam(statusStr); err != nil {
+		return nil, fmt.Errorf("invalid status: %w", err)
+	}
+	query := fmt.Sprintf("ExecutionStatus='%s'", statusStr)
 	return wm.ListWorkflows(ctx, pageSize, query)
 }
 
@@ -376,6 +406,9 @@ func (wm *WorkflowManager) SearchWorkflowsByType(ctx context.Context, workflowTy
 		otel.F("workflowType", workflowType),
 		otel.F("pageSize", pageSize))
 
+	if err := validateQueryParam(workflowType); err != nil {
+		return nil, fmt.Errorf("invalid workflow type: %w", err)
+	}
 	query := fmt.Sprintf("WorkflowType='%s'", workflowType)
 	return wm.ListWorkflows(ctx, pageSize, query)
 }
@@ -388,7 +421,9 @@ func (wm *WorkflowManager) SearchWorkflowsByID(ctx context.Context, workflowIDPr
 		otel.F("workflowIDPrefix", workflowIDPrefix),
 		otel.F("pageSize", pageSize))
 
-	// Use STARTS_WITH for prefix matching
+	if err := validateQueryParam(workflowIDPrefix); err != nil {
+		return nil, fmt.Errorf("invalid workflow ID prefix: %w", err)
+	}
 	query := fmt.Sprintf("WorkflowId STARTS_WITH '%s'", workflowIDPrefix)
 	return wm.ListWorkflows(ctx, pageSize, query)
 }
@@ -484,22 +519,15 @@ func (wm *WorkflowManager) GetRecentWorkflows(ctx context.Context, limit int) ([
 
 	logger.Debug("Getting recent workflows", otel.F("limit", limit))
 
-	// Fetch workflows without ORDER BY (not supported in basic visibility)
-	// Then sort in memory by start time descending
 	workflows, err := wm.ListWorkflows(ctx, limit, "")
 	if err != nil {
 		return nil, err
 	}
 
 	// Sort by StartTime descending (most recent first)
-	// Using a simple bubble sort since limit is typically small
-	for i := 0; i < len(workflows)-1; i++ {
-		for j := 0; j < len(workflows)-i-1; j++ {
-			if workflows[j].StartTime.Before(workflows[j+1].StartTime) {
-				workflows[j], workflows[j+1] = workflows[j+1], workflows[j]
-			}
-		}
-	}
+	sort.Slice(workflows, func(i, j int) bool {
+		return workflows[i].StartTime.After(workflows[j].StartTime)
+	})
 
 	return workflows, nil
 }

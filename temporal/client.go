@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"io"
 	"os"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 	sdktally "go.temporal.io/sdk/contrib/tally"
 )
 
-func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, error) {
+func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, io.Closer, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewClientWithMetrics")
 
@@ -36,15 +37,17 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, e
 		Logger:    NewZerologAdapter(zerologLogger),
 	}
 
+	var metricsCloser io.Closer
 	if metricsEnabled {
-		scope, err := newPrometheusScope(prometheus.Configuration{
+		scope, closer, err := newPrometheusScope(prometheus.Configuration{
 			ListenAddress: config.MetricsListenAddress,
 			TimerType:     "histogram",
 		})
 		if err != nil {
 			logger.Error(err, "Failed to create Prometheus scope")
-			return nil, err
+			return nil, nil, err
 		}
+		metricsCloser = closer
 
 		clientOption.MetricsHandler = sdktally.NewMetricsHandler(scope)
 	}
@@ -53,18 +56,21 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, e
 	c, err := client.Dial(clientOption)
 	if err != nil {
 		logger.Error(err, "Failed to connect to Temporal server")
-		return nil, err
+		if metricsCloser != nil {
+			metricsCloser.Close()
+		}
+		return nil, nil, err
 	}
 
 	logger.Debug("Successfully connected to Temporal server")
-	return c, nil
+	return c, metricsCloser, nil
 }
 
-func NewClient(config *Config) (client.Client, error) {
+func NewClient(config *Config) (client.Client, io.Closer, error) {
 	return NewClientWithMetrics(config, true)
 }
 
-func newPrometheusScope(c prometheus.Configuration) (tally.Scope, error) {
+func newPrometheusScope(c prometheus.Configuration) (tally.Scope, io.Closer, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.newPrometheusScope")
 
@@ -81,7 +87,7 @@ func newPrometheusScope(c prometheus.Configuration) (tally.Scope, error) {
 	)
 	if err != nil {
 		logger.Error(err, "Failed to create Prometheus reporter")
-		return nil, err
+		return nil, nil, err
 	}
 
 	logger.Debug("Configuring tally scope options")
@@ -92,9 +98,9 @@ func newPrometheusScope(c prometheus.Configuration) (tally.Scope, error) {
 	}
 
 	logger.Debug("Creating new root scope")
-	scope, _ := tally.NewRootScope(scopeOpts, time.Second)
+	scope, closer := tally.NewRootScope(scopeOpts, time.Second)
 	scope = sdktally.NewPrometheusNamingScope(scope)
 
 	logger.Debug("Prometheus scope created successfully")
-	return scope, nil
+	return scope, closer, nil
 }
