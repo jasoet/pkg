@@ -241,3 +241,54 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 		helper.Error(errors.New("test error"), "This error should appear")
 	})
 }
+
+func TestLogHelper_WithFields_SliceIsolation(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("sibling helpers do not share fields", func(t *testing.T) {
+		parent := NewLogHelper(ctx, nil, "", "test.Function").
+			WithFields(F("base", "value"))
+
+		child1 := parent.WithFields(F("child", "one"))
+		child2 := parent.WithFields(F("child", "two"))
+
+		// Verify each helper has the correct number of fields
+		if len(parent.baseFields) != 1 {
+			t.Errorf("expected parent to have 1 field, got %d", len(parent.baseFields))
+		}
+		if len(child1.baseFields) != 2 {
+			t.Errorf("expected child1 to have 2 fields, got %d", len(child1.baseFields))
+		}
+		if len(child2.baseFields) != 2 {
+			t.Errorf("expected child2 to have 2 fields, got %d", len(child2.baseFields))
+		}
+
+		// Verify child fields don't bleed into each other
+		if child1.baseFields[1].Value != "one" {
+			t.Errorf("expected child1 field to be 'one', got '%v'", child1.baseFields[1].Value)
+		}
+		if child2.baseFields[1].Value != "two" {
+			t.Errorf("expected child2 field to be 'two', got '%v'", child2.baseFields[1].Value)
+		}
+
+		// Verify parent is unchanged after creating children
+		if parent.baseFields[0].Value != "value" {
+			t.Errorf("expected parent field to be 'value', got '%v'", parent.baseFields[0].Value)
+		}
+	})
+
+	t.Run("log calls do not mutate baseFields", func(t *testing.T) {
+		helper := NewLogHelper(ctx, nil, "", "test.Function").
+			WithFields(F("base", "value"))
+
+		originalLen := len(helper.baseFields)
+
+		helper.Info("msg1", F("extra", "a"))
+		helper.Info("msg2", F("extra", "b"))
+		helper.Error(errors.New("err"), "msg3", F("extra", "c"))
+
+		if len(helper.baseFields) != originalLen {
+			t.Errorf("expected baseFields length to remain %d, got %d", originalLen, len(helper.baseFields))
+		}
+	})
+}

@@ -232,7 +232,7 @@ func logLevelToZerolog(level LogLevel) zerolog.Level {
 func severityToZerologEvent(logger zerolog.Logger, severity log.Severity) *zerolog.Event {
 	switch {
 	case severity >= log.SeverityFatal:
-		return logger.Fatal()
+		return logger.WithLevel(zerolog.FatalLevel)
 	case severity >= log.SeverityError:
 		return logger.Error()
 	case severity >= log.SeverityWarn:
