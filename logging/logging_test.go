@@ -60,8 +60,9 @@ func TestInitializeWithFile(t *testing.T) {
 	t.Run("console only output", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		err := InitializeWithFile("console-service", true, OutputConsole, nil)
+		closer, err := InitializeWithFile("console-service", true, OutputConsole, nil)
 		require.NoError(t, err)
+		assert.Nil(t, closer) // No file, no closer
 
 		assert.Equal(t, zerolog.DebugLevel, zerolog.GlobalLevel())
 		zlog.Logger.Info().Msg("console only message")
@@ -71,8 +72,10 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "file-only.log")
-		err := InitializeWithFile("file-service", false, OutputFile, &FileConfig{Path: logFile})
+		closer, err := InitializeWithFile("file-service", false, OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer)
+		defer closer.Close()
 
 		assert.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel())
 
@@ -94,8 +97,10 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "both.log")
-		err := InitializeWithFile("dual-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
+		closer, err := InitializeWithFile("dual-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer)
+		defer closer.Close()
 
 		assert.Equal(t, zerolog.DebugLevel, zerolog.GlobalLevel())
 
@@ -119,14 +124,18 @@ func TestInitializeWithFile(t *testing.T) {
 		logFile := filepath.Join(tempDir, "append.log")
 
 		// First initialization
-		err := InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
+		closer1, err := InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer1)
 		zlog.Logger.Info().Msg("first message")
+		closer1.Close()
 
 		// Re-initialize (simulating app restart)
 		zlog.Logger = zerolog.New(os.Stderr)
-		err = InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
+		closer2, err := InitializeWithFile("append-service", false, OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer2)
+		defer closer2.Close()
 		zlog.Logger.Info().Msg("second message")
 
 		// Verify both messages are in the file
@@ -145,24 +154,27 @@ func TestInitializeWithFile(t *testing.T) {
 	t.Run("returns error when OutputFile specified without fileConfig", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		err := InitializeWithFile("error-service", false, OutputFile, nil)
+		closer, err := InitializeWithFile("error-service", false, OutputFile, nil)
 		assert.Error(t, err)
+		assert.Nil(t, closer)
 		assert.Contains(t, err.Error(), "fileConfig with Path is required")
 	})
 
 	t.Run("returns error when OutputFile specified with empty path", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: ""})
+		closer, err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: ""})
 		assert.Error(t, err)
+		assert.Nil(t, closer)
 		assert.Contains(t, err.Error(), "fileConfig with Path is required")
 	})
 
 	t.Run("returns error when no output destination specified", func(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
-		err := InitializeWithFile("error-service", false, 0, nil)
+		closer, err := InitializeWithFile("error-service", false, 0, nil)
 		assert.Error(t, err)
+		assert.Nil(t, closer)
 		assert.Contains(t, err.Error(), "at least one output destination must be specified")
 	})
 
@@ -171,8 +183,9 @@ func TestInitializeWithFile(t *testing.T) {
 
 		invalidPath := "/invalid/nonexistent/directory/file.log"
 
-		err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: invalidPath})
+		closer, err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: invalidPath})
 		assert.Error(t, err)
+		assert.Nil(t, closer)
 		assert.Contains(t, err.Error(), "failed to open log file")
 	})
 
@@ -180,8 +193,10 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "permissions.log")
-		err := InitializeWithFile("perm-service", false, OutputFile, &FileConfig{Path: logFile})
+		closer, err := InitializeWithFile("perm-service", false, OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer)
+		defer closer.Close()
 
 		// Write a message to ensure file is created
 		zlog.Logger.Info().Msg("test")
@@ -199,8 +214,10 @@ func TestInitializeWithFile(t *testing.T) {
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "levels.log")
-		err := InitializeWithFile("levels-service", true, OutputFile, &FileConfig{Path: logFile})
+		closer, err := InitializeWithFile("levels-service", true, OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer)
+		defer closer.Close()
 
 		// Write multiple levels
 		zlog.Logger.Debug().Msg("debug message")
@@ -271,8 +288,10 @@ func TestContextLogger(t *testing.T) {
 		logFile := filepath.Join(tempDir, "context.log")
 
 		zlog.Logger = zerolog.New(os.Stderr)
-		err := InitializeWithFile("context-service", false, OutputFile, &FileConfig{Path: logFile})
+		closer, err := InitializeWithFile("context-service", false, OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer)
+		defer closer.Close()
 
 		ctx := context.Background()
 		logger := ContextLogger(ctx, "my-component")
@@ -299,8 +318,10 @@ func TestIntegration(t *testing.T) {
 		logFile := filepath.Join(tempDir, "integration.log")
 
 		// Initialize the logger with both outputs
-		err := InitializeWithFile("integration-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
+		closer, err := InitializeWithFile("integration-service", true, OutputConsole|OutputFile, &FileConfig{Path: logFile})
 		require.NoError(t, err)
+		require.NotNil(t, closer)
+		defer closer.Close()
 
 		// Create a context logger
 		ctx := context.Background()

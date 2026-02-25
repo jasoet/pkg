@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 )
+
+// initMu protects global logger assignment during initialization.
+var initMu sync.Mutex
 
 // OutputDestination defines where logs should be written.
 // Multiple destinations can be combined using bitwise OR.
@@ -29,29 +33,36 @@ type FileConfig struct {
 // InitializeWithFile sets up the zerolog global logger with flexible output options.
 // Supports console output, file output, or both simultaneously.
 //
+// When file output is enabled, the returned io.Closer must be closed by the caller
+// to release the file handle (typically via defer). When only console output is used,
+// the returned closer is nil.
+//
 // Parameters:
 //   - serviceName: Name of the service, added as a field to all log entries
 //   - debug: If true, sets log level to Debug, otherwise Info
 //   - output: Output destination flags (OutputConsole, OutputFile, or both combined with |)
 //   - fileConfig: File configuration (required if OutputFile is specified, can be nil otherwise)
 //
-// Returns an error if the configuration is invalid or the log file cannot be opened.
-//
-// Output formats:
-//   - Console: Human-readable colored output (zerolog.ConsoleWriter)
-//   - File: Structured JSON format for parsing and log aggregation
+// Returns an io.Closer (non-nil when file output is enabled) and an error if configuration is invalid.
 //
 // Example:
 //
 //	// Console only
-//	err := InitializeWithFile("my-service", true, OutputConsole, nil)
+//	_, err := InitializeWithFile("my-service", true, OutputConsole, nil)
 //
 //	// File only
-//	err := InitializeWithFile("my-service", false, OutputFile, &FileConfig{Path: "app.log"})
+//	closer, err := InitializeWithFile("my-service", false, OutputFile, &FileConfig{Path: "app.log"})
+//	if err != nil { log.Fatal(err) }
+//	defer closer.Close()
 //
 //	// Both console and file
-//	err := InitializeWithFile("my-service", true, OutputConsole|OutputFile, &FileConfig{Path: "app.log"})
-func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) error {
+//	closer, err := InitializeWithFile("my-service", true, OutputConsole|OutputFile, &FileConfig{Path: "app.log"})
+//	if err != nil { log.Fatal(err) }
+//	defer closer.Close()
+func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) (io.Closer, error) {
+	initMu.Lock()
+	defer initMu.Unlock()
+
 	level := zerolog.InfoLevel
 	if debug {
 		level = zerolog.DebugLevel
@@ -60,6 +71,7 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 	zerolog.SetGlobalLevel(level)
 
 	var writers []io.Writer
+	var file *os.File
 
 	// Console output (human-readable, colored)
 	if output&OutputConsole != 0 {
@@ -73,12 +85,13 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 	// File output (JSON, structured)
 	if output&OutputFile != 0 {
 		if fileConfig == nil || fileConfig.Path == "" {
-			return fmt.Errorf("fileConfig with Path is required when OutputFile is specified")
+			return nil, fmt.Errorf("fileConfig with Path is required when OutputFile is specified")
 		}
 
-		file, err := os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		var err error
+		file, err = os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			return fmt.Errorf("failed to open log file %s: %w", fileConfig.Path, err)
+			return nil, fmt.Errorf("failed to open log file %s: %w", fileConfig.Path, err)
 		}
 
 		writers = append(writers, file)
@@ -86,7 +99,7 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 
 	// Ensure at least one output is configured
 	if len(writers) == 0 {
-		return fmt.Errorf("at least one output destination must be specified")
+		return nil, fmt.Errorf("at least one output destination must be specified")
 	}
 
 	// Create multi-writer if multiple outputs
@@ -106,10 +119,10 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 		Logger().
 		Level(level)
 
-	return nil
+	return file, nil
 }
 
-// Initialize sets up the zerolog global logger with standard fields.
+// Initialize sets up the zerolog global logger with standard fields for console-only output.
 // This function should be called once at the start of your application.
 // After calling Initialize, you can use zerolog's log package functions directly
 // (log.Debug(), log.Info(), etc.) or create component-specific loggers with ContextLogger.
@@ -123,19 +136,21 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 //
 // Returns an error if the logger cannot be initialized.
 func Initialize(serviceName string, debug bool) error {
-	return InitializeWithFile(serviceName, debug, OutputConsole, nil)
+	_, err := InitializeWithFile(serviceName, debug, OutputConsole, nil)
+	return err
 }
 
-// ContextLogger creates a logger with context values.
-// This function uses the global logger configured by Initialize or InitializeWithFile.
-// It adds context values and a component name to the logger.
+// ContextLogger creates a component-scoped logger from the global logger.
+// The context is associated with the logger for use by zerolog hooks that
+// read from context (e.g., trace correlation), but context.WithValue entries
+// are not automatically extracted into log fields.
 //
 // Parameters:
-//   - ctx: Context that may contain values to be added to the logger
+//   - ctx: Context associated with the logger (for hooks and cancellation, not value extraction)
 //   - component: Name of the component, added as a field to all log entries
 //
 // Returns:
-//   - A zerolog.Logger instance with context and component information
+//   - A zerolog.Logger instance with the component field and associated context
 func ContextLogger(ctx context.Context, component string) zerolog.Logger {
 	return zlog.With().
 		Ctx(ctx).
