@@ -135,7 +135,7 @@ func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Wo
 			return created, err
 
 		case <-ticker.C:
-			result, err := wfClient.GetWorkflow(ctx, &workflow.WorkflowGetRequest{
+			result, err := wfClient.GetWorkflow(timeoutCtx, &workflow.WorkflowGetRequest{
 				Namespace: created.Namespace,
 				Name:      created.Name,
 			})
