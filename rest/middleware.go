@@ -27,12 +27,6 @@ type Middleware interface {
 	AfterRequest(ctx context.Context, info RequestInfo)
 }
 
-// requestStartTimeKey is a custom type for the context key to avoid collisions
-type requestStartTimeKey string
-
-// Define a constant for the request start time key value
-const requestStartTimeKeyValue requestStartTimeKey = "rest.request_start_time"
-
 // LoggingMiddleware logs HTTP requests and responses
 type LoggingMiddleware struct{}
 
@@ -41,9 +35,9 @@ func NewLoggingMiddleware() *LoggingMiddleware {
 	return &LoggingMiddleware{}
 }
 
-// BeforeRequest logs the start of the request and stores the start time in context
+// BeforeRequest returns the context unchanged; timing is handled via RequestInfo.
 func (m *LoggingMiddleware) BeforeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) context.Context {
-	return context.WithValue(ctx, requestStartTimeKeyValue, time.Now())
+	return ctx
 }
 
 // AfterRequest logs the completion of the request with timing information
