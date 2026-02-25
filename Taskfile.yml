@@ -1,5 +1,33 @@
 version: '3'
 
+vars:
+  PODMAN_SOCKET:
+    sh: |
+      if command -v podman &> /dev/null; then
+        podman machine inspect --format '{{"{{"}}.ConnectionInfo.PodmanSocket.Path{{"}}"}}' 2>/dev/null || echo ""
+      fi
+  CONTAINER_HOST:
+    sh: |
+      # Use existing DOCKER_HOST if set
+      if [ -n "$DOCKER_HOST" ]; then
+        echo "$DOCKER_HOST"
+        exit 0
+      fi
+      # Try native Docker
+      if command -v docker &> /dev/null && docker ps &> /dev/null 2>&1; then
+        echo ""
+        exit 0
+      fi
+      # Try Podman socket
+      if command -v podman &> /dev/null; then
+        SOCKET=$(podman machine inspect --format '{{"{{"}}.ConnectionInfo.PodmanSocket.Path{{"}}"}}' 2>/dev/null || echo "")
+        if [ -n "$SOCKET" ] && [ -S "$SOCKET" ]; then
+          echo "unix://$SOCKET"
+          exit 0
+        fi
+      fi
+      echo ""
+
 tasks:
   default:
     desc: List all available tasks
@@ -24,8 +52,12 @@ tasks:
       - 'echo "✓ Coverage: output/coverage.html"'
 
   test:integration:
-    desc: Run integration tests including temporal (testcontainers, Docker required)
+    desc: Run integration tests including temporal (testcontainers, Docker or Podman required)
     silent: true
+    deps: [docker:check]
+    env:
+      DOCKER_HOST: '{{.CONTAINER_HOST}}'
+      TESTCONTAINERS_RYUK_DISABLED: '{{if .CONTAINER_HOST}}true{{end}}'
     cmds:
       - mkdir -p output
       - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration -timeout=15m
@@ -46,8 +78,11 @@ tasks:
   test:complete:
     desc: Run ALL tests (unit + integration + argo) with single comprehensive coverage report
     silent: true
+    deps: [docker:check]
+    env:
+      DOCKER_HOST: '{{.CONTAINER_HOST}}'
+      TESTCONTAINERS_RYUK_DISABLED: '{{if .CONTAINER_HOST}}true{{end}}'
     cmds:
-      - task: docker:check
       - task: argo:check
       - mkdir -p output
       - echo "🧪 Running all tests (unit + integration + argo)..."
@@ -60,21 +95,42 @@ tasks:
       - 'echo "📄 Coverage Data: output/coverage-complete.out"'
 
   docker:check:
-    desc: Check Docker availability and daemon status
+    desc: Check Docker or Podman availability and daemon status
     silent: true
     cmds:
       - |
-        if ! command -v docker &> /dev/null; then
-          echo "❌ Docker not installed"
+        # 1. If DOCKER_HOST is already set by user, trust it
+        if [ -n "$DOCKER_HOST" ]; then
+          echo "✅ DOCKER_HOST is set: $DOCKER_HOST"
+          exit 0
+        fi
+
+        # 2. Try native Docker
+        if command -v docker &> /dev/null && docker ps &> /dev/null 2>&1; then
+          echo "✅ Docker is available and running"
+          docker --version
+          exit 0
+        fi
+
+        # 3. Try Podman via detected socket
+        CONTAINER_HOST="{{.CONTAINER_HOST}}"
+        if [ -n "$CONTAINER_HOST" ]; then
+          echo "✅ Podman is available"
+          podman --version
+          echo "   Container host: $CONTAINER_HOST"
+          exit 0
+        fi
+
+        # 4. Podman is installed but socket not found
+        if command -v podman &> /dev/null; then
+          echo "❌ Podman is installed but no running machine detected"
+          echo "   Start with: podman machine start"
           exit 1
         fi
-        if ! docker ps &> /dev/null; then
-          echo "❌ Docker daemon not running"
-          echo "   Start Docker and try again"
-          exit 1
-        fi
-        echo "✅ Docker is available and running"
-        docker --version
+
+        echo "❌ Neither Docker nor Podman found"
+        echo "   Install Docker or Podman and try again"
+        exit 1
 
   lint:
     desc: Run golangci-lint
