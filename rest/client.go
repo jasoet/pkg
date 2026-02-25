@@ -1,3 +1,5 @@
+// Package rest provides an HTTP client with middleware support, retry logic,
+// and optional OpenTelemetry instrumentation.
 package rest
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/jasoet/pkg/v2/otel"
 )
 
+// Client wraps a resty HTTP client with middleware and OTel support.
 type Client struct {
 	restClient  *resty.Client
 	restConfig  *Config
@@ -18,14 +21,17 @@ type Client struct {
 	mu          sync.RWMutex
 }
 
+// ClientOption configures a Client during construction.
 type ClientOption func(*Client)
 
+// WithRestConfig sets the REST client configuration.
 func WithRestConfig(restConfig Config) ClientOption {
 	return func(client *Client) {
 		client.restConfig = &restConfig
 	}
 }
 
+// WithMiddleware appends a single middleware to the existing middleware chain.
 func WithMiddleware(middleware Middleware) ClientOption {
 	return func(client *Client) {
 		client.mu.Lock()
@@ -34,6 +40,8 @@ func WithMiddleware(middleware Middleware) ClientOption {
 	}
 }
 
+// WithMiddlewares replaces the entire middleware chain with the provided middlewares.
+// Use WithMiddleware to append instead.
 func WithMiddlewares(middlewares ...Middleware) ClientOption {
 	return func(client *Client) {
 		client.mu.Lock()
@@ -42,14 +50,15 @@ func WithMiddlewares(middlewares ...Middleware) ClientOption {
 	}
 }
 
-// WithOTelConfig sets the OpenTelemetry configuration for the REST client
-// When set, adds OTel tracing, metrics, and logging middleware automatically
+// WithOTelConfig sets the OpenTelemetry configuration for the REST client.
+// When set, adds OTel tracing, metrics, and logging middleware automatically.
 func WithOTelConfig(cfg *otel.Config) ClientOption {
 	return func(client *Client) {
 		client.restConfig.OTelConfig = cfg
 	}
 }
 
+// NewClient creates a new REST client with the given options.
 func NewClient(options ...ClientOption) *Client {
 	client := &Client{
 		restConfig:  DefaultRestConfig(),
@@ -101,10 +110,12 @@ func NewClient(options ...ClientOption) *Client {
 	return client
 }
 
+// GetRestClient returns the underlying resty client.
 func (c *Client) GetRestClient() *resty.Client {
 	return c.restClient
 }
 
+// GetRestConfig returns a copy of the current REST configuration.
 func (c *Client) GetRestConfig() *Config {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -112,18 +123,21 @@ func (c *Client) GetRestConfig() *Config {
 	return &configCopy
 }
 
+// AddMiddleware appends a middleware to the chain.
 func (c *Client) AddMiddleware(middleware Middleware) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.middlewares = append(c.middlewares, middleware)
 }
 
+// SetMiddlewares replaces the entire middleware chain.
 func (c *Client) SetMiddlewares(middlewares ...Middleware) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.middlewares = middlewares
 }
 
+// GetMiddlewares returns a copy of the current middleware chain.
 func (c *Client) GetMiddlewares() []Middleware {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -132,98 +146,24 @@ func (c *Client) GetMiddlewares() []Middleware {
 	return middlewaresCopy
 }
 
+// MakeRequestWithTrace executes an HTTP request with resty trace enabled.
+//
+// The body parameter is a string; for binary payloads, use GetRestClient()
+// and build the request directly with resty's SetBody(interface{}).
 func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url string, body string, headers map[string]string) (*resty.Response, error) {
-	var otelConfig *otel.Config
-	if c.restConfig != nil {
-		otelConfig = c.restConfig.OTelConfig
-	}
-	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/rest", "rest.MakeRequestWithTrace")
-
-	if c.restClient == nil {
-		return nil, errors.New("rest client is nil")
-	}
-
-	startTime := time.Now()
-	c.mu.RLock()
-	middlewaresCopy := make([]Middleware, len(c.middlewares))
-	copy(middlewaresCopy, c.middlewares)
-	c.mu.RUnlock()
-
-	for _, middleware := range middlewaresCopy {
-		ctx = middleware.BeforeRequest(ctx, method, url, body, headers)
-	}
-
-	request := c.restClient.R().
-		SetHeaders(headers).
-		SetContext(ctx).
-		EnableTrace()
-
-	if body != "" {
-		request.SetBody(body)
-	}
-
-	var response *resty.Response
-	var err error
-
-	switch method {
-	case http.MethodGet:
-		response, err = request.Get(url)
-	case http.MethodPost:
-		response, err = request.Post(url)
-	case http.MethodPut:
-		response, err = request.Put(url)
-	case http.MethodDelete:
-		response, err = request.Delete(url)
-	case http.MethodPatch:
-		response, err = request.Patch(url)
-	case http.MethodHead:
-		response, err = request.Head(url)
-	case http.MethodOptions:
-		response, err = request.Options(url)
-	default:
-		response, err = request.Execute(method, url)
-	}
-
-	endTime := time.Now()
-	duration := endTime.Sub(startTime)
-
-	requestInfo := RequestInfo{
-		Method:    method,
-		URL:       url,
-		Headers:   headers,
-		Body:      body,
-		StartTime: startTime,
-		EndTime:   endTime,
-		Duration:  duration,
-		Error:     err,
-	}
-
-	if response != nil {
-		requestInfo.StatusCode = response.StatusCode()
-		requestInfo.Response = response.String()
-		if response.Request != nil {
-			requestInfo.TraceInfo = response.Request.TraceInfo()
-		}
-	}
-
-	for _, middleware := range middlewaresCopy {
-		middleware.AfterRequest(ctx, requestInfo)
-	}
-
-	if err != nil {
-		logger.Error(err, "Failed to make request")
-		return response, NewExecutionError("Failed to make request", err)
-	}
-
-	err = c.HandleResponse(response)
-	if err != nil {
-		return response, err
-	}
-
-	return response, nil
+	return c.doRequest(ctx, method, url, body, headers, true)
 }
 
+// MakeRequest executes an HTTP request without resty trace.
+//
+// The body parameter is a string; for binary payloads, use GetRestClient()
+// and build the request directly with resty's SetBody(interface{}).
 func (c *Client) MakeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) (*resty.Response, error) {
+	return c.doRequest(ctx, method, url, body, headers, false)
+}
+
+// doRequest is the shared implementation for MakeRequest and MakeRequestWithTrace.
+func (c *Client) doRequest(ctx context.Context, method string, url string, body string, headers map[string]string, enableTrace bool) (*resty.Response, error) {
 	var otelConfig *otel.Config
 	if c.restConfig != nil {
 		otelConfig = c.restConfig.OTelConfig
@@ -248,6 +188,10 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 		SetHeaders(headers).
 		SetContext(ctx)
 
+	if enableTrace {
+		request.EnableTrace()
+	}
+
 	if body != "" {
 		request.SetBody(body)
 	}
@@ -291,6 +235,9 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 	if response != nil {
 		requestInfo.StatusCode = response.StatusCode()
 		requestInfo.Response = response.String()
+		if enableTrace && response.Request != nil {
+			requestInfo.TraceInfo = response.Request.TraceInfo()
+		}
 	}
 
 	for _, middleware := range middlewaresCopy {
@@ -310,6 +257,9 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 	return response, nil
 }
 
+// HandleResponse checks the HTTP status code and returns a typed error for
+// non-success responses. Checks are ordered from most specific to least:
+// 401/403 -> 404 -> 5xx -> other 4xx.
 func (c *Client) HandleResponse(response *resty.Response) error {
 	if IsUnauthorized(response) {
 		return NewUnauthorizedError(response.StatusCode(), "Unauthorized access", response.String())
@@ -330,18 +280,30 @@ func (c *Client) HandleResponse(response *resty.Response) error {
 	return nil
 }
 
+// IsServerError returns true for HTTP 5xx status codes.
 func IsServerError(response *resty.Response) bool {
 	return response.StatusCode() >= 500
 }
 
+// IsUnauthorized returns true for HTTP 401 (Unauthorized) and 403 (Forbidden).
+// Both indicate an access control failure; use response.StatusCode() to distinguish them.
 func IsUnauthorized(response *resty.Response) bool {
 	return response.StatusCode() == http.StatusUnauthorized || response.StatusCode() == http.StatusForbidden
 }
 
+// IsForbidden returns true only for HTTP 403 (Forbidden).
+func IsForbidden(response *resty.Response) bool {
+	return response.StatusCode() == http.StatusForbidden
+}
+
+// IsNotFound returns true for HTTP 404 (Not Found).
 func IsNotFound(response *resty.Response) bool {
 	return response.StatusCode() == http.StatusNotFound
 }
 
+// IsClientError returns true for any HTTP 4xx status code.
+// Note: this overlaps with IsUnauthorized and IsNotFound; in HandleResponse,
+// those are checked first so IsClientError only catches remaining 4xx codes.
 func IsClientError(response *resty.Response) bool {
 	return response.StatusCode() >= 400 && response.StatusCode() < 500
 }

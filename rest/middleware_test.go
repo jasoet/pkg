@@ -23,19 +23,10 @@ func TestLoggingMiddleware(t *testing.T) {
 		body := `{"key":"value"}`
 		headers := map[string]string{"Content-Type": "application/json"}
 
-		// Call BeforeRequest
+		// Call BeforeRequest - should return context unchanged
 		newCtx := middleware.BeforeRequest(ctx, method, url, body, headers)
-
-		// Verify that a start time was added to the context
-		startTime, ok := newCtx.Value(requestStartTimeKeyValue).(time.Time)
-		if !ok {
-			t.Error("Expected request_start_time in context, but it was not found or not a time.Time")
-		}
-
-		// Verify the start time is recent (within the last second)
-		now := time.Now()
-		if now.Sub(startTime) > time.Second {
-			t.Errorf("Expected start time to be recent, but it was %v ago", now.Sub(startTime))
+		if newCtx != ctx {
+			t.Error("Expected context to be unchanged")
 		}
 	})
 
