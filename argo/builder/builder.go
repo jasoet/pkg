@@ -367,13 +367,15 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 		logger.Warn("No steps provided, workflow will be empty")
 	}
 
-	// Create entrypoint template
+	// Build a fresh templates slice so Build() is safe to call multiple times.
 	const entrypointName = "main"
 	entrypoint := v1alpha1.Template{
 		Name:  entrypointName,
 		Steps: b.entryPoint,
 	}
-	b.templates = append(b.templates, entrypoint)
+	templates := make([]v1alpha1.Template, len(b.templates), len(b.templates)+2)
+	copy(templates, b.templates)
+	templates = append(templates, entrypoint)
 
 	// Create exit handler template if needed
 	const exitHandlerName = "exit-handler"
@@ -383,7 +385,7 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 			Name:  exitHandlerName,
 			Steps: b.exitHandlers,
 		}
-		b.templates = append(b.templates, exitHandler)
+		templates = append(templates, exitHandler)
 		onExit = exitHandlerName
 	}
 
@@ -398,7 +400,7 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 		Spec: v1alpha1.WorkflowSpec{
 			Entrypoint:            entrypointName,
 			ServiceAccountName:    b.serviceAccount,
-			Templates:             b.templates,
+			Templates:             templates,
 			Volumes:               b.volumes,
 			Metrics:               b.metrics,
 			ArchiveLogs:           b.archiveLogs,
@@ -424,7 +426,7 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 		b.otel.addSpanAttributes(ctx,
 			attribute.String("workflow.name", b.namePrefix),
 			attribute.String("workflow.namespace", b.namespace),
-			attribute.Int("workflow.templates_count", len(b.templates)),
+			attribute.Int("workflow.templates_count", len(templates)),
 			attribute.Int("workflow.steps_count", len(b.entryPoint)),
 			attribute.Bool("workflow.has_exit_handler", len(b.exitHandlers) > 0),
 		)

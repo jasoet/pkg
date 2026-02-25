@@ -39,8 +39,9 @@ type ServerOpts struct {
 	// URL is the Argo Server base URL (e.g., "https://argo-server:2746")
 	URL string `yaml:"url" mapstructure:"url"`
 
-	// AuthToken is the bearer token for authentication (optional)
-	AuthToken string `yaml:"authToken" mapstructure:"authToken"`
+	// AuthToken is the bearer token for authentication (optional).
+	// Excluded from serialization to prevent accidental credential exposure.
+	AuthToken string `yaml:"-" mapstructure:"-"`
 
 	// InsecureSkipVerify disables TLS certificate verification (not recommended for production)
 	InsecureSkipVerify bool `yaml:"insecureSkipVerify" mapstructure:"insecureSkipVerify"`

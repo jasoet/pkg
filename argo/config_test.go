@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/yaml.v3"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -49,4 +50,14 @@ func TestArgoServerConfig_EmptyValues(t *testing.T) {
 	assert.NotNil(t, config)
 	assert.Empty(t, config.ArgoServerOpts.URL)
 	assert.Empty(t, config.ArgoServerOpts.AuthToken)
+}
+
+func TestAuthTokenNotSerialized(t *testing.T) {
+	// I42: AuthToken must not appear in YAML output
+	config := ServerConfig("https://argo:2746", "Bearer secret-token")
+
+	data, err := yaml.Marshal(config)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(data), "secret-token", "AuthToken must not be serialized to YAML")
+	assert.NotContains(t, string(data), "authToken", "authToken key must not appear in YAML")
 }
