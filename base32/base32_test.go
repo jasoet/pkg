@@ -8,27 +8,36 @@ import (
 
 func TestEncodeBase32(t *testing.T) {
 	tests := []struct {
-		name   string
-		value  uint64
-		length int
-		want   string
+		name    string
+		value   uint64
+		length  int
+		want    string
+		wantErr bool
 	}{
-		{"zero", 0, 6, "000000"},
-		{"small value", 42, 4, "001A"},
-		{"max 5 bits", 31, 2, "0Z"},
-		{"32", 32, 2, "10"},
-		{"example", 12345, 6, "000C1S"},
-		{"large value", 999, 3, "0Z7"},
-		{"length 1", 5, 1, "5"},
-		{"exact fit", 1023, 2, "ZZ"},
-		{"zero length", 42, 0, ""},
-		{"negative length", 42, -1, ""},
+		{"zero", 0, 6, "000000", false},
+		{"small value", 42, 4, "001A", false},
+		{"max 5 bits", 31, 2, "0Z", false},
+		{"32", 32, 2, "10", false},
+		{"example", 12345, 6, "000C1S", false},
+		{"large value", 999, 3, "0Z7", false},
+		{"length 1", 5, 1, "5", false},
+		{"exact fit", 1023, 2, "ZZ", false},
+		{"zero length", 42, 0, "", true},
+		{"negative length", 42, -1, "", true},
+		{"overflow", 1024, 2, "", true},
+		{"large overflow", 99999999, 3, "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := EncodeBase32(tt.value, tt.length)
-			assert.Equal(t, tt.want, got)
+			got, err := EncodeBase32(tt.value, tt.length)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Empty(t, got)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
 		})
 	}
 }
@@ -56,6 +65,7 @@ func TestDecodeBase32(t *testing.T) {
 		{"invalid char U", "U", 0, true},
 		{"invalid char #", "#", 0, true},
 		{"valid then invalid", "A#", 0, true},
+		{"overflow very long", "ZZZZZZZZZZZZZZ", 0, true}, // 14 Z's overflows uint64
 	}
 
 	for _, tt := range tests {
@@ -81,9 +91,10 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 
 	for _, original := range testCases {
 		t.Run(string(rune(original)), func(t *testing.T) {
-			encoded := EncodeBase32(original, 10)
-			decoded, err := DecodeBase32(encoded)
+			encoded, err := EncodeBase32(original, 10)
+			assert.NoError(t, err)
 
+			decoded, err := DecodeBase32(encoded)
 			assert.NoError(t, err)
 			assert.Equal(t, original, decoded)
 		})
@@ -211,7 +222,7 @@ func TestBase32ValueToChar(t *testing.T) {
 // Benchmark tests
 func BenchmarkEncodeBase32(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		EncodeBase32(12345, 10)
+		_, _ = EncodeBase32(12345, 10)
 	}
 }
 

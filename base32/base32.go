@@ -10,10 +10,10 @@
 // Example:
 //
 //	// Encode a value
-//	id := base32.EncodeBase32(12345, 8)  // "0000C1P9"
+//	id, err := base32.EncodeBase32(12345, 8)  // "000000C1S", nil
 //
 //	// Add checksum
-//	idWithChecksum := base32.AppendChecksum(id)
+//	idWithChecksum, err := base32.AppendChecksum(id)
 //
 //	// Validate
 //	if base32.ValidateChecksum(idWithChecksum) {
@@ -23,6 +23,7 @@ package base32
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -61,21 +62,25 @@ var base32DecodeMap = map[rune]int{
 // The encoded value is left-padded with '0's to reach the specified length.
 // Uses Crockford's Base32 alphabet (0-9, A-Z excluding I, L, O, U).
 //
+// Returns an error if the value is too large to fit in the specified length.
+//
 // Example:
 //
-//	base32.EncodeBase32(42, 4)     // "0016"
-//	base32.EncodeBase32(999, 3)    // "0ZZ"
-//	base32.EncodeBase32(32, 2)     // "10"
+//	base32.EncodeBase32(42, 4)     // "001A", nil
+//	base32.EncodeBase32(999, 3)    // "0Z7", nil
+//	base32.EncodeBase32(32, 2)     // "10", nil
+//	base32.EncodeBase32(1024, 2)   // "", error (overflow)
 //
 // Parameters:
 //   - value: The unsigned integer to encode
-//   - length: The minimum length of the output string
+//   - length: The desired length of the output string
 //
 // Returns:
-//   - A Base32-encoded string of at least 'length' characters
-func EncodeBase32(value uint64, length int) string {
+//   - A Base32-encoded string of exactly 'length' characters, or "" on error
+//   - An error if length <= 0 or the value overflows the specified length
+func EncodeBase32(value uint64, length int) (string, error) {
 	if length <= 0 {
-		return ""
+		return "", fmt.Errorf("length must be positive, got %d", length)
 	}
 
 	result := make([]byte, length)
@@ -84,7 +89,11 @@ func EncodeBase32(value uint64, length int) string {
 		value /= 32
 	}
 
-	return string(result)
+	if value > 0 {
+		return "", fmt.Errorf("value too large for %d Base32 characters", length)
+	}
+
+	return string(result), nil
 }
 
 // DecodeBase32 decodes a Base32 string to an unsigned integer.
@@ -115,7 +124,14 @@ func DecodeBase32(encoded string) (uint64, error) {
 		if !ok {
 			return 0, fmt.Errorf("invalid Base32 character '%c' at position %d", char, i)
 		}
-		result = result*32 + uint64(value)
+		if result > math.MaxUint64/32 {
+			return 0, fmt.Errorf("value overflow at position %d", i)
+		}
+		next := result*32 + uint64(value)
+		if next < result {
+			return 0, fmt.Errorf("value overflow at position %d", i)
+		}
+		result = next
 	}
 
 	return result, nil
@@ -168,17 +184,17 @@ func IsValidBase32Char(c rune) bool {
 //	base32.NormalizeBase32("abc-def")   // "ABCDEF"
 //	base32.NormalizeBase32("1O 2I")     // "1021"
 //	base32.NormalizeBase32("hell0")     // "HELL0"
+// normalizeReplacer performs single-pass replacement of confusable characters and separators.
+var normalizeReplacer = strings.NewReplacer(
+	"-", "",
+	" ", "",
+	"I", "1",
+	"L", "1",
+	"O", "0",
+)
+
 func NormalizeBase32(input string) string {
-	input = strings.ToUpper(input)
-	input = strings.ReplaceAll(input, "-", "")
-	input = strings.ReplaceAll(input, " ", "")
-
-	// Replace commonly confused characters
-	input = strings.ReplaceAll(input, "I", "1")
-	input = strings.ReplaceAll(input, "L", "1")
-	input = strings.ReplaceAll(input, "O", "0")
-
-	return input
+	return normalizeReplacer.Replace(strings.ToUpper(input))
 }
 
 // EncodeBase32Compact encodes a value to the minimum number of Base32 characters needed.
