@@ -1,5 +1,7 @@
 package base32
 
+import "fmt"
+
 // CRC-10 polynomial for checksum calculation
 // x^10 + x^5 + x^4 + x^1 + 1 = 0x233
 const crc10Polynomial = 0x233
@@ -15,32 +17,33 @@ const crc10Polynomial = 0x233
 // The CRC-10 algorithm processes each Base32 character (5 bits) and produces
 // a 10-bit checksum, which is then encoded as 2 Base32 characters.
 //
+// Returns an error if the input contains invalid Base32 characters.
+//
 // Example:
 //
-//	checksum := base32.CalculateChecksum("ABC123")  // "XY"
-//	withChecksum := base32.AppendChecksum("ABC123") // "ABC123XY"
+//	checksum, err := base32.CalculateChecksum("ABC123")  // "XY", nil
 //
 // Parameters:
-//   - data: The Base32 string to checksum
+//   - data: The Base32 string to checksum (must contain only valid Base32 characters)
 //
 // Returns:
 //   - A 2-character Base32 checksum
-func CalculateChecksum(data string) string {
+//   - An error if the input contains invalid characters
+func CalculateChecksum(data string) (string, error) {
 	crc := uint16(0)
 
 	// Process each character in the data
-	for _, char := range data {
+	for i, char := range data {
 		value := base32CharToValue(char)
 		if value < 0 {
-			// Invalid character, skip or treat as 0
-			value = 0
+			return "", fmt.Errorf("invalid Base32 character '%c' at position %d", char, i)
 		}
 
 		// XOR the value into the CRC (shifted left by 5 bits)
 		crc ^= uint16(value) << 5
 
 		// Process 5 bits (since Base32 = 5 bits per character)
-		for i := 0; i < 5; i++ {
+		for j := 0; j < 5; j++ {
 			if crc&0x200 != 0 { // Check if bit 9 is set
 				crc = (crc << 1) ^ crc10Polynomial
 			} else {
@@ -58,7 +61,7 @@ func CalculateChecksum(data string) string {
 	char1 := base32ValueToChar(int((crc >> 5) & 0x1F))
 	char2 := base32ValueToChar(int(crc & 0x1F))
 
-	return string([]rune{char1, char2})
+	return string([]rune{char1, char2}), nil
 }
 
 // ValidateChecksum verifies that the checksum in a string is correct.
@@ -66,6 +69,7 @@ func CalculateChecksum(data string) string {
 // Expected format: [data][2 chars checksum]
 //
 // This function is useful for validating user input or detecting data corruption.
+// Returns false if the input is too short or contains invalid Base32 characters.
 //
 // Example:
 //
@@ -88,7 +92,10 @@ func ValidateChecksum(input string) bool {
 	providedChecksum := input[dataLen:]
 
 	// Calculate expected checksum
-	expectedChecksum := CalculateChecksum(data)
+	expectedChecksum, err := CalculateChecksum(data)
+	if err != nil {
+		return false
+	}
 
 	// Compare checksums (case-insensitive)
 	return NormalizeBase32(providedChecksum) == NormalizeBase32(expectedChecksum)
@@ -98,19 +105,25 @@ func ValidateChecksum(input string) bool {
 //
 // This is the recommended way to create checksummed strings.
 //
+// Returns an error if the input contains invalid Base32 characters.
+//
 // Example:
 //
-//	id := base32.EncodeBase32(12345, 6)            // "00C1P9"
-//	idWithChecksum := base32.AppendChecksum(id)   // "00C1P9XY"
+//	id, _ := base32.EncodeBase32(12345, 6)             // "000C1S"
+//	idWithChecksum, _ := base32.AppendChecksum(id)     // "000C1SXY"
 //
 // Parameters:
-//   - data: The Base32 string to checksum
+//   - data: The Base32 string to checksum (must contain only valid Base32 characters)
 //
 // Returns:
 //   - The input string with a 2-character checksum appended
-func AppendChecksum(data string) string {
-	checksum := CalculateChecksum(data)
-	return data + checksum
+//   - An error if the input contains invalid characters
+func AppendChecksum(data string) (string, error) {
+	checksum, err := CalculateChecksum(data)
+	if err != nil {
+		return "", err
+	}
+	return data + checksum, nil
 }
 
 // StripChecksum removes the last 2 characters (checksum) from a string.
