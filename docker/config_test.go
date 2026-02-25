@@ -413,16 +413,20 @@ func TestHybridConfig(t *testing.T) {
 }
 
 func TestNetworkHelpers_NatPort(t *testing.T) {
-	// NatPort expects port number only, protocol is added
+	// Port number only — defaults to tcp
 	port, err := docker.NatPort("8080")
 	require.NoError(t, err)
 	assert.Equal(t, nat.Port("8080/tcp"), port)
 
-	// With protocol suffix - needs special handling
+	// Explicit tcp protocol
 	port, err = docker.NatPort("8080/tcp")
-	if err == nil {
-		assert.Equal(t, nat.Port("8080/tcp"), port)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, nat.Port("8080/tcp"), port)
+
+	// UDP protocol must be preserved (C5 fix)
+	port, err = docker.NatPort("8080/udp")
+	require.NoError(t, err)
+	assert.Equal(t, nat.Port("8080/udp"), port)
 }
 
 func TestNetworkHelpers_PortBindings(t *testing.T) {

@@ -9,34 +9,14 @@ import (
 )
 
 // Host returns the container host address.
-// For local Docker, this is typically "localhost".
-// For Docker Machine or remote Docker, this returns the Docker host IP.
-func (e *Executor) Host(ctx context.Context) (string, error) {
+// For local Docker, this is always "localhost" since containers use port forwarding.
+func (e *Executor) Host(_ context.Context) (string, error) {
 	e.mu.RLock()
 	containerID := e.containerID
 	e.mu.RUnlock()
 
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
-	}
-
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
-	if err != nil {
-		return "", fmt.Errorf("failed to inspect container: %w", err)
-	}
-
-	// For bridge network mode, use localhost
-	if inspect.HostConfig.NetworkMode.IsHost() {
-		return defaultHost, nil
-	}
-
-	// For other modes, try to get the gateway
-	if len(inspect.NetworkSettings.Networks) > 0 {
-		for _, network := range inspect.NetworkSettings.Networks {
-			if network.Gateway != "" {
-				return defaultHost, nil // Still use localhost for port-forwarded containers
-			}
-		}
 	}
 
 	return defaultHost, nil
@@ -210,12 +190,14 @@ func (e *Executor) ConnectionString(ctx context.Context, containerPort, template
 }
 
 // NatPort is a helper to create a nat.Port from a string.
+// Port format: "8080/tcp", "8080/udp", or "8080" (defaults to tcp).
 // This is useful when working with Docker API types directly.
 func NatPort(port string) (nat.Port, error) {
 	if !strings.Contains(port, "/") {
 		port = port + "/tcp"
 	}
-	return nat.NewPort("tcp", strings.TrimSuffix(port, "/tcp"))
+	parts := strings.SplitN(port, "/", 2)
+	return nat.NewPort(parts[1], parts[0])
 }
 
 // PortBindings is a helper to create port bindings from a map.

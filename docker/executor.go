@@ -428,6 +428,8 @@ func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) 
 		Timestamps: logOpts.timestamps,
 		Follow:     false,
 		Tail:       logOpts.tail,
+		Since:      logOpts.since,
+		Until:      logOpts.until,
 	}
 
 	logs, err := e.client.ContainerLogs(ctx, containerID, options)
@@ -448,6 +450,7 @@ func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) 
 
 // StreamLogs streams container logs to a channel.
 // The channel is closed when streaming completes or context is canceled.
+// Docker multiplexed stream headers are parsed to correctly identify stdout vs stderr.
 func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan LogEntry, <-chan error) {
 	logCh := make(chan LogEntry, 100)
 	errCh := make(chan error, 1)
@@ -476,6 +479,8 @@ func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan Lo
 			Timestamps: logOpts.timestamps,
 			Follow:     logOpts.follow,
 			Tail:       logOpts.tail,
+			Since:      logOpts.since,
+			Until:      logOpts.until,
 		}
 
 		logs, err := e.client.ContainerLogs(ctx, containerID, options)
@@ -485,32 +490,47 @@ func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan Lo
 		}
 		defer logs.Close()
 
-		// Stream logs line by line
-		buf := make([]byte, 8192)
+		// Demux Docker multiplexed stream.
+		// Each frame has an 8-byte header: [stream_type, 0, 0, 0, size_be32...]
+		// stream_type: 1 = stdout, 2 = stderr
+		hdr := make([]byte, 8)
 		for {
+			_, err := io.ReadFull(logs, hdr)
+			if err != nil {
+				if err != io.EOF && err != io.ErrUnexpectedEOF && ctx.Err() == nil {
+					errCh <- fmt.Errorf("error reading log header: %w", err)
+				}
+				return
+			}
+
+			stream := "stdout"
+			if hdr[0] == 2 {
+				stream = "stderr"
+			}
+
+			// Frame payload size (big-endian uint32)
+			size := int(hdr[4])<<24 | int(hdr[5])<<16 | int(hdr[6])<<8 | int(hdr[7])
+			if size == 0 {
+				continue
+			}
+
+			payload := make([]byte, size)
+			_, err = io.ReadFull(logs, payload)
+			if err != nil {
+				if err != io.EOF && err != io.ErrUnexpectedEOF && ctx.Err() == nil {
+					errCh <- fmt.Errorf("error reading log payload: %w", err)
+				}
+				return
+			}
+
+			entry := LogEntry{
+				Stream:  stream,
+				Content: string(payload),
+			}
 			select {
+			case logCh <- entry:
 			case <-ctx.Done():
 				return
-			default:
-				n, err := logs.Read(buf)
-				if err != nil {
-					if err != io.EOF {
-						errCh <- fmt.Errorf("error reading logs: %w", err)
-					}
-					return
-				}
-
-				if n > 0 {
-					entry := LogEntry{
-						Stream:  "stdout", // Docker API doesn't distinguish in this mode
-						Content: string(buf[:n]),
-					}
-					select {
-					case logCh <- entry:
-					case <-ctx.Done():
-						return
-					}
-				}
 			}
 		}
 	}()
