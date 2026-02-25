@@ -53,7 +53,11 @@ func basicEncodingDecoding() {
 
 	// Fixed-length encoding
 	value1 := uint64(12345)
-	encoded1 := base32.EncodeBase32(value1, 8)
+	encoded1, err := base32.EncodeBase32(value1, 8)
+	if err != nil {
+		fmt.Printf("Error encoding: %v\n", err)
+		return
+	}
 	fmt.Printf("Encode %d with length 8: %s\n", value1, encoded1)
 
 	// Compact encoding (minimum characters)
@@ -80,12 +84,12 @@ func checksumOperations() {
 	data := "ABC123"
 
 	// Calculate checksum
-	checksum := base32.CalculateChecksum(data)
+	checksum, _ := base32.CalculateChecksum(data)
 	fmt.Printf("Data:               %s\n", data)
 	fmt.Printf("Checksum:           %s\n", checksum)
 
 	// Append checksum
-	withChecksum := base32.AppendChecksum(data)
+	withChecksum, _ := base32.AppendChecksum(data)
 	fmt.Printf("With checksum:      %s\n", withChecksum)
 
 	// Validate checksum
@@ -126,12 +130,12 @@ func orderTransactionIDs() {
 	timestamp := uint64(time.Now().Unix())
 	sequence := uint64(12345)
 
-	timeCode := base32.EncodeBase32(timestamp, 8)
-	seqCode := base32.EncodeBase32(sequence, 4)
+	timeCode, _ := base32.EncodeBase32(timestamp, 8)
+	seqCode, _ := base32.EncodeBase32(sequence, 4)
 
 	// Combine and add checksum
 	orderIDData := "ORD-" + timeCode + "-" + seqCode
-	orderID := base32.AppendChecksum(orderIDData)
+	orderID, _ := base32.AppendChecksum(orderIDData)
 
 	fmt.Printf("Timestamp:  %d\n", timestamp)
 	fmt.Printf("Sequence:   %d\n", sequence)
@@ -157,12 +161,12 @@ func licenseKeyGeneration() {
 	customerID := uint64(789)
 	expiryDate := uint64(20251231) // YYYYMMDD
 
-	product := base32.EncodeBase32(productID, 2)
-	customer := base32.EncodeBase32(customerID, 4)
-	expiry := base32.EncodeBase32(expiryDate, 6)
+	product, _ := base32.EncodeBase32(productID, 2)
+	customer, _ := base32.EncodeBase32(customerID, 4)
+	expiry, _ := base32.EncodeBase32(expiryDate, 6)
 
 	licenseData := product + "-" + customer + "-" + expiry
-	licenseKey := base32.AppendChecksum(licenseData)
+	licenseKey, _ := base32.AppendChecksum(licenseData)
 
 	fmt.Printf("Product ID:    %d\n", productID)
 	fmt.Printf("Customer ID:   %d\n", customerID)
@@ -190,8 +194,8 @@ func voucherCouponCodes() {
 
 	fmt.Println("Voucher ID → Code")
 	for _, id := range voucherIDs {
-		code := base32.EncodeBase32(id, 4)
-		codeWithChecksum := base32.AppendChecksum(code)
+		code, _ := base32.EncodeBase32(id, 4)
+		codeWithChecksum, _ := base32.AppendChecksum(code)
 
 		// Format with dash for readability
 		formatted := code[:2] + "-" + code[2:] + "-" + base32.ExtractChecksum(codeWithChecksum)
@@ -205,7 +209,8 @@ func voucherCouponCodes() {
 	// Validate a voucher code
 	fmt.Println("\nVoucher Validation:")
 	testCode := "09-ZZ"
-	fullCode := testCode + base32.CalculateChecksum(base32.NormalizeBase32(testCode))
+	checksum, _ := base32.CalculateChecksum(base32.NormalizeBase32(testCode))
+	fullCode := testCode + checksum
 
 	if base32.ValidateChecksum(base32.NormalizeBase32(fullCode)) {
 		fmt.Printf("✓ Code '%s' is valid\n", testCode)
@@ -224,7 +229,7 @@ func iotDeviceIDs() {
 	fmt.Println("Serial Number → Device ID")
 	for _, serial := range deviceSerials {
 		deviceID := base32.EncodeBase32Compact(serial)
-		deviceIDWithChecksum := base32.AppendChecksum(deviceID)
+		deviceIDWithChecksum, _ := base32.AppendChecksum(deviceID)
 
 		fmt.Printf("%6d → DEV-%s (with checksum: DEV-%s)\n",
 			serial,
@@ -288,7 +293,7 @@ func checksumValidation() {
 	fmt.Println("--- Example 9: Checksum Validation and Error Detection ---")
 
 	// Create a valid ID
-	validID := base32.AppendChecksum("TEST123")
+	validID, _ := base32.AppendChecksum("TEST123")
 	fmt.Printf("Valid ID: %s\n", validID)
 
 	// Test 1: Valid checksum
@@ -321,7 +326,7 @@ func checksumValidation() {
 	// Test 5: Error detection rate demonstration
 	fmt.Println("\nTest 5: Error Detection Demonstration")
 	testData := "ABCD1234"
-	validData := base32.AppendChecksum(testData)
+	validData, _ := base32.AppendChecksum(testData)
 
 	fmt.Printf("Original: %s\n", validData)
 	fmt.Println("\nTesting various corruptions:")
