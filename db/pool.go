@@ -1,3 +1,5 @@
+// Package db provides database connection pooling with GORM, supporting PostgreSQL,
+// MySQL, and MSSQL, with optional OpenTelemetry instrumentation.
 package db
 
 import (
@@ -18,14 +20,19 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// DatabaseType identifies the database backend.
 type DatabaseType string
 
 const (
 	Mysql      DatabaseType = "MYSQL"
 	Postgresql DatabaseType = "POSTGRES"
 	MSSQL      DatabaseType = "MSSQL"
+
+	// defaultTimeout is applied when Timeout is zero to avoid immediate connection failure.
+	defaultTimeout = 30 * time.Second
 )
 
+// ConnectionConfig holds the connection parameters for a database pool.
 type ConnectionConfig struct {
 	DbType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL" mapstructure:"dbType"`
 	Host         string        `yaml:"host" validate:"required,min=1" mapstructure:"host"`
@@ -37,45 +44,98 @@ type ConnectionConfig struct {
 	MaxIdleConns int           `yaml:"maxIdleConns" mapstructure:"maxIdleConns" validate:"min=1"`
 	MaxOpenConns int           `yaml:"maxOpenConns" mapstructure:"maxOpenConns" validate:"min=2"`
 
+	// ConnMaxLifetime sets the maximum duration a connection may be reused.
+	// Zero means connections are not closed due to age.
+	ConnMaxLifetime time.Duration `yaml:"connMaxLifetime" mapstructure:"connMaxLifetime"`
+
+	// ConnMaxIdleTime sets the maximum duration a connection may sit idle.
+	// Zero means connections are not closed due to idle time.
+	ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime" mapstructure:"connMaxIdleTime"`
+
+	// SSLMode configures TLS for the connection.
+	// PostgreSQL: "disable", "require", "verify-ca", "verify-full" (default: "disable")
+	// MSSQL: "disable", "true", "false" (default: "disable")
+	// MySQL: handled via DSN parameters (this field is ignored for MySQL)
+	SSLMode string `yaml:"sslMode" mapstructure:"sslMode"`
+
+	// GormLogLevel sets the GORM logger verbosity (1=Silent, 2=Error, 3=Warn, 4=Info).
+	// Default: 1 (Silent)
+	GormLogLevel int `yaml:"gormLogLevel" mapstructure:"gormLogLevel"`
+
 	// OpenTelemetry Configuration (optional - nil disables telemetry)
 	OTelConfig *pkgotel.Config `yaml:"-" mapstructure:"-"` // Not serializable from config files
 }
 
-func (c *ConnectionConfig) Dsn() string {
-	timeoutString := fmt.Sprintf("%ds", c.Timeout/time.Second)
-
-	var dsn string
-	switch c.DbType {
-	case Mysql:
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&timeout=%s", c.Username, c.Password, c.Host, c.Port, c.DbName, timeoutString)
-	case Postgresql:
-		dsn = fmt.Sprintf("user=%s password=%s host=%s port=%d dbname=%s sslmode=disable connect_timeout=%d", c.Username, c.Password, c.Host, c.Port, c.DbName, int(c.Timeout.Seconds()))
-	case MSSQL:
-		dsn = fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connectTimeout=%s&encrypt=disable", c.Username, c.Password, c.Host, c.Port, c.DbName, timeoutString)
+// effectiveTimeout returns the configured timeout or the default if zero.
+func (c *ConnectionConfig) effectiveTimeout() time.Duration {
+	if c.Timeout <= 0 {
+		return defaultTimeout
 	}
-
-	return dsn
+	return c.Timeout
 }
 
+// effectiveSSLMode returns the configured SSL mode or "disable" if empty.
+func (c *ConnectionConfig) effectiveSSLMode() string {
+	if c.SSLMode == "" {
+		return "disable"
+	}
+	return c.SSLMode
+}
+
+// effectiveGormLogLevel returns the configured GORM log level or Silent if unset.
+func (c *ConnectionConfig) effectiveGormLogLevel() logger.LogLevel {
+	if c.GormLogLevel >= int(logger.Silent) && c.GormLogLevel <= int(logger.Info) {
+		return logger.LogLevel(c.GormLogLevel)
+	}
+	return logger.Silent
+}
+
+// Dsn builds the data source name string for the configured database type.
+func (c *ConnectionConfig) Dsn() string {
+	timeout := c.effectiveTimeout()
+	sslMode := c.effectiveSSLMode()
+
+	switch c.DbType {
+	case Mysql:
+		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
+		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&timeout=%s",
+			c.Username, c.Password, c.Host, c.Port, c.DbName, timeoutStr)
+	case Postgresql:
+		return fmt.Sprintf("user=%s password=%s host=%s port=%d dbname=%s sslmode=%s connect_timeout=%d",
+			c.Username, c.Password, c.Host, c.Port, c.DbName, sslMode, int(timeout.Seconds()))
+	case MSSQL:
+		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
+		return fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connectTimeout=%s&encrypt=%s",
+			c.Username, c.Password, c.Host, c.Port, c.DbName, timeoutStr, sslMode)
+	default:
+		return ""
+	}
+}
+
+// Pool creates a new GORM database connection pool.
+//
+// It validates the DSN, opens the connection, configures pool parameters,
+// pings to verify connectivity, and optionally installs OTel instrumentation.
 func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
-	if c.Dsn() == "" {
+	dsn := c.Dsn()
+	if dsn == "" {
 		return nil, fmt.Errorf("dsn is empty")
 	}
 
 	var dialector gorm.Dialector
 	switch c.DbType {
 	case Mysql:
-		dialector = mysql.Open(c.Dsn())
+		dialector = mysql.Open(dsn)
 	case Postgresql:
-		dialector = postgres.Open(c.Dsn())
+		dialector = postgres.Open(dsn)
 	case MSSQL:
-		dialector = sqlserver.Open(c.Dsn())
+		dialector = sqlserver.Open(dsn)
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", c.DbType)
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+		Logger: logger.Default.LogMode(c.effectiveGormLogLevel()),
 	})
 	if err != nil {
 		return nil, err
@@ -89,6 +149,12 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	// Configure connection pool
 	sqlDB.SetMaxIdleConns(c.MaxIdleConns)
 	sqlDB.SetMaxOpenConns(c.MaxOpenConns)
+	if c.ConnMaxLifetime > 0 {
+		sqlDB.SetConnMaxLifetime(c.ConnMaxLifetime)
+	}
+	if c.ConnMaxIdleTime > 0 {
+		sqlDB.SetConnMaxIdleTime(c.ConnMaxIdleTime)
+	}
 
 	if err := sqlDB.Ping(); err != nil {
 		return nil, err
@@ -121,15 +187,20 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 			return nil, fmt.Errorf("failed to install otelgorm plugin: %w", err)
 		}
 
-		// Start custom connection pool metrics collection in background if metrics enabled
+		// Register connection pool metrics if metrics enabled.
+		// Note: collectPoolMetrics only registers an observable callback and returns
+		// immediately, so it does not need a goroutine.
 		if c.OTelConfig.IsMetricsEnabled() {
-			go c.collectPoolMetrics(sqlDB)
+			c.collectPoolMetrics(sqlDB)
 		}
 	}
 
 	return db, nil
 }
 
+// SQLDB is a convenience wrapper that creates a new GORM pool via Pool() and
+// returns the underlying *sql.DB. Each call creates a new connection pool;
+// prefer Pool() when you need to reuse the connection.
 func (c *ConnectionConfig) SQLDB() (*sql.DB, error) {
 	gormDB, err := c.Pool()
 	if err != nil {
@@ -139,7 +210,7 @@ func (c *ConnectionConfig) SQLDB() (*sql.DB, error) {
 	return gormDB.DB()
 }
 
-// collectPoolMetrics periodically collects connection pool metrics
+// collectPoolMetrics registers observable gauge callbacks for connection pool stats.
 func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 	if c.OTelConfig == nil || !c.OTelConfig.IsMetricsEnabled() {
 		return
