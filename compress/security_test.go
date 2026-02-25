@@ -63,6 +63,16 @@ func TestValidTarPath(t *testing.T) {
 			path:     "dir/../file.txt",
 			expected: false,
 		},
+		{
+			name:     "path ending with .. is invalid",
+			path:     "foo/..",
+			expected: false,
+		},
+		{
+			name:     "bare .. is invalid",
+			path:     "..",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
