@@ -90,6 +90,27 @@ func (c *ConnectionConfig) effectiveGormLogLevel() logger.LogLevel {
 	return logger.Silent
 }
 
+// Validate checks that the ConnectionConfig has all required fields set and
+// values are within acceptable ranges. It is called automatically by Pool().
+func (c *ConnectionConfig) Validate() error {
+	if c.DbType != Mysql && c.DbType != Postgresql && c.DbType != MSSQL {
+		return fmt.Errorf("unsupported database type: %q", c.DbType)
+	}
+	if c.Host == "" {
+		return fmt.Errorf("host is required")
+	}
+	if c.Port <= 0 || c.Port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535, got %d", c.Port)
+	}
+	if c.Username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if c.DbName == "" {
+		return fmt.Errorf("dbName is required")
+	}
+	return nil
+}
+
 // Dsn builds the data source name string for the configured database type.
 func (c *ConnectionConfig) Dsn() string {
 	timeout := c.effectiveTimeout()
@@ -117,10 +138,11 @@ func (c *ConnectionConfig) Dsn() string {
 // It validates the DSN, opens the connection, configures pool parameters,
 // pings to verify connectivity, and optionally installs OTel instrumentation.
 func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
-	dsn := c.Dsn()
-	if dsn == "" {
-		return nil, fmt.Errorf("dsn is empty")
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+
+	dsn := c.Dsn()
 
 	var dialector gorm.Dialector
 	switch c.DbType {
