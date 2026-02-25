@@ -29,11 +29,13 @@ func main() {
 		defer os.RemoveAll(tempDir)
 
 		logFile := filepath.Join(tempDir, "production.log")
-		if err := logging.InitializeWithFile("my-service", false,
+		closer, err := logging.InitializeWithFile("my-service", false,
 			logging.OutputFile,
-			&logging.FileConfig{Path: logFile}); err != nil {
+			&logging.FileConfig{Path: logFile})
+		if err != nil {
 			panic(err)
 		}
+		defer closer.Close()
 
 		println("Production mode: logging to file only")
 		println("Log file:", logFile)
@@ -44,11 +46,13 @@ func main() {
 		defer os.RemoveAll(tempDir)
 
 		logFile := filepath.Join(tempDir, "staging.log")
-		if err := logging.InitializeWithFile("my-service", true,
+		closer, err := logging.InitializeWithFile("my-service", true,
 			logging.OutputConsole|logging.OutputFile,
-			&logging.FileConfig{Path: logFile}); err != nil {
+			&logging.FileConfig{Path: logFile})
+		if err != nil {
 			panic(err)
 		}
+		defer closer.Close()
 
 		println("Staging mode: logging to console and file")
 		println("Log file:", logFile)

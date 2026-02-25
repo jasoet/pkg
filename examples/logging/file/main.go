@@ -21,13 +21,15 @@ func main() {
 	logFile := filepath.Join(tempDir, "app.log")
 
 	// Initialize with file output only
-	if err := logging.InitializeWithFile("file-example", false,
+	closer, err := logging.InitializeWithFile("file-example", false,
 		logging.OutputFile,
 		&logging.FileConfig{
 			Path: logFile,
-		}); err != nil {
+		})
+	if err != nil {
 		panic(err)
 	}
+	defer closer.Close()
 
 	// Log messages (appear in file only, not console)
 	log.Info().Msg("Application started")
