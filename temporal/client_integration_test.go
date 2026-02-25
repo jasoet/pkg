@@ -34,9 +34,15 @@ func TestClientIntegration(t *testing.T) {
 	}
 
 	t.Run("NewClient", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, closer, err := NewClient(config)
 		require.NoError(t, err, "Failed to create Temporal client")
 		require.NotNil(t, temporalClient, "Client should not be nil")
+		defer func() {
+			temporalClient.Close()
+			if closer != nil {
+				closer.Close()
+			}
+		}()
 
 		// Test basic client functionality
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -48,24 +54,28 @@ func TestClientIntegration(t *testing.T) {
 		if err != nil {
 			t.Logf("Task queue check failed (expected without server): %v", err)
 		}
-
-		temporalClient.Close()
 	})
 
 	t.Run("NewClientWithMetrics", func(t *testing.T) {
-		temporalClient, err := NewClientWithMetrics(config, true)
+		temporalClient, closer, err := NewClientWithMetrics(config, true)
 		require.NoError(t, err, "Failed to create Temporal client with metrics")
 		require.NotNil(t, temporalClient, "Client should not be nil")
 
 		temporalClient.Close()
+		if closer != nil {
+			closer.Close()
+		}
 	})
 
 	t.Run("NewClientWithoutMetrics", func(t *testing.T) {
-		temporalClient, err := NewClientWithMetrics(config, false)
+		temporalClient, closer, err := NewClientWithMetrics(config, false)
 		require.NoError(t, err, "Failed to create Temporal client without metrics")
 		require.NotNil(t, temporalClient, "Client should not be nil")
 
 		temporalClient.Close()
+		if closer != nil {
+			closer.Close()
+		}
 	})
 
 	t.Run("InvalidHost", func(t *testing.T) {
@@ -76,9 +86,12 @@ func TestClientIntegration(t *testing.T) {
 		}
 
 		// This should fail quickly since the host doesn't exist
-		temporalClient, err := NewClient(invalidConfig)
+		temporalClient, closer, err := NewClient(invalidConfig)
 		if err == nil && temporalClient != nil {
 			temporalClient.Close()
+		}
+		if closer != nil {
+			closer.Close()
 		}
 		// We don't assert error here because the client creation might succeed
 		// but connection will fail later during actual operations
@@ -185,9 +198,12 @@ func TestClientConfig(t *testing.T) {
 		}
 
 		// Should be able to create client with custom config (connection may fail)
-		temporalClient, err := NewClient(config)
+		temporalClient, closer, err := NewClient(config)
 		if err == nil && temporalClient != nil {
 			temporalClient.Close()
+		}
+		if closer != nil {
+			closer.Close()
 		}
 		// Don't assert success since custom host might not exist
 	})
