@@ -376,8 +376,8 @@ pool, _ := cfg.Database.Pool()
 pool, err := config.Pool()
 if err != nil {
     switch {
-    case strings.Contains(err.Error(), "dsn is empty"):
-        // Invalid configuration
+    case strings.Contains(err.Error(), "invalid config"):
+        // Invalid configuration (validation failed)
     case strings.Contains(err.Error(), "connection refused"):
         // Database not reachable
     case strings.Contains(err.Error(), "authentication failed"):
