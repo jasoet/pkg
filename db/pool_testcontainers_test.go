@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -101,8 +102,16 @@ func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig
 func setupMSSQLContainer(t *testing.T) (*mssql.MSSQLServerContainer, *ConnectionConfig) {
 	ctx := context.Background()
 
+	// Use Azure SQL Edge on ARM (e.g., Apple Silicon) since MSSQL Server
+	// is AMD64-only and crashes under emulation (SIGSEGV/exit code 139).
+	// Azure SQL Edge is wire-compatible and runs natively on ARM64.
+	image := "mcr.microsoft.com/mssql/server:2022-latest"
+	if runtime.GOARCH == "arm64" {
+		image = "mcr.microsoft.com/azure-sql-edge:latest"
+	}
+
 	mssqlContainer, err := mssql.Run(ctx,
-		"mcr.microsoft.com/mssql/server:2022-latest",
+		image,
 		mssql.WithAcceptEULA(),
 		mssql.WithPassword("StrongPass123!"),
 		testcontainers.WithWaitStrategy(
