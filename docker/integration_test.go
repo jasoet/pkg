@@ -2,6 +2,8 @@ package docker_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -175,13 +177,20 @@ func TestIntegration_VolumeMounts(t *testing.T) {
 	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
+	// Use t.TempDir() instead of /tmp to ensure compatibility with both
+	// Docker and Podman. On macOS, Podman VM only shares /Users and
+	// /var/folders by default — /tmp is not accessible from the VM.
+	hostDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(hostDir, "testfile"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
 	exec, _ := docker.New(
 		docker.WithImage("alpine:latest"),
 		docker.WithCmd("ls", "/data"),
-		docker.WithVolume("/tmp", "/data"),
+		docker.WithVolume(hostDir, "/data"),
 	)
 
-	err := exec.Start(ctx)
+	err = exec.Start(ctx)
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
