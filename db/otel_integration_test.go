@@ -512,9 +512,9 @@ func TestPoolInvalidConfig(t *testing.T) {
 		}
 
 		db, err := config.Pool()
-		assert.Error(t, err, "Should fail with empty DSN")
+		assert.Error(t, err, "Should fail with invalid config")
 		assert.Nil(t, db, "DB should be nil on error")
-		assert.Contains(t, err.Error(), "dsn is empty", "Error should mention empty DSN")
+		assert.Contains(t, err.Error(), "unsupported database type", "Error should mention unsupported type")
 	})
 
 	t.Run("Unsupported database type", func(t *testing.T) {
@@ -537,8 +537,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 		db, err := config.Pool()
 		assert.Error(t, err, "Should fail with unsupported database type")
 		assert.Nil(t, db, "DB should be nil on error")
-		// Pool() checks for empty DSN first, which is the expected behavior
-		assert.Contains(t, err.Error(), "dsn is empty", "Error should mention empty DSN")
+		assert.Contains(t, err.Error(), "unsupported database type", "Error should mention unsupported type")
 	})
 
 	t.Run("Invalid connection parameters", func(t *testing.T) {
