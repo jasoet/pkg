@@ -7,7 +7,17 @@ import (
 	"fmt"
 
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/log"
 )
+
+// nopLogger is a no-op implementation of log.Logger that discards all output.
+// Used to suppress the Temporal SDK's "No logger configured" INFO message.
+type nopLogger struct{}
+
+func (nopLogger) Debug(string, ...interface{}) {}
+func (nopLogger) Info(string, ...interface{})  {}
+func (nopLogger) Warn(string, ...interface{})  {}
+func (nopLogger) Error(string, ...interface{}) {}
 
 // ClientConfig holds the configuration for creating a Temporal client.
 type ClientConfig struct {
@@ -50,10 +60,13 @@ func Setup(ctx context.Context, config ClientConfig, opts Options) (*Container, 
 		config.Namespace = "default"
 	}
 
-	// Create the Temporal client using SDK directly
+	// Create the Temporal client using SDK directly.
+	// A nop logger is provided to suppress the SDK's default "No logger configured" message.
+	var logger log.Logger = nopLogger{}
 	temporalClient, err := client.Dial(client.Options{
 		HostPort:  container.HostPort(),
 		Namespace: config.Namespace,
+		Logger:    logger,
 	})
 	if err != nil {
 		_ = container.Terminate(ctx)
