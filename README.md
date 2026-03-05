@@ -179,56 +179,11 @@ task test:complete      # All tests with coverage
 task lint               # Run golangci-lint
 ```
 
-## AI Agent Instructions
+## AI-Assisted Development
 
-**Repository Type:** Go utility library (v2) - production-ready infrastructure components with OpenTelemetry
+For AI assistants working on projects that **use** this library, see **[AI_PATTERN.md](AI_PATTERN.md)** — it covers core patterns, package reference with links to each module's README and examples, and common usage snippets.
 
-**Critical Setup:**
-- Ensure docker engine available and accessible from testcontainer
-
-**Architecture:**
-- **15 core packages:** otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32
-- **Integration-ready:** Packages work seamlessly together
-- **Examples:** Each package has runnable examples with `go run -tags=example ./package/examples`
-- **Module Path:** `github.com/jasoet/pkg/v2` (Go v2+ semantics)
-
-**Key Development Patterns:**
-- **OpenTelemetry:** Instrumentation across all packages (otel package)
-- **Configuration:** Type-safe YAML with environment variable overrides (config package)
-- **Database:** Multi-database support with GORM, migrations, OTel tracing (db package)
-- **HTTP Server:** Echo framework with health checks, metrics, graceful shutdown (server package)
-- **gRPC:** Production-ready server with Echo gateway, H2C mode, observability (grpc package)
-- **REST Client:** Resilient HTTP client with retries, OTel tracing (rest package)
-- **Logging:** Zerolog with OTel log provider integration (logging package)
-- **Concurrency:** Type-safe parallel execution with Go 1.24+ generics (concurrent package)
-- **Workflows:** Temporal integration for distributed workflows (temporal package)
-
-**Testing Strategy:**
-- **Coverage:** 85% (unit + integration, excludes generated code)
-- **Unit Tests:** `task test` (no Docker, race detection enabled)
-- **Integration Tests:** `task test:integration` (testcontainers, Docker required)
-- **All Tests:** `task test:complete` (complete coverage, generates output/coverage-all.html)
-- **Assertion Library:** Use `github.com/stretchr/testify/assert` for all test assertions
-- **Test Categories:**
-  - Unit: No build tags, no external dependencies
-  - Integration: Build tag `integration`, uses testcontainers
-
-**Library Usage Focus:**
-- Emphasize zero-configuration startup
-- Type safety with generics
-- Production-grade features: health endpoints, metrics, observability, graceful shutdown
-- OpenTelemetry as first-class citizen
-
-**Version Information:**
-- **Current:** v2.0.0 GA (includes OpenTelemetry)
-- **Stable v1:** v1.5.0 (no OpenTelemetry, maintenance only)
-- **Migration Guide:** See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md)
-
-**Building New Projects with This Library:**
-When creating a new Go project that uses `github.com/jasoet/pkg/v2`, refer to **[PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md)** for the recommended project structure. It covers directory layout, wiring patterns, and three critical aspects AI agents commonly miss:
-- **E2E tests** — full-stack API tests with real HTTP + testcontainer DB (`test/e2e/`)
-- **OpenAPI/Swagger** — `swaggo/swag` annotations, generation pipeline, UI serving
-- **`.http` files** — IntelliJ/VS Code REST Client files for manual API testing (`http/`)
+For AI scaffolding new projects, see **[PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md)**.
 
 ## Package Documentation
 
