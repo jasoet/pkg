@@ -8,7 +8,7 @@
 Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 packages: otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32.
 
 **Module Path:** `github.com/jasoet/pkg/v2`
-**Go Version:** 1.24+ (uses generics)
+**Go Version:** 1.26+ (uses generics)
 **Test Coverage:** 85%
 
 ## Conventions
@@ -58,6 +58,11 @@ Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 
 | `task docker:check` | Verify Docker/Podman availability |
 | `task k8s:check` | Verify kubectl and cluster |
 | `task argo:check` | Verify Argo Workflows |
+| `task ci:test` | Unit tests for CI (no coverage HTML) |
+| `task ci:lint` | Lint for CI |
+| `task ci:check` | CI test + lint |
+| `task release` | Run semantic-release (CI only) |
+| `task release:proxy-warmup` | Warm Go module proxy with latest tag |
 
 ## Testing Strategy
 
