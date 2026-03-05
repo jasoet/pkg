@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 )
 
 func TestScheduleManagerIntegration(t *testing.T) {

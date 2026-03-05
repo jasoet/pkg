@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/argo/builder/template"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/jasoet/pkg/v2/argo/builder/template"
 )
 
 func TestWorkflowBuilder_Build(t *testing.T) {

@@ -379,7 +379,7 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 //	    if err := s.repo.Update(lc.Context(), data); err != nil {
 //	        return lc.Error(err, "failed to update event")
 //	    }
-//	    return lc.Success("Event cancelled")
+//	    return lc.Success("Event canceled")
 //	}
 func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "service." + component

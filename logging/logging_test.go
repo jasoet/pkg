@@ -207,7 +207,7 @@ func TestInitializeWithFile(t *testing.T) {
 
 		// Verify permissions are 0644
 		mode := info.Mode().Perm()
-		assert.Equal(t, os.FileMode(0644), mode)
+		assert.Equal(t, os.FileMode(0o644), mode)
 	})
 
 	t.Run("multiple log levels to file", func(t *testing.T) {

@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/argo/builder"
-	"github.com/jasoet/pkg/v2/argo/builder/template"
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/jasoet/pkg/v2/argo/builder"
+	"github.com/jasoet/pkg/v2/argo/builder/template"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 func TestIntegration_SubmitWorkflow(t *testing.T) {

@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 )
 
 // Example workflow for demonstration

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
@@ -15,6 +14,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
 // ============================================================================

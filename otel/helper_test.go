@@ -5,8 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jasoet/pkg/v2/logging"
 	"go.opentelemetry.io/otel/log/noop"
+
+	"github.com/jasoet/pkg/v2/logging"
 )
 
 func TestNewLogHelper(t *testing.T) {

@@ -208,6 +208,42 @@ tasks:
     cmds:
       - gofumpt -l -w .
 
+  ci:test:
+    desc: Run unit tests for CI (no coverage HTML)
+    silent: true
+    cmds:
+      - go test -race -count=1 ./... -tags=!examples
+
+  ci:lint:
+    desc: Run golangci-lint for CI
+    silent: true
+    cmds:
+      - golangci-lint run ./...
+
+  ci:check:
+    desc: Run all CI checks (test + lint)
+    silent: true
+    cmds:
+      - task: ci:test
+      - task: ci:lint
+
+  release:
+    desc: Run semantic-release (CI only)
+    silent: true
+    cmds:
+      - bunx semantic-release
+
+  release:proxy-warmup:
+    desc: Warm Go module proxy with latest tag
+    silent: true
+    cmds:
+      - |
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -n "$LATEST_TAG" ]; then
+          echo "Warming Go proxy for github.com/jasoet/pkg/v2@${LATEST_TAG}"
+          GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m "github.com/jasoet/pkg/v2@${LATEST_TAG}" || true
+        fi
+
   clean:
     desc: Clean build artifacts
     silent: true

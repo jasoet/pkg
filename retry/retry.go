@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
 // Operation is a function that may fail and should be retried.
@@ -201,15 +202,15 @@ func Do(ctx context.Context, cfg Config, operation Operation) error {
 	// Handle context cancellation
 	if ctx.Err() != nil {
 		if span != nil {
-			span.SetStatus(codes.Error, "Operation cancelled")
+			span.SetStatus(codes.Error, "Operation canceled")
 			span.RecordError(ctx.Err())
 		}
 		if logger != nil {
-			logger.Error(ctx.Err(), "Operation cancelled",
+			logger.Error(ctx.Err(), "Operation canceled",
 				pkgotel.F("attempts", attempt),
 			)
 		}
-		return fmt.Errorf("%s cancelled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
+		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
 	}
 
 	// Failed after retries
@@ -320,15 +321,15 @@ func DoWithNotify(
 
 	if ctx.Err() != nil {
 		if span != nil {
-			span.SetStatus(codes.Error, "Operation cancelled")
+			span.SetStatus(codes.Error, "Operation canceled")
 			span.RecordError(ctx.Err())
 		}
 		if logger != nil {
-			logger.Error(ctx.Err(), "Operation cancelled",
+			logger.Error(ctx.Err(), "Operation canceled",
 				pkgotel.F("attempts", attempt),
 			)
 		}
-		return fmt.Errorf("%s cancelled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
+		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
 	}
 
 	if span != nil {

@@ -6,10 +6,11 @@ import (
 	"os"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient"
-	"github.com/jasoet/pkg/v2/otel"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // NewClient creates a new Argo Workflows client from the given configuration.

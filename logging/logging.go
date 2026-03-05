@@ -89,7 +89,7 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 		}
 
 		var err error
-		file, err = os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		file, err = os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open log file %s: %w", fileConfig.Path, err)
 		}

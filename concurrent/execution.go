@@ -15,7 +15,7 @@ type Func[T any] func(ctx context.Context) (T, error)
 // ExecuteConcurrently executes multiple functions concurrently and collects their results.
 //
 // All functions receive a shared cancellable context. When any function returns an error
-// or panics, the context is cancelled to signal other goroutines to stop.
+// or panics, the context is canceled to signal other goroutines to stop.
 //
 // Returns a map of results indexed by the provided keys, and the first causal error
 // encountered (preferring real errors over context cancellation errors).

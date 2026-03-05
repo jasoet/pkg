@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"go.temporal.io/sdk/client"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 type WorkflowScheduleOptions struct {

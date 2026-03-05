@@ -8,15 +8,23 @@
 Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 packages: otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32.
 
 **Module Path:** `github.com/jasoet/pkg/v2`
-**Go Version:** 1.24+ (uses generics)
+**Go Version:** 1.26+ (uses generics)
 **Test Coverage:** 85%
+
+## ABSOLUTE RULE — Git Authorship
+
+**NEVER add AI (Claude, Copilot, or any AI) as co-author, committer, or contributor in git commits.**
+Only the user's registered email may appear in commits. This is company policy — commits with AI
+authorship WILL BE REJECTED. Do not use `--author`, `Co-authored-by`, or any other mechanism to
+attribute commits to AI. This applies to ALL commits, including those made by tools and subagents.
 
 ## Conventions
 
+- **Node.js**: Always use `bun`/`bunx` (never node, npm, npx).
 - **Commands**: Always use `task <name>` to run commands. Run `task --list` to discover available tasks. If a command is important or repeated but has no task, suggest adding it to `Taskfile.yml`.
 - **Brainstorming**: New topics or planning always start with brainstorming skill first. If unsure, ask the user.
 - **Superpowers**: Ensure superpowers skills are installed. Use TDD for implementation, systematic-debugging for bugs.
-- **Commits**: Use Conventional Commits. Format: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`. Never add AI as co-author or committer.
+- **Commits**: Use Conventional Commits. Format: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`.
 - **Branching**: New branch for each feature/fix (`feat/...`, `fix/...`). PR with squash merge. Use `gh` for PR status and CI checks.
 - **Containers**: Dual Docker/Podman support. This is a shared library — consumers use either runtime.
 - **Patterns**: Functional options for configuration. OTelConfig always injected via `With*()` options, never serialized (`yaml:"-" mapstructure:"-"`). Use `otel.Layers.Start*()` for instrumentation.
@@ -58,6 +66,11 @@ Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 
 | `task docker:check` | Verify Docker/Podman availability |
 | `task k8s:check` | Verify kubectl and cluster |
 | `task argo:check` | Verify Argo Workflows |
+| `task ci:test` | Unit tests for CI (no coverage HTML) |
+| `task ci:lint` | Lint for CI |
+| `task ci:check` | CI test + lint |
+| `task release` | Run semantic-release (CI only) |
+| `task release:proxy-warmup` | Warm Go module proxy with latest tag |
 
 ## Testing Strategy
 

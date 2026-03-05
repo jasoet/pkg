@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/v2/docker"
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 func TestExecutor_ContainerID(t *testing.T) {

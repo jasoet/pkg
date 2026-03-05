@@ -332,12 +332,12 @@ func checksumValidation() {
 	fmt.Println("\nTesting various corruptions:")
 
 	corruptions := map[string]string{
-		"Change A→X":        "XBCD1234" + base32.ExtractChecksum(validData),
-		"Change 1→2":        "ABCD2234" + base32.ExtractChecksum(validData),
-		"Swap AB→BA":        "BACD1234" + base32.ExtractChecksum(validData),
-		"Delete character":  "ABCD123" + base32.ExtractChecksum(validData),
-		"Add character":     "ABCD12345" + base32.ExtractChecksum(validData),
-		"Change checksum":   testData + "00",
+		"Change A→X":       "XBCD1234" + base32.ExtractChecksum(validData),
+		"Change 1→2":       "ABCD2234" + base32.ExtractChecksum(validData),
+		"Swap AB→BA":       "BACD1234" + base32.ExtractChecksum(validData),
+		"Delete character": "ABCD123" + base32.ExtractChecksum(validData),
+		"Add character":    "ABCD12345" + base32.ExtractChecksum(validData),
+		"Change checksum":  testData + "00",
 	}
 
 	for desc, corrupted := range corruptions {
