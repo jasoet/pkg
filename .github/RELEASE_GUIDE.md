@@ -150,5 +150,8 @@ Your `.releaserc.json` is correctly configured:
 - ✅ Generates detailed release notes
 - ✅ Publishes to GitHub releases
 - ✅ No plugins that commit back to repo
+- ✅ Patch releases for: `fix`, `docs(README)`, `refactor`, `style`, `chore`, `test`
+- ✅ Minor releases for: `feat`
+- ✅ Major releases for: breaking changes
 
 The only requirement is **including PR bodies in squash commits**.
