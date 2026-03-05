@@ -1,10 +1,9 @@
-name: Release
+name: CI
 
 on:
-  push:
+  pull_request:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   test:
@@ -13,8 +12,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -31,19 +28,12 @@ jobs:
       - name: Run tests
         run: task ci:test
 
-  release:
-    name: Release
-    needs: test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -57,19 +47,8 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
-      - name: Install semantic-release
-        run: bun install -g semantic-release @semantic-release/github conventional-changelog-conventionalcommits
-
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: task release
-
-      - name: Warm Go module proxy
-        if: success()
-        run: |
-          sleep 5
-          task release:proxy-warmup
+      - name: Run lint
+        run: task ci:lint

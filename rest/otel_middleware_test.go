@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/metric/noop"
 	noopt "go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // ============================================================================

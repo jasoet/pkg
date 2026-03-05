@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/docker/go-connections/nat"
+
 	"github.com/jasoet/pkg/v2/otel"
 )
 

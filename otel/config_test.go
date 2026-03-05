@@ -346,7 +346,6 @@ func TestDisableMetrics(t *testing.T) {
 	})
 }
 
-
 func TestIsTracingEnabled(t *testing.T) {
 	t.Run("returns false when config is nil", func(t *testing.T) {
 		var cfg *Config

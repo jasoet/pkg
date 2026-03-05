@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -18,6 +17,8 @@ import (
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
 // DatabaseType identifies the database backend.

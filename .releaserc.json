@@ -1,7 +1,6 @@
 {
   "branches": [
-    "main",
-    "master"
+    "main"
   ],
   "plugins": [
     [
@@ -10,24 +9,11 @@
         "preset": "conventionalcommits",
         "releaseRules": [
           {
-            "type": "docs",
-            "scope": "README",
-            "release": "patch"
-          },
-          {
             "type": "refactor",
             "release": "patch"
           },
           {
-            "type": "style",
-            "release": "patch"
-          },
-          {
-            "type": "chore",
-            "release": "patch"
-          },
-          {
-            "type": "test",
+            "type": "perf",
             "release": "patch"
           }
         ]
@@ -41,48 +27,67 @@
           "types": [
             {
               "type": "feat",
-              "section": "Features"
+              "section": "Features",
+              "hidden": false
             },
             {
               "type": "fix",
-              "section": "Bug Fixes"
+              "section": "Bug Fixes",
+              "hidden": false
             },
             {
               "type": "perf",
-              "section": "Performance Improvements"
-            },
-            {
-              "type": "docs",
-              "section": "Documentation"
+              "section": "Performance Improvements",
+              "hidden": false
             },
             {
               "type": "refactor",
-              "section": "Code Refactoring"
+              "section": "Code Refactoring",
+              "hidden": false
+            },
+            {
+              "type": "docs",
+              "section": "Documentation",
+              "hidden": true
             },
             {
               "type": "test",
-              "section": "Tests"
+              "section": "Tests",
+              "hidden": true
             },
             {
               "type": "build",
-              "section": "Build System"
+              "section": "Build System",
+              "hidden": true
             },
             {
               "type": "ci",
-              "section": "Continuous Integration"
+              "section": "Continuous Integration",
+              "hidden": true
             },
             {
               "type": "chore",
-              "section": "Chores"
+              "section": "Chores",
+              "hidden": true
+            },
+            {
+              "type": "style",
+              "section": "Styles",
+              "hidden": true
             }
           ]
+        },
+        "writerOpts": {
+          "headerPartial": "## [{{version}}]({{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}) ({{date}})\n\n**Full Changelog**: {{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}\n\n```\ngo get github.com/jasoet/pkg/v2@{{currentTag}}\n```"
         }
       }
     ],
     [
       "@semantic-release/github",
       {
-        "assets": []
+        "assets": [],
+        "successComment": false,
+        "failTitle": false
       }
     ]
   ]

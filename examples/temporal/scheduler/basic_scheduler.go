@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jasoet/pkg/v2/temporal"
 	"github.com/jasoet/pkg/v2/examples/temporal/workflows"
+	"github.com/jasoet/pkg/v2/temporal"
 	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/client"
 )

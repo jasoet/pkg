@@ -184,6 +184,7 @@ func IsValidBase32Char(c rune) bool {
 //	base32.NormalizeBase32("abc-def")   // "ABCDEF"
 //	base32.NormalizeBase32("1O 2I")     // "1021"
 //	base32.NormalizeBase32("hell0")     // "HELL0"
+//
 // normalizeReplacer performs single-pass replacement of confusable characters and separators.
 var normalizeReplacer = strings.NewReplacer(
 	"-", "",

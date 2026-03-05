@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/v2/docker"
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // Integration test with OpenTelemetry
@@ -181,7 +182,7 @@ func TestIntegration_VolumeMounts(t *testing.T) {
 	// Docker and Podman. On macOS, Podman VM only shares /Users and
 	// /var/folders by default — /tmp is not accessible from the VM.
 	hostDir := t.TempDir()
-	err := os.WriteFile(filepath.Join(hostDir, "testfile"), []byte("hello"), 0644)
+	err := os.WriteFile(filepath.Join(hostDir, "testfile"), []byte("hello"), 0o644)
 	require.NoError(t, err)
 
 	exec, _ := docker.New(

@@ -6,13 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	"github.com/uber-go/tally/v4"
 	"github.com/uber-go/tally/v4/prometheus"
 	"go.temporal.io/sdk/client"
 	sdktally "go.temporal.io/sdk/contrib/tally"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, io.Closer, error) {

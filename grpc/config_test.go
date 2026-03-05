@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,6 +11,8 @@ import (
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
+
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
 func TestNewConfigDefaults(t *testing.T) {

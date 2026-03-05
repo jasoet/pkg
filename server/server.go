@@ -13,8 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 type (
@@ -22,7 +23,7 @@ type (
 	Operation func(e *echo.Echo)
 	// Shutdown is called during graceful shutdown before the Echo instance is stopped.
 	Shutdown func(e *echo.Echo)
-	// EchoConfigurer is called during setup to customise the Echo instance (add routes, middleware, etc.).
+	// EchoConfigurer is called during setup to customize the Echo instance (add routes, middleware, etc.).
 	EchoConfigurer func(e *echo.Echo)
 )
 
@@ -71,7 +72,7 @@ func WithShutdownTimeout(d time.Duration) Option {
 	return func(c *Config) { c.ShutdownTimeout = d }
 }
 
-// WithEchoConfigurer sets a callback that customises the Echo instance.
+// WithEchoConfigurer sets a callback that customizes the Echo instance.
 func WithEchoConfigurer(ec EchoConfigurer) Option {
 	return func(c *Config) { c.EchoConfigurer = ec }
 }

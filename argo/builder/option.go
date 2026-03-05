@@ -2,8 +2,9 @@ package builder
 
 import (
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/otel"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // Option is a functional option for configuring WorkflowBuilder.

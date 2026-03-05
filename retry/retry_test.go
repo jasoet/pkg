@@ -116,7 +116,7 @@ func TestDo_ContextCancellation(t *testing.T) {
 	err := Do(ctx, cfg, operation)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Contains(t, err.Error(), "cancelled")
+	assert.Contains(t, err.Error(), "canceled")
 	// Should stop after cancellation
 	assert.LessOrEqual(t, attempts, 3)
 }
@@ -313,7 +313,7 @@ func TestDoWithNotify_ContextCancellation(t *testing.T) {
 	err := DoWithNotify(ctx, cfg, operation, notifyFunc)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Contains(t, err.Error(), "cancelled")
+	assert.Contains(t, err.Error(), "canceled")
 	assert.LessOrEqual(t, attempts, 3)
 }
 

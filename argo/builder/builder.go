@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // WorkflowBuilder provides a fluent API for constructing Argo Workflows.
@@ -233,6 +234,7 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 //	cleanup := template.NewScript("cleanup", "bash",
 //	    template.WithScript("echo 'Cleaning up resources...'"))
 //	builder.AddExitHandler(cleanup)
+//
 // AddExitHandler adds an exit handler from a WorkflowSource. Exit handlers run
 // after the main workflow completes (regardless of success or failure).
 //
