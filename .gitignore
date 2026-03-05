@@ -216,4 +216,8 @@ aof/
 temporal.db
 .temporal/
 
-.claude/
+# Claude Code - ignore personal settings, keep shared config
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/settings.local.json
