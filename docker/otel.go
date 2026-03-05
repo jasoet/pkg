@@ -3,11 +3,12 @@ package docker
 import (
 	"context"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // otelInstrumentation holds OpenTelemetry instrumentation components.

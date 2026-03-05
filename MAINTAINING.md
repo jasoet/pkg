@@ -1,121 +1,76 @@
 # Maintaining Guide
 
-This document explains how to maintain and release patches for both v1 and v2 versions of this library.
+This document explains how to maintain and release this library.
 
 ## Branch Strategy
 
-### `main` - v2 Development (Current)
+### `main` - Active Development
 - **Module Path:** `github.com/jasoet/pkg/v2`
-- **Latest Version:** v2.0.0
 - **Purpose:** Active development for v2.x releases
-- **Go Version:** 1.25.1+
+- **Go Version:** 1.26+
 
-### `release/v1` - v1 Maintenance
-- **Module Path:** `github.com/jasoet/pkg` (no /v2 suffix)
-- **Latest Version:** v1.5.0
-- **Purpose:** Bug fixes and security patches for v1.x
-- **Go Version:** 1.25.1+
+## Releasing
 
-## Releasing v1 Patches
+Releases are fully automated via [semantic-release](https://github.com/semantic-release/semantic-release) on every push to `main`.
 
-When you need to release a bug fix or security patch for v1.x users:
+### What triggers a release
 
-### 1. Switch to v1 branch
-```bash
-git checkout release/v1
+| Commit Type | Release | Example |
+|---|---|---|
+| `feat` | Minor (v2.x.0) | `feat(server): add gRPC interceptor` |
+| `fix` | Patch (v2.0.x) | `fix(compress): handle empty input` |
+| `perf` | Patch | `perf(db): reduce query allocations` |
+| `refactor` | Patch | `refactor(otel): simplify provider setup` |
+| Breaking change | Major (vX.0.0) | `feat!: remove deprecated API` or footer `BREAKING CHANGE:` |
+
+### What does NOT trigger a release
+
+`docs`, `test`, `ci`, `chore`, `style`, `build` commits are excluded.
+
+### Workflow
+
+1. Merge PR to `main` with conventional commit title
+2. CI runs tests
+3. semantic-release analyzes commits since last tag
+4. If a release is warranted, it creates a GitHub release with notes
+5. Go module proxy is warmed automatically
+
+## CI Pipelines
+
+- **`ci.yml`** - Runs on PRs: test (with race detector) + lint
+- **`release.yml`** - Runs on push to `main`: test + semantic-release
+
+## Conventional Commits
+
+All PR titles must follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
 ```
 
-### 2. Apply fixes
+### Best Practices for PR Authors
+- Write detailed PR descriptions (they become release notes when squash-merged)
+- Use conventional commit format in PR title
+- Include scope when the change targets a specific package
 
-**Option A: Cherry-pick from main**
-```bash
-# If the fix was already made on main
-git cherry-pick <commit-hash>
-```
+## Import Paths
 
-**Option B: Direct fix**
-```bash
-# Make changes directly on release/v1
-# Edit files, test, commit
-git add .
-git commit -m "fix: description of the fix"
-```
-
-### 3. Test thoroughly
-```bash
-# Run all tests with coverage
-task test:all
-
-# Or run individually
-task test              # Unit tests
-task test:integration  # Integration tests (with testcontainers)
-```
-
-### 4. Tag and release
-```bash
-# Tag with appropriate version (e.g., v1.5.1, v1.5.2)
-git tag v1.5.1
-git push origin release/v1
-git push origin v1.5.1
-```
-
-### 5. Return to main
-```bash
-git checkout main
-```
-
-## Releasing v2 Versions
-
-For v2 development on `main` branch:
-
-```bash
-# Ensure you're on main
-git checkout main
-
-# Tag with v2.x.x version
-git tag v2.0.0
-git push origin main
-git push origin v2.0.0
-```
-
-## Version Guidelines
-
-### v1.x.x (Maintenance Only)
-- **Patch releases** (v1.5.1, v1.5.2): Bug fixes, security patches
-- **NO new features** - v1 is in maintenance mode
-- **NO breaking changes** - maintain backward compatibility
-- **NO OpenTelemetry** - v1 does not have OTel support
-
-### v2.x.x (Active Development)
-- **Major releases** (v2.0.0, v3.0.0): Breaking changes allowed
-- **Minor releases** (v2.1.0, v2.2.0): New features, backward compatible
-- **Patch releases** (v2.0.1, v2.0.2): Bug fixes, security patches
-
-## Import Paths for Users
-
-### Using v1 (Maintenance Branch)
-```go
-import "github.com/jasoet/pkg/compress"
-import "github.com/jasoet/pkg/server"
-```
-
-```bash
-go get github.com/jasoet/pkg@v1.5.0
-```
-
-### Using v2 (Current)
 ```go
 import "github.com/jasoet/pkg/v2/compress"
 import "github.com/jasoet/pkg/v2/server"
 ```
 
 ```bash
-go get github.com/jasoet/pkg/v2@v2.0.0
+go get github.com/jasoet/pkg/v2@latest
 ```
 
-## Testing Strategy
+## Testing
 
-Before any release (v1 or v2):
+Before any release:
 
 1. **Unit Tests:** `task test`
 2. **Integration Tests:** `task test:integration`
@@ -123,44 +78,5 @@ Before any release (v1 or v2):
 
 Or run everything:
 ```bash
-task test:all  # Runs all tests with coverage
+task test:complete  # Runs all tests with coverage
 ```
-
-## Common Scenarios
-
-### Security Patch for v1 Users
-
-1. Identify the vulnerability
-2. Fix on `release/v1` branch
-3. Test thoroughly
-4. Release as v1.5.x (patch version)
-5. Optionally apply to main if relevant to v2
-
-### Bug Fix Needed for Both v1 and v2
-
-1. Fix on `main` first (for v2)
-2. Cherry-pick to `release/v1`
-3. Test on both branches
-4. Release both versions:
-   - v1.5.x (patch)
-   - v2.0.x or v2.x.0 (depending on scope)
-
-### Migration from v1 to v2
-
-Users upgrading from v1 to v2 need to:
-1. Update import paths: add `/v2` suffix
-2. Update `go.mod`: `go get github.com/jasoet/pkg/v2@latest`
-3. Review CHANGELOG for breaking changes
-
-## Notes
-
-- **Both versions can coexist** - Projects can use v1 and v2 simultaneously if needed
-- **v1 lifecycle** - Will be maintained for critical security fixes, but new features go to v2
-- **Semantic versioning** - Strictly followed for both v1 and v2
-- **Go compatibility** - Both versions currently support Go 1.25.1+
-
-## Questions?
-
-If you have questions about releasing patches or version management, refer to:
-- [Go Modules Version Management](https://go.dev/doc/modules/version-numbers)
-- [Semantic Versioning 2.0](https://semver.org/)

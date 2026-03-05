@@ -5,9 +5,10 @@ import (
 	"fmt"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/otel"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // Container is a WorkflowSource that creates a container-based workflow step.

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	noopt "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 func TestNewOTelInstrumentation(t *testing.T) {

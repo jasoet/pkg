@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/labstack/echo/v4"
 	"google.golang.org/grpc"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // ServerMode defines the server operation mode

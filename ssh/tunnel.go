@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // Config holds the configuration for an SSH tunnel
@@ -195,12 +196,12 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(remoteConn, localConn)
+		_, _ = io.Copy(remoteConn, localConn) //nolint:errcheck
 	}()
 
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(localConn, remoteConn)
+		_, _ = io.Copy(localConn, remoteConn) //nolint:errcheck
 	}()
 
 	wg.Wait()

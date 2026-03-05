@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
+
 	"github.com/jasoet/pkg/v2/otel"
 )
 

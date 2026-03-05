@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+
+	"github.com/jasoet/pkg/v2/temporal/testcontainer"
 )
 
 func TestClientIntegration(t *testing.T) {

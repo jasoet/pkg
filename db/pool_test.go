@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"gorm.io/gorm/logger"
+
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
 func TestDatabaseConfigValidation(t *testing.T) {

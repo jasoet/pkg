@@ -6,13 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasoet/pkg/v2/logging"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
+	"github.com/jasoet/pkg/v2/logging"
 )
 
 // LogLevel is an alias for logging.LogLevel for convenience.

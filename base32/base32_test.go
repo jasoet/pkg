@@ -58,9 +58,9 @@ func TestDecodeBase32(t *testing.T) {
 		{"case insensitive upper", "ABC", 10604, false},
 		{"case insensitive lower", "abc", 10604, false},
 		{"case insensitive mixed", "AbC", 10604, false},
-		{"with I correction", "1I", 33, false},  // I→1
-		{"with L correction", "1L", 33, false},  // L→1
-		{"with O correction", "1O", 32, false},  // O→0
+		{"with I correction", "1I", 33, false}, // I→1
+		{"with L correction", "1L", 33, false}, // L→1
+		{"with O correction", "1O", 32, false}, // O→0
 		{"empty string", "", 0, true},
 		{"invalid char U", "U", 0, true},
 		{"invalid char #", "#", 0, true},

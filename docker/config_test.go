@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/docker/go-connections/nat"
-	"github.com/jasoet/pkg/v2/docker"
-	"github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 func TestConfigOptions_Image(t *testing.T) {

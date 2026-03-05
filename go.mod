@@ -1,6 +1,6 @@
 module github.com/jasoet/pkg/v2
 
-go 1.24.10
+go 1.26.0
 
 require (
 	github.com/argoproj/argo-workflows/v3 v3.7.4

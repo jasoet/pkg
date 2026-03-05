@@ -6,9 +6,10 @@ import (
 	"io"
 	"sync"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 type WorkerManager struct {

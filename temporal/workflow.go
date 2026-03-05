@@ -8,11 +8,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jasoet/pkg/v2/otel"
 	"go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // WorkflowManager provides workflow query and management operations

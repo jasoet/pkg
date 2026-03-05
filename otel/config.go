@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jasoet/pkg/v2/logging"
 	"go.opentelemetry.io/otel/log"
 	noopl "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	noopt "go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/jasoet/pkg/v2/logging"
 )
 
 type contextKey string

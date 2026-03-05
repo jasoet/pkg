@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jasoet/pkg/v2/logging"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/noop"
+
+	"github.com/jasoet/pkg/v2/logging"
 )
 
 // TestWithConsoleOutput tests the WithConsoleOutput option
@@ -264,7 +265,6 @@ func TestNewLoggerProviderWithOptions_MultipleOptions(t *testing.T) {
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelWarn),
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -279,7 +279,6 @@ func TestNewLoggerProviderWithOptions_MultipleOptions(t *testing.T) {
 			WithConsoleOutput(false),
 			WithLogLevel(logging.LogLevelInfo),
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -353,7 +352,6 @@ func TestSetupZerologConsole(t *testing.T) {
 				WithLogLevel(tt.logLevel),
 				WithConsoleOutput(true),
 			)
-
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -372,7 +370,6 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 			"my-service",
 			WithConsoleOutput(true),
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -394,7 +391,6 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelInfo),
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -410,7 +406,6 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 			WithConsoleOutput(false),
 			WithLogLevel(logging.LogLevelNone),
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -469,7 +464,6 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 			WithConsoleOutput(true),
 			WithLogLevel(logging.LogLevelDebug),
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -485,7 +479,6 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 			WithLogLevel(logging.LogLevelDebug),
 			WithLogLevel(logging.LogLevelError), // This should win
 		)
-
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

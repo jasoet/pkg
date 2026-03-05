@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/argo/builder"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jasoet/pkg/v2/argo/builder"
 )
 
 func TestFanOutFanIn(t *testing.T) {

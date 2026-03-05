@@ -122,7 +122,6 @@ func example3PermanentErrors() {
 		fmt.Printf("  Attempt %d\n", attempts)
 		return validateInput("") // Invalid input
 	})
-
 	if err != nil {
 		fmt.Printf("  ❌ Failed immediately (no retry): %v\n", err)
 		fmt.Printf("  Total attempts: %d (expected: 1)\n", attempts)
@@ -155,7 +154,6 @@ func example4ContextCancellation() {
 		fmt.Printf("  Attempt %d\n", attempts)
 		return errors.New("still failing")
 	})
-
 	if err != nil {
 		fmt.Printf("  ❌ Cancelled: %v\n", err)
 		fmt.Printf("  Stopped after %d attempts\n", attempts)

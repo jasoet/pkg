@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/otel"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/jasoet/pkg/v2/otel"
 )
 
 // Script is a WorkflowSource that creates a script-based workflow step.

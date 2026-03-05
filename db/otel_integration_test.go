@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	pkgotel "github.com/jasoet/pkg/v2/otel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -20,6 +19,8 @@ import (
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"gorm.io/gorm"
+
+	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
 // TestPostgresPoolWithOTelTracing tests OTel tracing callbacks
