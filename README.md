@@ -1,6 +1,6 @@
 # Go Utility Packages (v2)
 
-[![Go Version](https://img.shields.io/badge/Go-1.24.7+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/jasoet/pkg/actions/workflows/release.yml/badge.svg)](https://github.com/jasoet/pkg/actions)
 [![Test Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/jasoet/pkg)
@@ -55,7 +55,7 @@ Production-ready components with comprehensive observability, testing, and examp
 ### Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2@v2.0.0
+go get github.com/jasoet/pkg/v2@latest
 ```
 
 ### Basic Usage
@@ -167,7 +167,7 @@ open output/coverage-all.html
 - **Middleware Support:** Custom request/response handlers
 
 ### Type-Safe Concurrency
-- **Go 1.24+ Generics:** Type-safe parallel execution
+- **Go 1.26+ Generics:** Type-safe parallel execution
 - **Error Handling:** Aggregate errors from concurrent operations
 - **Context Support:** Cancellation and timeout handling
 - **Resource Management:** Automatic goroutine cleanup
@@ -463,7 +463,7 @@ funcs := map[string]concurrent.Func[string]{
 results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
 ```
 
-**Features:** Go 1.24+ generics, error aggregation, context support
+**Features:** Go 1.26+ generics, error aggregation, context support
 **Coverage:** 100% | **[Examples](./concurrent/examples/)** | **[Documentation](./concurrent/README.md)**
 
 #### [temporal](./temporal/) - Workflow Orchestration
@@ -537,7 +537,7 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 2. **Setup Development Environment**
    ```bash
-   task docker:up
+   task docker:check
    task test
    ```
 

@@ -84,4 +84,4 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 
 1. Create: `newpkg/`, `newpkg/README.md`, `newpkg/newpkg.go`, `newpkg/newpkg_test.go`
 2. Follow: functional options, `OTelConfig *otel.Config` with `yaml:"-" mapstructure:"-"`, `otel.Layers.Start*()`, testify
-3. Update: README.md package table, AI_PATTERN.md package reference
+3. Update: README.md package table, AI_PATTERN.md package reference, PROJECT_TEMPLATE.md if relevant
