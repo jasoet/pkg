@@ -10,6 +10,7 @@ import "github.com/jasoet/pkg/v2/<package>"
 
 **Go Version:** 1.24+ (generics required)
 **Install:** `go get github.com/jasoet/pkg/v2@latest`
+**v1 (no OTel):** `go get github.com/jasoet/pkg@v1.6.0` — preserved on [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) branch, unmaintained.
 **Project Template:** See [PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md) for recommended project structure, wiring patterns, test tiers (E2E), Swagger/OpenAPI setup, and Taskfile targets.
 
 ## Core Patterns

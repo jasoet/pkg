@@ -8,9 +8,9 @@
 
 Production-ready Go utility packages with **OpenTelemetry** instrumentation, comprehensive testing, and battle-tested components for building modern cloud-native applications.
 
-## Version 2 Status
+## Versioning
 
-**Current Release:** `v2.0.0` (GA)
+**Current Release:** `v2.9.0` (GA)
 **Status:** Production Ready
 **Test Coverage:** 85%
 
@@ -18,7 +18,15 @@ Production-ready Go utility packages with **OpenTelemetry** instrumentation, com
 >
 > **Breaking Change:** v1 does not include OpenTelemetry. v2 adds optional OTel support with minimal API changes.
 
-See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for migration instructions and versioning workflow.
+### v1 Availability
+
+The v1 release is preserved on the [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) branch (final version: v1.6.0). Use v1 if you do not need OpenTelemetry instrumentation:
+
+```bash
+go get github.com/jasoet/pkg@v1.6.0
+```
+
+**Note:** v1 is no longer actively maintained. All new development targets v2.
 
 ## Packages
 
@@ -573,7 +581,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `ci`
 **Breaking Changes:** Add `!` after type or `BREAKING CHANGE:` in footer
 
-See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to v2 migration instructions.
+For v1 availability, see the [Versioning](#versioning) section above.
 
 ## Roadmap
 
@@ -587,7 +595,7 @@ See [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md) for versioning workflow and v1 to
 
 - **Documentation:** [Browse Package Docs](./docs/)
 - **Examples:** [All Examples](./examples/)
-- **Versioning Guide:** [VERSIONING_GUIDE.md](VERSIONING_GUIDE.md)
+- **v1 Branch:** [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) (v1.6.0, unmaintained)
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Changelog:** [Releases](https://github.com/jasoet/pkg/releases)
 - **Issues:** [GitHub Issues](https://github.com/jasoet/pkg/issues)
