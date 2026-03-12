@@ -14,6 +14,7 @@ import (
 	sdktally "go.temporal.io/sdk/contrib/tally"
 
 	"github.com/jasoet/pkg/v2/otel"
+	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
 )
 
 func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, io.Closer, error) {
@@ -36,6 +37,20 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, i
 		HostPort:  config.HostPort,
 		Namespace: config.Namespace,
 		Logger:    NewZerologAdapter(zerologLogger),
+	}
+
+	// Add OTel tracing interceptor if configured
+	if config.OTelConfig != nil && config.OTelConfig.IsTracingEnabled() {
+		tracerOpts := temporalotel.TracerOptions{
+			Tracer: config.OTelConfig.GetTracer("temporal-sdk-go"),
+		}
+		tracingInterceptor, err := temporalotel.NewTracingInterceptor(tracerOpts)
+		if err != nil {
+			logger.Error(err, "Failed to create OTel tracing interceptor, continuing without tracing")
+		} else {
+			clientOption.Interceptors = append(clientOption.Interceptors, tracingInterceptor)
+			logger.Debug("OTel tracing interceptor added to Temporal client")
+		}
 	}
 
 	var metricsCloser io.Closer

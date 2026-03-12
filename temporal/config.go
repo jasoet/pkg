@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	HostPort             string `yaml:"hostPort" mapstructure:"hostPort"`
-	Namespace            string `yaml:"namespace" mapstructure:"namespace"`
-	MetricsListenAddress string `yaml:"metricsListenAddress" mapstructure:"metricsListenAddress"`
+	HostPort             string      `yaml:"hostPort" mapstructure:"hostPort"`
+	Namespace            string      `yaml:"namespace" mapstructure:"namespace"`
+	MetricsListenAddress string      `yaml:"metricsListenAddress" mapstructure:"metricsListenAddress"`
+	OTelConfig           *otel.Config `yaml:"-" mapstructure:"-"`
 }
 
 func DefaultConfig() *Config {
