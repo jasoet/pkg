@@ -55,8 +55,19 @@ func WithMiddlewares(middlewares ...Middleware) ClientOption {
 // When set, adds OTel tracing, metrics, and logging middleware automatically.
 func WithOTelConfig(cfg *otel.Config) ClientOption {
 	return func(client *Client) {
-		client.restConfig.OTelConfig = cfg
+		if client.restConfig != nil {
+			client.restConfig.OTelConfig = cfg
+		}
 	}
+}
+
+// truncateBody limits the body string to maxLen bytes, appending "...(truncated)" if truncated.
+// If maxLen is 0 or negative, the full body is returned unchanged.
+func truncateBody(body string, maxLen int) string {
+	if maxLen > 0 && len(body) > maxLen {
+		return body[:maxLen] + "...(truncated)"
+	}
+	return body
 }
 
 // NewClient creates a new REST client with the given options.
@@ -235,7 +246,11 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 
 	if response != nil {
 		requestInfo.StatusCode = response.StatusCode()
-		requestInfo.Response = response.String()
+		maxLog := 0
+		if c.restConfig != nil {
+			maxLog = c.restConfig.MaxResponseBodyLog
+		}
+		requestInfo.Response = truncateBody(response.String(), maxLog)
 		if enableTrace && response.Request != nil {
 			requestInfo.TraceInfo = response.Request.TraceInfo()
 		}
@@ -262,20 +277,26 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 // non-success responses. Checks are ordered from most specific to least:
 // 401/403 -> 404 -> 5xx -> other 4xx.
 func (c *Client) HandleResponse(response *resty.Response) error {
+	maxLog := 0
+	if c.restConfig != nil {
+		maxLog = c.restConfig.MaxResponseBodyLog
+	}
+	body := truncateBody(response.String(), maxLog)
+
 	if IsUnauthorized(response) {
-		return NewUnauthorizedError(response.StatusCode(), "Unauthorized access", response.String())
+		return NewUnauthorizedError(response.StatusCode(), "Unauthorized access", body)
 	}
 
 	if IsNotFound(response) {
-		return NewResourceNotFoundError(response.StatusCode(), "Resource not found", response.String())
+		return NewResourceNotFoundError(response.StatusCode(), "Resource not found", body)
 	}
 
 	if IsServerError(response) {
-		return NewServerError(response.StatusCode(), "Server error", response.String())
+		return NewServerError(response.StatusCode(), "Server error", body)
 	}
 
 	if IsClientError(response) {
-		return NewResponseError(response.StatusCode(), "Client error", response.String())
+		return NewResponseError(response.StatusCode(), "Client error", body)
 	}
 
 	return nil

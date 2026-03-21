@@ -29,6 +29,13 @@ func TestDefaultRestConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultRestConfig_MaxResponseBodyLog(t *testing.T) {
+	config := DefaultRestConfig()
+	if config.MaxResponseBodyLog != 1024 {
+		t.Errorf("Expected MaxResponseBodyLog to be 1024, got %d", config.MaxResponseBodyLog)
+	}
+}
+
 func TestConfigStructFields(t *testing.T) {
 	config := Config{
 		RetryCount:       3,

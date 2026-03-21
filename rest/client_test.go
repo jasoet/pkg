@@ -730,6 +730,37 @@ func TestGetMiddlewares(t *testing.T) {
 	})
 }
 
+func TestWithOTelConfig_NilRestConfig(t *testing.T) {
+	client := &Client{} // no restConfig
+	opt := WithOTelConfig(nil)
+	if panics := func() (panicked bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
+		opt(client)
+		return false
+	}(); panics {
+		t.Error("WithOTelConfig should not panic when restConfig is nil")
+	}
+}
+
+func TestTruncateBody(t *testing.T) {
+	if got := truncateBody("short", 1024); got != "short" {
+		t.Errorf("Expected %q, got %q", "short", got)
+	}
+	long := strings.Repeat("x", 2000)
+	result := truncateBody(long, 1024)
+	want := 1024 + len("...(truncated)")
+	if len(result) != want {
+		t.Errorf("Expected length %d, got %d", want, len(result))
+	}
+	if !strings.HasSuffix(result, "...(truncated)") {
+		t.Errorf("Expected result to end with '...(truncated)', got %q", result[len(result)-20:])
+	}
+}
+
 func TestClient_MakeRequestWithTrace(t *testing.T) {
 	t.Run("returns error when client is nil", func(t *testing.T) {
 		client := &Client{

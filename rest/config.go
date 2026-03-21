@@ -13,6 +13,10 @@ type Config struct {
 	RetryMaxWaitTime time.Duration `yaml:"retryMaxWaitTime" mapstructure:"retryMaxWaitTime"`
 	Timeout          time.Duration `yaml:"timeout" mapstructure:"timeout"`
 
+	// MaxResponseBodyLog limits the number of bytes of response body stored in logs/errors.
+	// 0 means unlimited. Default is 1024.
+	MaxResponseBodyLog int `yaml:"maxResponseBodyLog" mapstructure:"maxResponseBodyLog"`
+
 	// OpenTelemetry Configuration (optional - nil disables telemetry)
 	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"` // Not serializable from config files
 }
@@ -20,9 +24,10 @@ type Config struct {
 // DefaultRestConfig returns a default REST configuration with sensible defaults.
 func DefaultRestConfig() *Config {
 	return &Config{
-		RetryCount:       1,
-		RetryWaitTime:    2 * time.Second,
-		RetryMaxWaitTime: 10 * time.Second,
-		Timeout:          30 * time.Second,
+		RetryCount:         1,
+		RetryWaitTime:      2 * time.Second,
+		RetryMaxWaitTime:   10 * time.Second,
+		Timeout:            30 * time.Second,
+		MaxResponseBodyLog: 1024,
 	}
 }
