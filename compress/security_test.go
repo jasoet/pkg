@@ -170,11 +170,10 @@ func TestUnGzPathTraversalPrevention(t *testing.T) {
 
 		// Try to write to a path with traversal
 		_, err = UnGz(&buf, "../../../tmp/malicious.txt")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid destination path")
+		assert.ErrorIs(t, err, ErrPathTraversal)
 	})
 
-	t.Run("accepts clean path", func(t *testing.T) {
+	t.Run("accepts clean absolute path", func(t *testing.T) {
 		var buf bytes.Buffer
 		gzWriter := gzip.NewWriter(&buf)
 		_, err := gzWriter.Write([]byte("safe content"))
@@ -190,6 +189,11 @@ func TestUnGzPathTraversalPrevention(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Greater(t, written, int64(0))
 	})
+}
+
+func TestUnGz_RejectsRelativePath(t *testing.T) {
+	_, err := UnGz(nil, "../../../tmp/evil")
+	assert.ErrorIs(t, err, ErrPathTraversal)
 }
 
 // ============================================================================
@@ -227,8 +231,8 @@ func TestUnTarZipBombProtection(t *testing.T) {
 
 		written, err := UnTar(&buf, destDir)
 
-		// Should succeed but only write up to 100MB due to limit
-		assert.NoError(t, err)
+		// Should detect the bomb and return an error
+		assert.ErrorIs(t, err, ErrSizeLimitExceeded)
 		assert.LessOrEqual(t, written, int64(100*1024*1024))
 	})
 }
@@ -256,8 +260,8 @@ func TestUnGzZipBombProtection(t *testing.T) {
 
 		written, err := UnGz(&compressed, destFile.Name())
 
-		// Should succeed but only write up to 100MB
-		assert.NoError(t, err)
+		// Should detect the bomb and return an error
+		assert.ErrorIs(t, err, ErrSizeLimitExceeded)
 		assert.LessOrEqual(t, written, int64(100*1024*1024))
 	})
 }

@@ -38,8 +38,11 @@ func Tar(sourceDirectory string, writer io.Writer) error {
 			return err
 		}
 
-		localDirectory := strings.Replace(file, sourceDirectory, "", -1)
-		header.Name = strings.TrimPrefix(localDirectory, string(filepath.Separator))
+		relPath, err := filepath.Rel(sourceDirectory, file)
+		if err != nil {
+			return err
+		}
+		header.Name = relPath
 
 		if err := tarWriter.WriteHeader(header); err != nil {
 			return err
@@ -171,6 +174,13 @@ func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header, ma
 		return 0, err
 	}
 
+	if written >= maxFileSize {
+		probe := make([]byte, 1)
+		if n, _ := tarReader.Read(probe); n > 0 {
+			return written, fmt.Errorf("file %s: %w (max %d bytes)", header.Name, ErrSizeLimitExceeded, maxFileSize)
+		}
+	}
+
 	return written, nil
 }
 
@@ -242,6 +252,18 @@ func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (written
 		target := filepath.Join(destinationDir, header.Name)
 		if !strings.HasPrefix(target, filepath.Clean(destinationDir)+string(os.PathSeparator)) {
 			return totalWritten, fmt.Errorf("invalid file path: %s", header.Name)
+		}
+
+		// Prevent symlink TOCTOU attacks: resolve symlinks in parent directory
+		parentDir := filepath.Dir(target)
+		if resolvedParent, errSym := filepath.EvalSymlinks(parentDir); errSym == nil {
+			resolvedDest := filepath.Clean(destinationDir)
+			if rd, errRD := filepath.EvalSymlinks(destinationDir); errRD == nil {
+				resolvedDest = rd
+			}
+			if !strings.HasPrefix(resolvedParent, resolvedDest+string(os.PathSeparator)) && resolvedParent != resolvedDest {
+				return totalWritten, fmt.Errorf("%w: symlink resolves outside destination: %s", ErrPathTraversal, header.Name)
+			}
 		}
 
 		switch header.Typeflag {
