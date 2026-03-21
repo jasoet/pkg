@@ -390,3 +390,13 @@ func TestWithOptions(t *testing.T) {
 	assert.Len(t, cfg.Middleware, 1)
 	assert.NotNil(t, cfg.EchoConfigurer)
 }
+
+func TestSetupEcho_HasTimeouts(t *testing.T) {
+	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	e := setupEcho(config)
+
+	assert.Equal(t, 5*time.Second, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout should be 5s")
+	assert.Equal(t, 30*time.Second, e.Server.ReadTimeout, "ReadTimeout should be 30s")
+	assert.Equal(t, 30*time.Second, e.Server.WriteTimeout, "WriteTimeout should be 30s")
+	assert.Equal(t, 120*time.Second, e.Server.IdleTimeout, "IdleTimeout should be 120s")
+}

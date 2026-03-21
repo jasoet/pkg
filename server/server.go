@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/jasoet/pkg/v2/otel"
 )
@@ -112,6 +113,15 @@ type httpServer struct {
 func setupEcho(config Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
+
+	// Set HTTP timeouts to prevent slow-client and resource exhaustion attacks
+	e.Server.ReadHeaderTimeout = 5 * time.Second
+	e.Server.ReadTimeout = 30 * time.Second
+	e.Server.WriteTimeout = 30 * time.Second
+	e.Server.IdleTimeout = 120 * time.Second
+
+	// Enforce a default body size limit to prevent request body attacks
+	e.Use(middleware.BodyLimit("4M"))
 
 	// Add custom middleware
 	for _, m := range config.Middleware {
