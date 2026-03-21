@@ -30,15 +30,17 @@ type (
 
 // Config holds the HTTP server configuration.
 type Config struct {
-	Port int
+	// Port specifies the listen port. Use 0 for OS-assigned ephemeral port.
+	Port int `yaml:"port" mapstructure:"port"`
 
+	// Operation is called synchronously before the server starts listening. Panics in Operation will propagate to the caller of StartWithConfig.
 	Operation Operation
 
 	Shutdown Shutdown
 
 	Middleware []echo.MiddlewareFunc
 
-	ShutdownTimeout time.Duration
+	ShutdownTimeout time.Duration `yaml:"shutdownTimeout" mapstructure:"shutdownTimeout"`
 
 	EchoConfigurer EchoConfigurer
 
@@ -128,6 +130,7 @@ func setupEcho(config Config) *echo.Echo {
 		e.Use(m)
 	}
 
+	// Health check endpoints are registered before user middleware. They are intentionally unauthenticated for Kubernetes probe compatibility.
 	// Register health-check routes (no generic "/" handler — library callers add their own routes)
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "UP"})
@@ -149,7 +152,7 @@ func setupEcho(config Config) *echo.Echo {
 	return e
 }
 
-func newHttpServer(config Config) *httpServer {
+func newHTTPServer(config Config) *httpServer {
 	e := setupEcho(config)
 	return &httpServer{
 		echo:   e,
@@ -158,10 +161,15 @@ func newHttpServer(config Config) *httpServer {
 }
 
 func (s *httpServer) start() error {
+	if s.config.Port < 0 || s.config.Port > 65535 {
+		return fmt.Errorf("invalid port: %d (must be 0-65535)", s.config.Port)
+	}
+
 	if s.config.Operation != nil {
 		s.config.Operation(s.echo)
 	}
 
+	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
 	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v2/server", "httpServer.start")
 
 	// Use a real listener to detect bind errors immediately instead of a racy timer.
@@ -183,15 +191,16 @@ func (s *httpServer) start() error {
 }
 
 func (s *httpServer) stop() error {
+	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
 	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v2/server", "httpServer.stop")
 	logger.Info("Gracefully shutting down server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
+	defer cancel()
 
 	if s.config.Shutdown != nil {
 		s.config.Shutdown(s.echo)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
-	defer cancel()
 
 	return s.echo.Shutdown(ctx)
 }
@@ -199,9 +208,9 @@ func (s *httpServer) stop() error {
 // StartWithConfig starts the HTTP server with the given configuration and
 // blocks until an OS interrupt signal is received, then shuts down gracefully.
 func StartWithConfig(config Config) error {
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := server.start(); err != nil {

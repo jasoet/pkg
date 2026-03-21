@@ -357,13 +357,19 @@ func main() {
             message = fmt.Sprintf("%v", he.Message)
         }
 
-        // Log the error
+        // Log the error (do not leak internal details to the client)
         fmt.Printf("Error: %v\n", err)
 
+        // Sanitize 5xx responses to avoid leaking internal error details
+        if code >= http.StatusInternalServerError {
+            _ = c.JSON(code, map[string]string{"error": "internal server error"})
+            return
+        }
+
         // Return a custom error response
-        c.JSON(code, map[string]interface{}{
-            "error": message,
-            "status": code,
+        _ = c.JSON(code, map[string]interface{}{
+            "error":     message,
+            "status":    code,
             "timestamp": time.Now().Format(time.RFC3339),
         })
     }

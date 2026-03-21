@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewHttpServer(t *testing.T) {
+func TestNewHTTPServer(t *testing.T) {
 	operationCalled := false
 	shutdownCalled := false
 
@@ -30,7 +30,7 @@ func TestNewHttpServer(t *testing.T) {
 	}
 
 	config := DefaultConfig(8080, operation, shutdown)
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
 	assert.NotNil(t, server)
 	assert.NotNil(t, server.echo)
@@ -75,7 +75,7 @@ func TestOperationExecution(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, operation, func(e *echo.Echo) {})
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
 	err := server.start()
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestShutdownExecution(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, func(e *echo.Echo) {}, shutdown)
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
 	err := server.start()
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestNilCallbacks(t *testing.T) {
 		Port:            0,
 		ShutdownTimeout: 5 * time.Second,
 	}
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
 	err := server.start()
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestNilCallbacks(t *testing.T) {
 func TestBindErrorDetection(t *testing.T) {
 	// C10: bind errors are now detected immediately via net.Listen
 	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	s1 := newHttpServer(config)
+	s1 := newHTTPServer(config)
 	err := s1.start()
 	require.NoError(t, err)
 
@@ -145,7 +145,7 @@ func TestBindErrorDetection(t *testing.T) {
 	var portInt int
 	_, _ = fmt.Sscanf(port, "%d", &portInt)
 	config2.Port = portInt
-	s2 := newHttpServer(config2)
+	s2 := newHTTPServer(config2)
 
 	err = s2.start()
 	assert.Error(t, err, "Second server should fail to bind on occupied port")
@@ -200,7 +200,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, operation, shutdown)
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
 	err := server.start()
 	require.NoError(t, err)
@@ -211,17 +211,16 @@ func TestIntegration(t *testing.T) {
 	addr := server.echo.Listener.Addr().String()
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	port := strings.Split(addr, ":")[1]
+	parts := strings.Split(addr, ":")
+	port := parts[len(parts)-1]
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost:"+port+"/health", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp, err := client.Do(req)
-
-	if err == nil {
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, `{"status":"UP"}`, strings.TrimSpace(string(body)))
-	}
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, `{"status":"UP"}`, strings.TrimSpace(string(body)))
 
 	err = server.stop()
 	assert.NoError(t, err)
@@ -244,7 +243,7 @@ func TestServerStartStop(t *testing.T) {
 	}
 
 	config := DefaultConfig(0, operation, shutdown)
-	server := newHttpServer(config)
+	server := newHTTPServer(config)
 
 	err := server.start()
 	require.NoError(t, err)
@@ -308,7 +307,7 @@ func TestStartFunction(t *testing.T) {
 		config := DefaultConfig(0, operation, shutdown)
 		config.Middleware = []echo.MiddlewareFunc{middleware}
 
-		server := newHttpServer(config)
+		server := newHTTPServer(config)
 		assert.NotNil(t, server)
 		assert.Equal(t, 0, server.config.Port)
 		assert.Len(t, server.config.Middleware, 1)
@@ -337,7 +336,7 @@ func TestStartWithConfigFunction(t *testing.T) {
 		config := DefaultConfig(0, operation, shutdown)
 		config.ShutdownTimeout = 5 * time.Second
 
-		server := newHttpServer(config)
+		server := newHTTPServer(config)
 		assert.NotNil(t, server)
 		assert.Equal(t, 0, server.config.Port)
 		assert.Equal(t, 5*time.Second, server.config.ShutdownTimeout)
@@ -356,7 +355,7 @@ func TestStartWithConfigFunction(t *testing.T) {
 		config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
 		config.ShutdownTimeout = customTimeout
 
-		server := newHttpServer(config)
+		server := newHTTPServer(config)
 		assert.Equal(t, customTimeout, server.config.ShutdownTimeout)
 	})
 }
