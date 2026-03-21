@@ -38,8 +38,9 @@ func TestUnauthorizedError(t *testing.T) {
 			RespBody:   `{"error":"invalid_token"}`,
 		}
 
-		if err.Error() != msg {
-			t.Errorf("Expected Error() to return %q, got %q", msg, err.Error())
+		expected := "unauthorized (HTTP 401): Unauthorized access"
+		if err.Error() != expected {
+			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
 		}
 	})
 

@@ -120,9 +120,9 @@ type Config struct {
 ```go
 DefaultRestConfig() returns:
 - RetryCount:       1
-- RetryWaitTime:    20 seconds
-- RetryMaxWaitTime: 30 seconds
-- Timeout:          50 seconds
+- RetryWaitTime:    2 seconds
+- RetryMaxWaitTime: 10 seconds
+- Timeout:          30 seconds
 ```
 
 ## Client API

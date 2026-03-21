@@ -33,20 +33,18 @@ func WithRestConfig(restConfig Config) ClientOption {
 }
 
 // WithMiddleware appends a single middleware to the existing middleware chain.
+// The lock is not held here because option functions run only during NewClient construction.
 func WithMiddleware(middleware Middleware) ClientOption {
 	return func(client *Client) {
-		client.mu.Lock()
-		defer client.mu.Unlock()
 		client.middlewares = append(client.middlewares, middleware)
 	}
 }
 
 // WithMiddlewares replaces the entire middleware chain with the provided middlewares.
 // Use WithMiddleware to append instead.
+// The lock is not held here because option functions run only during NewClient construction.
 func WithMiddlewares(middlewares ...Middleware) ClientOption {
 	return func(client *Client) {
-		client.mu.Lock()
-		defer client.mu.Unlock()
 		client.middlewares = middlewares
 	}
 }
@@ -71,6 +69,8 @@ func truncateBody(body string, maxLen int) string {
 }
 
 // NewClient creates a new REST client with the given options.
+// For custom TLS configuration, use GetRestClient() to access the underlying resty client
+// and call SetTLSClientConfig().
 func NewClient(options ...ClientOption) *Client {
 	client := &Client{
 		restConfig:  DefaultRestConfig(),
@@ -116,6 +116,9 @@ func NewClient(options ...ClientOption) *Client {
 		SetRetryWaitTime(client.restConfig.RetryWaitTime).
 		SetRetryMaxWaitTime(client.restConfig.RetryMaxWaitTime).
 		SetTimeout(client.restConfig.Timeout)
+	httpClient.AddRetryCondition(func(r *resty.Response, err error) bool {
+		return err != nil || (r != nil && r.StatusCode() >= 500)
+	})
 
 	client.restClient = httpClient
 
@@ -123,6 +126,8 @@ func NewClient(options ...ClientOption) *Client {
 }
 
 // GetRestClient returns the underlying resty client.
+// Mutations to this client after NewClient returns are not thread-safe for
+// concurrent use with doRequest.
 func (c *Client) GetRestClient() *resty.Client {
 	return c.restClient
 }
@@ -175,6 +180,15 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 }
 
 // doRequest is the shared implementation for MakeRequest and MakeRequestWithTrace.
+//
+// Note: The url parameter is passed directly to resty with no validation. Callers
+// accepting URLs from external input must validate scheme, host, and port before calling.
+//
+// restConfig is treated as immutable after NewClient returns, so it is read here
+// without holding the mutex.
+//
+// The full response body is buffered in memory intentionally so that middleware in
+// AfterRequest can inspect the response content.
 func (c *Client) doRequest(ctx context.Context, method string, url string, body string, headers map[string]string, enableTrace bool) (*resty.Response, error) {
 	var otelConfig *otel.Config
 	if c.restConfig != nil {
@@ -233,10 +247,14 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
 
+	headersCopy := make(map[string]string, len(headers))
+	for k, v := range headers {
+		headersCopy[k] = v
+	}
 	requestInfo := RequestInfo{
 		Method:    method,
 		URL:       url,
-		Headers:   headers,
+		Headers:   headersCopy,
 		Body:      body,
 		StartTime: startTime,
 		EndTime:   endTime,
@@ -311,11 +329,6 @@ func IsServerError(response *resty.Response) bool {
 // Both indicate an access control failure; use response.StatusCode() to distinguish them.
 func IsUnauthorized(response *resty.Response) bool {
 	return response.StatusCode() == http.StatusUnauthorized || response.StatusCode() == http.StatusForbidden
-}
-
-// IsForbidden returns true only for HTTP 403 (Forbidden).
-func IsForbidden(response *resty.Response) bool {
-	return response.StatusCode() == http.StatusForbidden
 }
 
 // IsNotFound returns true for HTTP 404 (Not Found).

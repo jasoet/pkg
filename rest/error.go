@@ -20,7 +20,9 @@ type UnauthorizedError struct {
 	RespBody   string
 }
 
-func (e *UnauthorizedError) Error() string { return e.Msg }
+func (e *UnauthorizedError) Error() string {
+	return fmt.Sprintf("unauthorized (HTTP %d): %s", e.StatusCode, e.Msg)
+}
 func (e *UnauthorizedError) Unwrap() error { return ErrUnauthorized }
 
 // NewUnauthorizedError creates a new UnauthorizedError

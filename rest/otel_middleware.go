@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -44,7 +45,7 @@ func (m *OTelTracingMiddleware) BeforeRequest(ctx context.Context, method string
 	}
 
 	// Start a new span for the HTTP request
-	ctx, span := m.tracer.Start(ctx, fmt.Sprintf("%s %s", method, url),
+	ctx, span := m.tracer.Start(ctx, method,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			semconv.HTTPRequestMethodKey.String(method),
@@ -53,9 +54,18 @@ func (m *OTelTracingMiddleware) BeforeRequest(ctx context.Context, method string
 		),
 	)
 
-	// Inject trace context into HTTP headers for distributed tracing
+	// Inject trace context into HTTP headers for distributed tracing.
+	// Copy the headers map before injection so injected keys are isolated,
+	// then write results back to the original map that doRequest will use.
+	headersCopy := make(map[string]string, len(headers))
+	for k, v := range headers {
+		headersCopy[k] = v
+	}
 	propagator := propagation.TraceContext{}
-	propagator.Inject(ctx, propagation.MapCarrier(headers))
+	propagator.Inject(ctx, propagation.MapCarrier(headersCopy))
+	for k, v := range headersCopy {
+		headers[k] = v
+	}
 
 	// Store span in context for AfterRequest
 	return contextWithSpan(ctx, span)
@@ -114,37 +124,56 @@ func NewOTelMetricsMiddleware(cfg *pkgotel.Config) *OTelMetricsMiddleware {
 
 	meter := cfg.GetMeter("rest.client")
 
-	// Create metrics instruments
-	// Note: errors are intentionally ignored as they only occur with nil meter (checked by GetMeter)
-	requestCounter, _ := meter.Int64Counter( //nolint:errcheck
+	// Create metrics instruments. If creation fails, log to stderr and skip registration.
+	requestCounter, err := meter.Int64Counter(
 		"http.client.request.count",
 		metric.WithDescription("Total number of HTTP client requests"),
 		metric.WithUnit("{request}"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rest: failed to create http.client.request.count metric: %v\n", err)
+		return nil
+	}
 
-	requestDuration, _ := meter.Float64Histogram( //nolint:errcheck
+	requestDuration, err := meter.Float64Histogram(
 		"http.client.request.duration",
 		metric.WithDescription("HTTP client request duration"),
 		metric.WithUnit("ms"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rest: failed to create http.client.request.duration metric: %v\n", err)
+		return nil
+	}
 
-	requestSize, _ := meter.Int64Histogram( //nolint:errcheck
+	requestSize, err := meter.Int64Histogram(
 		"http.client.request.size",
 		metric.WithDescription("HTTP client request body size"),
 		metric.WithUnit("By"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rest: failed to create http.client.request.size metric: %v\n", err)
+		return nil
+	}
 
-	responseSize, _ := meter.Int64Histogram( //nolint:errcheck
+	responseSize, err := meter.Int64Histogram(
 		"http.client.response.size",
 		metric.WithDescription("HTTP client response body size"),
 		metric.WithUnit("By"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rest: failed to create http.client.response.size metric: %v\n", err)
+		return nil
+	}
 
-	retryCounter, _ := meter.Int64Counter( //nolint:errcheck
+	retryCounter, err := meter.Int64Counter(
 		"http.client.retry.count",
 		metric.WithDescription("Total number of HTTP client retries"),
 		metric.WithUnit("{retry}"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rest: failed to create http.client.retry.count metric: %v\n", err)
+		return nil
+	}
 
 	return &OTelMetricsMiddleware{
 		cfg:             cfg,
