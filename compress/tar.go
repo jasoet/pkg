@@ -17,8 +17,12 @@ import (
 // Only regular files are included; symlinks and other special files are skipped.
 // The caller is responsible for closing writer if needed.
 func Tar(sourceDirectory string, writer io.Writer) error {
-	if _, err := os.Stat(sourceDirectory); err != nil {
+	fileInfo, err := os.Stat(sourceDirectory)
+	if err != nil {
 		return err
+	}
+	if !fileInfo.IsDir() {
+		return fmt.Errorf("%s is not a directory", sourceDirectory)
 	}
 
 	tarWriter := tar.NewWriter(writer)
@@ -95,31 +99,26 @@ func TarGzBase64(sourceDirectory string) (string, error) {
 }
 
 // UnTarGzBase64 decodes a base64-encoded gzip tar archive and extracts it to destinationDir.
-func UnTarGzBase64(encoded string, destinationDir string) (totalWritten int64, err error) {
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return totalWritten, err
-	}
-
-	return UnTarGz(bytes.NewReader(decoded), destinationDir)
+func UnTarGzBase64(encoded string, destinationDir string, opts ...ExtractOption) (int64, error) {
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
+	return UnTarGz(decoder, destinationDir, opts...)
 }
 
 // UnTarGz decompresses a gzip stream and extracts the tar archive to destinationDir.
-func UnTarGz(src io.Reader, destinationDir string) (totalWritten int64, err error) {
-	zipReader, errReader := gzip.NewReader(src)
-	if errReader != nil {
-		err = errReader
-		return totalWritten, err
+func UnTarGz(src io.Reader, destinationDir string, opts ...ExtractOption) (int64, error) {
+	zipReader, err := gzip.NewReader(src)
+	if err != nil {
+		return 0, err
 	}
 	defer zipReader.Close()
 
-	return UnTar(zipReader, destinationDir)
+	return UnTar(zipReader, destinationDir, opts...)
 }
 
 // validTarPath validates that a tar entry path is safe to extract.
 func validTarPath(path string) bool {
 	if path == "" ||
-		strings.Contains(path, `\`) ||
+		strings.Contains(path, `\`) || // Backslash check prevents Windows-style path separator usage on Unix
 		strings.HasPrefix(path, "/") ||
 		strings.Contains(path, "..") {
 		return false
@@ -129,12 +128,7 @@ func validTarPath(path string) bool {
 
 // extractTarDirectory creates a directory from a tar entry
 func extractTarDirectory(target string) error {
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		if err := os.MkdirAll(target, 0o750); err != nil {
-			return err
-		}
-	}
-	return nil
+	return os.MkdirAll(target, 0o750)
 }
 
 const (
@@ -154,13 +148,7 @@ func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header, ma
 		}
 	}
 
-	// Validate file mode to prevent integer overflow
-	fileMode := header.Mode
-	if fileMode > 0o777 {
-		fileMode = 0o644 // Use safe default
-	}
-	// Explicit conversion to prevent integer overflow
-	safeMode := os.FileMode(fileMode & 0o777)
+	safeMode := os.FileMode(header.Mode & 0o777) // Strip setuid/setgid/sticky bits
 	fileToWrite, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, safeMode)
 	if err != nil {
 		return 0, err

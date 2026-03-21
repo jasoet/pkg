@@ -26,42 +26,43 @@ func Gz(source io.Reader, writer io.Writer) error {
 
 // UnGz decompresses gzip data from src and writes the result to the file at dst.
 //
-// Decompression is limited to 100 MB to prevent zip bomb attacks.
+// Decompression is limited by maxFileSize (default 100 MB) to prevent zip bomb attacks.
 // dst must be an absolute path to prevent path traversal.
 // Returns the number of bytes written and any error encountered.
-func UnGz(src io.Reader, dst string) (written int64, err error) {
+func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error) {
 	// Validate destination path to prevent directory traversal
 	if !filepath.IsAbs(dst) {
 		return 0, fmt.Errorf("%w: destination must be an absolute path: %s", ErrPathTraversal, dst)
 	}
 
-	const maxSize = 100 * 1024 * 1024 // 100 MB
+	cfg := defaultExtractConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 
 	zipReader, errReader := gzip.NewReader(src)
 	if errReader != nil {
-		err = errReader
-		return written, err
+		return 0, errReader
 	}
 	defer zipReader.Close()
 
 	destinationFile, errCreate := os.Create(dst)
 	if errCreate != nil {
-		err = errCreate
-		return written, err
+		return 0, errCreate
 	}
 	defer destinationFile.Close()
 
-	// Limit decompression to prevent zip bombs (100MB limit)
-	limitedReader := io.LimitReader(zipReader, maxSize)
-	written, err = io.Copy(destinationFile, limitedReader)
+	// Limit decompression to prevent zip bombs
+	limitedReader := io.LimitReader(zipReader, cfg.maxFileSize)
+	written, err := io.Copy(destinationFile, limitedReader)
 	if err != nil {
 		return written, err
 	}
 
-	if written >= maxSize {
+	if written >= cfg.maxFileSize {
 		probe := make([]byte, 1)
 		if n, _ := zipReader.Read(probe); n > 0 {
-			return written, fmt.Errorf("%w: file exceeds maximum size of %d bytes", ErrSizeLimitExceeded, maxSize)
+			return written, fmt.Errorf("%w: file exceeds maximum size of %d bytes", ErrSizeLimitExceeded, cfg.maxFileSize)
 		}
 	}
 
