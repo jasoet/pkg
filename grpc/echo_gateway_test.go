@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func TestMountGatewayOnEcho(t *testing.T) {
@@ -102,11 +101,7 @@ func TestWaitForGRPCServer(t *testing.T) {
 		// Wait a bit for server to start
 		time.Sleep(100 * time.Millisecond)
 
-		ctx := context.Background()
-		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-		mux := runtime.NewServeMux()
-
-		err = waitForGRPCServer(ctx, lis.Addr().String(), opts, mux)
+		err = waitForGRPCServer(lis.Addr().String(), 10)
 		assert.NoError(t, err)
 	})
 }

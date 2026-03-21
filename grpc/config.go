@@ -62,11 +62,6 @@ type config struct {
 	rateLimit       float64               // Requests per second for rate limiting
 	middleware      []echo.MiddlewareFunc // Custom Echo middleware
 
-	// TLS Configuration (for future use)
-	enableTLS bool   // Enable TLS
-	certFile  string // Path to certificate file
-	keyFile   string // Path to private key file
-
 	// OpenTelemetry Configuration (optional - nil disables telemetry)
 	otelConfig *otel.Config // OpenTelemetry configuration for traces, metrics, and logs
 }
@@ -95,7 +90,7 @@ func newConfig(opts ...Option) (*config, error) {
 		enableHealthCheck: true,
 		healthPath:        "/health",
 		enableLogging:     true,
-		enableReflection:  true,
+		enableReflection:  false,
 
 		// Gateway Configuration
 		gatewayBasePath: "/api/v1",
@@ -106,8 +101,6 @@ func newConfig(opts ...Option) (*config, error) {
 		rateLimit:       100.0, // 100 requests per second default
 		middleware:      []echo.MiddlewareFunc{},
 
-		// TLS Configuration
-		enableTLS: false,
 	}
 
 	// Apply all options
@@ -347,15 +340,6 @@ func WithRateLimit(rps float64) Option {
 	return func(c *config) {
 		c.enableRateLimit = true
 		c.rateLimit = rps
-	}
-}
-
-// WithTLS enables TLS with the specified certificate and key files
-func WithTLS(certFile, keyFile string) Option {
-	return func(c *config) {
-		c.enableTLS = true
-		c.certFile = certFile
-		c.keyFile = keyFile
 	}
 }
 

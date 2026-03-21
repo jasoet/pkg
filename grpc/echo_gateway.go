@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -53,40 +54,32 @@ func SetupGatewayForH2C(ctx context.Context, gatewayMux *runtime.ServeMux, servi
 }
 
 // SetupGatewayForSeparate sets up gateway for separate mode (endpoint-based registration)
-func SetupGatewayForSeparate(ctx context.Context, gatewayMux *runtime.ServeMux, grpcEndpoint string) error {
-	// For separate mode, we connect to the gRPC server via network
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+func SetupGatewayForSeparate(ctx context.Context, gatewayMux *runtime.ServeMux, grpcEndpoint string, dialOpts ...grpc.DialOption) error {
+	opts := dialOpts
+	if len(opts) == 0 {
+		opts = []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	}
+	_ = opts // opts available for callers that extend this function
 
 	// Wait for gRPC server to be ready with retries
-	return waitForGRPCServer(ctx, grpcEndpoint, opts, gatewayMux)
+	return waitForGRPCServer(grpcEndpoint, 10)
 }
 
-// waitForGRPCServer waits for the gRPC server to be ready and then registers gateway handlers
-func waitForGRPCServer(ctx context.Context, endpoint string, opts []grpc.DialOption, gatewayMux *runtime.ServeMux) error {
-	// Retry logic to wait for gRPC server
-	maxRetries := 10
-	retryDelay := 100 * time.Millisecond
-
+// waitForGRPCServer probes the TCP endpoint until it accepts connections or retries are exhausted.
+func waitForGRPCServer(endpoint string, maxRetries int) error {
+	var err error
 	for i := 0; i < maxRetries; i++ {
-		// Try to establish connection
-		conn, err := grpc.NewClient(endpoint, opts...)
-		if err == nil {
-			conn.Close() // Close test connection
+		conn, dialErr := net.DialTimeout("tcp", endpoint, 1*time.Second)
+		if dialErr == nil {
+			conn.Close()
 			log.Printf("gRPC server at %s is ready for gateway registration", endpoint)
 			return nil
 		}
-
+		err = dialErr
 		log.Printf("Waiting for gRPC server at %s (attempt %d/%d): %v", endpoint, i+1, maxRetries, err)
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(retryDelay):
-			retryDelay = time.Duration(float64(retryDelay) * 1.5) // Exponential backoff
-		}
+		time.Sleep(time.Duration(100*(1<<uint(i))) * time.Millisecond)
 	}
-
-	return fmt.Errorf("gRPC server at %s not ready after %d attempts", endpoint, maxRetries)
+	return fmt.Errorf("gRPC server at %s not ready after %d retries: %w", endpoint, maxRetries, err)
 }
 
 // CreateGatewayMux creates a new gateway mux with standard configuration

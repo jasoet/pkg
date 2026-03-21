@@ -35,7 +35,7 @@ func TestNewConfigDefaults(t *testing.T) {
 	assert.True(t, cfg.enableMetrics)
 	assert.True(t, cfg.enableHealthCheck)
 	assert.True(t, cfg.enableLogging)
-	assert.True(t, cfg.enableReflection)
+	assert.False(t, cfg.enableReflection)
 	assert.False(t, cfg.enableCORS)
 	assert.False(t, cfg.enableRateLimit)
 
@@ -46,7 +46,6 @@ func TestNewConfigDefaults(t *testing.T) {
 
 	// Test other defaults
 	assert.Equal(t, 100.0, cfg.rateLimit)
-	assert.False(t, cfg.enableTLS)
 	assert.Empty(t, cfg.middleware)
 }
 
@@ -175,14 +174,6 @@ func TestWithRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.enableRateLimit)
 	assert.Equal(t, 250.0, cfg.rateLimit)
-}
-
-func TestWithTLS(t *testing.T) {
-	cfg, err := newConfig(WithTLS("cert.pem", "key.pem"))
-	require.NoError(t, err)
-	assert.True(t, cfg.enableTLS)
-	assert.Equal(t, "cert.pem", cfg.certFile)
-	assert.Equal(t, "key.pem", cfg.keyFile)
 }
 
 func TestWithMetricsPath(t *testing.T) {

@@ -270,11 +270,12 @@ func (s *Server) startH2CMode() error {
 
 	// Create HTTP server with H2C support
 	s.httpServer = &http.Server{
-		Addr:         s.config.getGRPCAddress(),
-		Handler:      h2c.NewHandler(mixedHandler, &http2.Server{}),
-		ReadTimeout:  s.config.readTimeout,
-		WriteTimeout: s.config.writeTimeout,
-		IdleTimeout:  s.config.idleTimeout,
+		Addr:              s.config.getGRPCAddress(),
+		Handler:           h2c.NewHandler(mixedHandler, &http2.Server{}),
+		ReadTimeout:       s.config.readTimeout,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      s.config.writeTimeout,
+		IdleTimeout:       s.config.idleTimeout,
 	}
 
 	log.Printf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.grpcPort)

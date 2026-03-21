@@ -453,7 +453,6 @@ func TestServerWithAllOptions(t *testing.T) {
 		WithMetricsPath("/custom-metrics"),
 		WithHealthPath("/custom-health"),
 		WithGatewayBasePath("/api/v2"),
-		WithTLS("cert.pem", "key.pem"),
 	)
 	require.NoError(t, err)
 
@@ -478,7 +477,4 @@ func TestServerWithAllOptions(t *testing.T) {
 	assert.Equal(t, "/custom-metrics", server.config.metricsPath)
 	assert.Equal(t, "/custom-health", server.config.healthPath)
 	assert.Equal(t, "/api/v2", server.config.gatewayBasePath)
-	assert.True(t, server.config.enableTLS)
-	assert.Equal(t, "cert.pem", server.config.certFile)
-	assert.Equal(t, "key.pem", server.config.keyFile)
 }
