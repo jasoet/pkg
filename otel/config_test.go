@@ -590,6 +590,70 @@ func TestShutdown(t *testing.T) {
 	})
 }
 
+func TestNoopProviderSingletons(t *testing.T) {
+	t.Run("GetTracer returns same singleton-backed tracer across calls", func(t *testing.T) {
+		cfg := NewConfig("test-service") // TracerProvider is nil → uses singleton
+
+		// Call multiple times — must not allocate new provider each time
+		tracer1 := cfg.GetTracer("scope-a")
+		tracer2 := cfg.GetTracer("scope-a")
+
+		if tracer1 == nil || tracer2 == nil {
+			t.Error("expected non-nil tracers")
+		}
+
+		// Verify tracer works without panic
+		_, span := tracer1.Start(context.Background(), "op")
+		span.End()
+	})
+
+	t.Run("GetMeter returns singleton-backed meter across calls", func(t *testing.T) {
+		cfg := NewConfig("test-service") // MeterProvider is nil → uses singleton
+
+		meter1 := cfg.GetMeter("scope-a")
+		meter2 := cfg.GetMeter("scope-a")
+
+		if meter1 == nil || meter2 == nil {
+			t.Error("expected non-nil meters")
+		}
+
+		_, err := meter1.Int64Counter("counter1")
+		if err != nil {
+			t.Errorf("expected no error, got: %v", err)
+		}
+	})
+
+	t.Run("GetLogger returns singleton-backed logger across calls", func(t *testing.T) {
+		cfg := NewConfig("test-service").WithoutLogging() // LoggerProvider nil → uses singleton
+
+		logger1 := cfg.GetLogger("scope-a")
+		logger2 := cfg.GetLogger("scope-a")
+
+		if logger1 == nil || logger2 == nil {
+			t.Error("expected non-nil loggers")
+		}
+
+		// Verify logger works without panic
+		logger1.Emit(context.Background(), log.Record{})
+	})
+
+	t.Run("package-level noop singletons are usable", func(t *testing.T) {
+		// Verify singletons are initialized and usable (they are value types, not pointers)
+		tracer := noopTracerProvider.Tracer("test")
+		_, span := tracer.Start(context.Background(), "op")
+		span.End()
+
+		meter := noopMeterProvider.Meter("test")
+		_, err := meter.Int64Counter("c")
+		if err != nil {
+			t.Errorf("noopMeterProvider counter unexpected error: %v", err)
+		}
+
+		logger := noopLoggerProvider.Logger("test")
+		logger.Emit(context.Background(), log.Record{})
+	})
+}
+
 func TestDefaultLoggerProvider(t *testing.T) {
 	t.Run("creates a logger provider", func(t *testing.T) {
 		lp := defaultLoggerProvider("test-service", false)

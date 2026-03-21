@@ -18,6 +18,13 @@ type contextKey string
 
 const configContextKey contextKey = "otel.config"
 
+// Package-level no-op provider singletons to avoid allocating new providers on every call.
+var (
+	noopTracerProvider = noopt.NewTracerProvider()
+	noopMeterProvider  = noopm.NewMeterProvider()
+	noopLoggerProvider = noopl.NewLoggerProvider()
+)
+
 // Config holds OpenTelemetry configuration for instrumentation.
 // TracerProvider and MeterProvider are optional - nil values result in no-op implementations.
 // LoggerProvider defaults to zerolog-based provider when using NewConfig().
@@ -158,8 +165,8 @@ func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
 	}
 	provider, err := NewLoggerProviderWithOptions(serviceName, opts...)
 	if err != nil {
-		// Fall back to no-op provider if creation fails
-		return noopl.NewLoggerProvider()
+		// Fall back to no-op provider singleton if creation fails
+		return noopLoggerProvider
 	}
 	return provider
 }
@@ -219,7 +226,7 @@ func (c *Config) IsLoggingEnabled() bool {
 // Returns a no-op tracer if tracing is not configured.
 func (c *Config) GetTracer(scopeName string, opts ...trace.TracerOption) trace.Tracer {
 	if !c.IsTracingEnabled() {
-		return noopt.NewTracerProvider().Tracer(scopeName, opts...)
+		return noopTracerProvider.Tracer(scopeName, opts...)
 	}
 	return c.TracerProvider.Tracer(scopeName, opts...)
 }
@@ -228,7 +235,7 @@ func (c *Config) GetTracer(scopeName string, opts ...trace.TracerOption) trace.T
 // Returns a no-op meter if metrics are not configured.
 func (c *Config) GetMeter(scopeName string, opts ...metric.MeterOption) metric.Meter {
 	if !c.IsMetricsEnabled() {
-		return noopm.NewMeterProvider().Meter(scopeName, opts...)
+		return noopMeterProvider.Meter(scopeName, opts...)
 	}
 	return c.MeterProvider.Meter(scopeName, opts...)
 }
@@ -237,7 +244,7 @@ func (c *Config) GetMeter(scopeName string, opts ...metric.MeterOption) metric.M
 // Returns a no-op logger if logging is not configured.
 func (c *Config) GetLogger(scopeName string, opts ...log.LoggerOption) log.Logger {
 	if !c.IsLoggingEnabled() {
-		return noopl.NewLoggerProvider().Logger(scopeName, opts...)
+		return noopLoggerProvider.Logger(scopeName, opts...)
 	}
 	return c.LoggerProvider.Logger(scopeName, opts...)
 }

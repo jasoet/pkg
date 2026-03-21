@@ -352,7 +352,9 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 	tracerName := "handler." + component
 	operationName := component + "." + operation
 
-	allFields := append([]Field{F("layer", "handler")}, fields...)
+	allFields := make([]Field, 0, 1+len(fields))
+	allFields = append(allFields, F("layer", "handler"))
+	allFields = append(allFields, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
 		WithAttributes(allFields...),
@@ -385,7 +387,9 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 	tracerName := "service." + component
 	operationName := component + "." + operation
 
-	allFields := append([]Field{F("layer", "service")}, fields...)
+	allFields := make([]Field, 0, 1+len(fields))
+	allFields = append(allFields, F("layer", "service"))
+	allFields = append(allFields, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
 		WithAttributes(allFields...),
@@ -418,7 +422,9 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 	tracerName := "operations." + component
 	operationName := component + "." + operation
 
-	allFields := append([]Field{F("layer", "operations")}, fields...)
+	allFields := make([]Field, 0, 1+len(fields))
+	allFields = append(allFields, F("layer", "operations"))
+	allFields = append(allFields, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
 		WithAttributes(allFields...),
@@ -461,7 +467,9 @@ func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, oper
 	tracerName := "middleware." + component
 	operationName := component + "." + operation
 
-	allFields := append([]Field{F("layer", "middleware")}, fields...)
+	allFields := make([]Field, 0, 1+len(fields))
+	allFields = append(allFields, F("layer", "middleware"))
+	allFields = append(allFields, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
 		WithAttributes(allFields...),
@@ -497,7 +505,9 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 	tracerName := "repository." + component
 	operationName := component + "." + operation
 
-	allFields := append([]Field{F("layer", "repository")}, fields...)
+	allFields := make([]Field, 0, 1+len(fields))
+	allFields = append(allFields, F("layer", "repository"))
+	allFields = append(allFields, fields...)
 
 	span := StartSpan(ctx, tracerName, operationName,
 		WithAttributes(allFields...),

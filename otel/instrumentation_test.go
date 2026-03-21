@@ -4,7 +4,91 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+// TestStartHandler_NoSliceAliasing verifies that StartHandler does not alias
+// the caller's variadic slice when it has spare capacity.
+func TestStartHandler_NoSliceAliasing(t *testing.T) {
+	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
+
+	baseFields := make([]Field, 2, 5)
+	baseFields[0] = F("key1", "val1")
+	baseFields[1] = F("key2", "val2")
+
+	subFields := baseFields[:2]
+	lc := Layers.StartHandler(ctx, "TestOp", "op", subFields...)
+	defer lc.End()
+
+	assert.Equal(t, "val1", baseFields[0].Value)
+	assert.Equal(t, "val2", baseFields[1].Value)
+}
+
+// TestStartService_NoSliceAliasing verifies no slice aliasing in StartService.
+func TestStartService_NoSliceAliasing(t *testing.T) {
+	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
+
+	baseFields := make([]Field, 2, 5)
+	baseFields[0] = F("key1", "val1")
+	baseFields[1] = F("key2", "val2")
+
+	lc := Layers.StartService(ctx, "TestOp", "op", baseFields[:2]...)
+	defer lc.End()
+
+	assert.Equal(t, "val1", baseFields[0].Value)
+	assert.Equal(t, "val2", baseFields[1].Value)
+}
+
+// TestStartOperations_NoSliceAliasing verifies no slice aliasing in StartOperations.
+func TestStartOperations_NoSliceAliasing(t *testing.T) {
+	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
+
+	baseFields := make([]Field, 2, 5)
+	baseFields[0] = F("key1", "val1")
+	baseFields[1] = F("key2", "val2")
+
+	lc := Layers.StartOperations(ctx, "TestOp", "op", baseFields[:2]...)
+	defer lc.End()
+
+	assert.Equal(t, "val1", baseFields[0].Value)
+	assert.Equal(t, "val2", baseFields[1].Value)
+}
+
+// TestStartMiddleware_NoSliceAliasing verifies no slice aliasing in StartMiddleware.
+func TestStartMiddleware_NoSliceAliasing(t *testing.T) {
+	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
+
+	baseFields := make([]Field, 2, 5)
+	baseFields[0] = F("key1", "val1")
+	baseFields[1] = F("key2", "val2")
+
+	lc := Layers.StartMiddleware(ctx, "TestOp", "op", baseFields[:2]...)
+	defer lc.End()
+
+	assert.Equal(t, "val1", baseFields[0].Value)
+	assert.Equal(t, "val2", baseFields[1].Value)
+}
+
+// TestStartRepository_NoSliceAliasing verifies no slice aliasing in StartRepository.
+func TestStartRepository_NoSliceAliasing(t *testing.T) {
+	cfg := NewConfig("test-service")
+	ctx := ContextWithConfig(context.Background(), cfg)
+
+	baseFields := make([]Field, 2, 5)
+	baseFields[0] = F("key1", "val1")
+	baseFields[1] = F("key2", "val2")
+
+	lc := Layers.StartRepository(ctx, "TestOp", "op", baseFields[:2]...)
+	defer lc.End()
+
+	assert.Equal(t, "val1", baseFields[0].Value)
+	assert.Equal(t, "val2", baseFields[1].Value)
+}
 
 // TestLayerContext_WithoutConfig verifies that LayerContext works without config in context
 func TestLayerContext_WithoutConfig(t *testing.T) {
