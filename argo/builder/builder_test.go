@@ -474,6 +474,44 @@ func TestWorkflowBuilder_Build_Reentrant(t *testing.T) {
 	assert.Equal(t, 1, mainCount, "there should be exactly one 'main' template")
 }
 
+func TestWorkflowBuilder_BuildWithEntrypoint_Reentrant(t *testing.T) {
+	// H24: BuildWithEntrypoint must not mutate b.templates when appending exit handler.
+	// Calling it twice should produce the same template count each time.
+	entryTemplate := v1alpha1.Template{
+		Name: "my-entry",
+		Steps: []v1alpha1.ParallelSteps{
+			{Steps: []v1alpha1.WorkflowStep{{Name: "main", Template: "main-tmpl"}}},
+		},
+	}
+
+	cleanup := template.NewContainer("cleanup", "alpine:latest",
+		template.WithCommand("echo", "cleanup"))
+
+	builder := NewWorkflowBuilder("test", "argo").
+		AddTemplate(entryTemplate).
+		AddExitHandler(cleanup)
+
+	wf1, err := builder.BuildWithEntrypoint("my-entry")
+	require.NoError(t, err)
+	require.NotNil(t, wf1)
+
+	wf2, err := builder.BuildWithEntrypoint("my-entry")
+	require.NoError(t, err)
+	require.NotNil(t, wf2)
+
+	assert.Equal(t, len(wf1.Spec.Templates), len(wf2.Spec.Templates),
+		"calling BuildWithEntrypoint twice must not duplicate templates")
+
+	// Count exit-handler templates — there should be exactly one
+	exitCount := 0
+	for _, tmpl := range wf2.Spec.Templates {
+		if tmpl.Name == "exit-handler" {
+			exitCount++
+		}
+	}
+	assert.Equal(t, 1, exitCount, "there should be exactly one 'exit-handler' template")
+}
+
 // mockParallelSource implements WorkflowSourceV2 for testing
 type mockParallelSource struct {
 	parallelSteps    []v1alpha1.ParallelSteps

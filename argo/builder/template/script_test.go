@@ -264,6 +264,18 @@ func TestScriptWithRetryStrategy(t *testing.T) {
 	assert.Equal(t, 3, tmpl.RetryStrategy.Limit.IntValue())
 }
 
+func TestScript_InvalidCPUQuantity(t *testing.T) {
+	script := NewScript("test", "python:3.9").CPU("not-valid-cpu")
+	_, err := script.Templates()
+	assert.Error(t, err)
+}
+
+func TestScript_InvalidMemoryQuantity(t *testing.T) {
+	script := NewScript("test", "python:3.9").Memory("not-valid-memory")
+	_, err := script.Templates()
+	assert.Error(t, err)
+}
+
 func TestScriptSource(t *testing.T) {
 	t.Run("sets script source from artifact", func(t *testing.T) {
 		script := NewScript("artifact-test", "bash").

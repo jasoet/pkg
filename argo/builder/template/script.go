@@ -2,6 +2,7 @@ package template
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -253,8 +254,12 @@ func (s *Script) Templates() ([]v1alpha1.Template, error) {
 
 	// Set resource requirements if specified
 	if s.cpuRequest != "" || s.memoryRequest != "" {
-		script.Container.Resources = buildResourceRequirements(
+		resources, err := buildResourceRequirements(
 			s.cpuRequest, s.cpuLimit, s.memoryRequest, s.memoryLimit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resource requirements for script %q: %w", s.name, err)
+		}
+		script.Container.Resources = resources
 	}
 
 	template := v1alpha1.Template{
@@ -318,29 +323,40 @@ func WithScriptWorkingDir(dir string) ScriptOption {
 }
 
 // buildResourceRequirements is a helper to build resource requirements.
-func buildResourceRequirements(cpuReq, cpuLim, memReq, memLim string) corev1.ResourceRequirements {
+func buildResourceRequirements(cpuReq, cpuLim, memReq, memLim string) (corev1.ResourceRequirements, error) {
 	reqs := corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{},
 		Limits:   corev1.ResourceList{},
 	}
 
 	if cpuReq != "" {
-		reqs.Requests[corev1.ResourceCPU] = mustParseQuantity(cpuReq)
+		q, err := resource.ParseQuantity(cpuReq)
+		if err != nil {
+			return corev1.ResourceRequirements{}, fmt.Errorf("invalid CPU request %q: %w", cpuReq, err)
+		}
+		reqs.Requests[corev1.ResourceCPU] = q
 	}
 	if cpuLim != "" {
-		reqs.Limits[corev1.ResourceCPU] = mustParseQuantity(cpuLim)
+		q, err := resource.ParseQuantity(cpuLim)
+		if err != nil {
+			return corev1.ResourceRequirements{}, fmt.Errorf("invalid CPU limit %q: %w", cpuLim, err)
+		}
+		reqs.Limits[corev1.ResourceCPU] = q
 	}
 	if memReq != "" {
-		reqs.Requests[corev1.ResourceMemory] = mustParseQuantity(memReq)
+		q, err := resource.ParseQuantity(memReq)
+		if err != nil {
+			return corev1.ResourceRequirements{}, fmt.Errorf("invalid memory request %q: %w", memReq, err)
+		}
+		reqs.Requests[corev1.ResourceMemory] = q
 	}
 	if memLim != "" {
-		reqs.Limits[corev1.ResourceMemory] = mustParseQuantity(memLim)
+		q, err := resource.ParseQuantity(memLim)
+		if err != nil {
+			return corev1.ResourceRequirements{}, fmt.Errorf("invalid memory limit %q: %w", memLim, err)
+		}
+		reqs.Limits[corev1.ResourceMemory] = q
 	}
 
-	return reqs
-}
-
-// mustParseQuantity is a helper that parses resource quantities.
-func mustParseQuantity(s string) resource.Quantity {
-	return resource.MustParse(s)
+	return reqs, nil
 }

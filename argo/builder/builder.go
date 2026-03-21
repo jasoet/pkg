@@ -513,6 +513,10 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 		return nil, err
 	}
 
+	// Build a fresh templates slice so BuildWithEntrypoint() is safe to call multiple times.
+	templates := make([]v1alpha1.Template, len(b.templates), len(b.templates)+1)
+	copy(templates, b.templates)
+
 	// Create exit handler template if needed
 	const exitHandlerName = "exit-handler"
 	var onExit string
@@ -521,7 +525,7 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 			Name:  exitHandlerName,
 			Steps: b.exitHandlers,
 		}
-		b.templates = append(b.templates, exitHandler)
+		templates = append(templates, exitHandler)
 		onExit = exitHandlerName
 	}
 
@@ -536,7 +540,7 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 		Spec: v1alpha1.WorkflowSpec{
 			Entrypoint:            entrypointName,
 			ServiceAccountName:    b.serviceAccount,
-			Templates:             b.templates,
+			Templates:             templates,
 			Volumes:               b.volumes,
 			Metrics:               b.metrics,
 			ArchiveLogs:           b.archiveLogs,
@@ -563,7 +567,7 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 			attribute.String("workflow.name", b.namePrefix),
 			attribute.String("workflow.namespace", b.namespace),
 			attribute.String("workflow.entrypoint", entrypointName),
-			attribute.Int("workflow.templates_count", len(b.templates)),
+			attribute.Int("workflow.templates_count", len(templates)),
 			attribute.Bool("workflow.has_exit_handler", len(b.exitHandlers) > 0),
 		)
 	}
