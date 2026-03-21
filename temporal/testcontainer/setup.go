@@ -73,10 +73,13 @@ func Setup(ctx context.Context, config ClientConfig, opts Options) (*Container, 
 		return nil, nil, nil, fmt.Errorf("failed to create temporal client: %w", err)
 	}
 
-	// Create cleanup function
+	// Create cleanup function. context.Background() is used intentionally here
+	// instead of the caller-provided ctx, because the caller's context may
+	// already be cancelled by the time cleanup runs (e.g. after t.Cleanup or
+	// defer fires at the end of a test).
 	cleanup := func() {
 		temporalClient.Close()
-		if err := container.Terminate(ctx); err != nil {
+		if err := container.Terminate(context.Background()); err != nil {
 			if opts.Logger != nil {
 				opts.Logger.Logf("Failed to terminate container: %v", err)
 			}

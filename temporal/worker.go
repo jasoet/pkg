@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 
@@ -96,22 +95,24 @@ func (wm *WorkerManager) Register(taskQueue string, options worker.Options) work
 	return w
 }
 
+// Start starts the given worker. The ctx parameter is used for logging only;
+// the worker's internal lifecycle is managed by the Temporal SDK.
 func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Start")
 
-	// Try to get the task queue from the worker if possible
-	var taskQueue string
+	// Try to get the worker index from the registered list for logging purposes.
+	var workerIndex int = -1
 	wm.mu.RLock()
 	for i, registeredWorker := range wm.workers {
 		if registeredWorker == w {
-			taskQueue = fmt.Sprintf("worker-%d", i)
+			workerIndex = i
 			break
 		}
 	}
 	wm.mu.RUnlock()
 
-	if taskQueue != "" {
-		logger.Debug("Starting Temporal worker", otel.F("taskQueue", taskQueue))
+	if workerIndex >= 0 {
+		logger.Debug("Starting Temporal worker", otel.F("workerIndex", workerIndex))
 	} else {
 		logger.Debug("Starting Temporal worker")
 	}
@@ -157,6 +158,8 @@ func (wm *WorkerManager) StartAll(ctx context.Context) error {
 	return nil
 }
 
+// GetClient returns the internal Temporal client. Callers must not close this
+// client independently; use Close() on the manager instead.
 func (wm *WorkerManager) GetClient() client.Client {
 	return wm.client
 }

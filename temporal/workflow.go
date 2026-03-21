@@ -24,21 +24,6 @@ type WorkflowManager struct {
 	namespace     string
 }
 
-// WorkflowFilter defines criteria for filtering workflows
-type WorkflowFilter struct {
-	WorkflowType   string
-	WorkflowID     string
-	Status         []enums.WorkflowExecutionStatus
-	StartTimeRange *TimeRange
-	Query          string // Advanced visibility query
-}
-
-// TimeRange defines a time range for filtering
-type TimeRange struct {
-	StartTime time.Time
-	EndTime   time.Time
-}
-
 // WorkflowDetails contains detailed information about a workflow execution
 type WorkflowDetails struct {
 	WorkflowID    string
@@ -73,40 +58,39 @@ func validateQueryParam(param string) error {
 	return nil
 }
 
-// NewWorkflowManager creates a new WorkflowManager instance
-// Accepts either a client.Client or *Config
-func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
+// NewWorkflowManagerWithNamespace creates a new WorkflowManager with an explicit
+// namespace when using an existing client.Client. When a *Config is passed the
+// namespace is taken from the config and the namespace parameter is ignored.
+func NewWorkflowManagerWithNamespace(clientOrConfig interface{}, namespace string) (*WorkflowManager, error) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewWorkflowManager")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewWorkflowManagerWithNamespace")
 
 	var temporalClient client.Client
 	var ownsClient bool
 	var metricsCloser io.Closer
-	var namespace string
 
 	switch v := clientOrConfig.(type) {
 	case client.Client:
 		// If passed a client directly, use it (caller retains ownership)
 		temporalClient = v
 		ownsClient = false
-		namespace = "default" // Default namespace when client is provided
-		logger.Debug("Using provided Temporal client for Workflow Manager")
+		logger.Debug("Using provided Temporal client for Workflow Manager", otel.F("namespace", namespace))
 	case *Config:
 		// If passed a config, create a new client (we own it)
+		namespace = v.Namespace
 		logger.Debug("Creating new Workflow Manager with config",
 			otel.F("hostPort", v.HostPort),
-			otel.F("namespace", v.Namespace))
+			otel.F("namespace", namespace))
 
-		namespace = v.Namespace
 		var err error
 		temporalClient, metricsCloser, err = NewClient(v)
 		if err != nil {
 			logger.Error(err, "Failed to create Temporal client for Workflow Manager")
-			return nil, err
+			return nil, fmt.Errorf("create temporal client: %w", err)
 		}
 		ownsClient = true
 	default:
-		logger.Error(nil, "Invalid argument type for NewWorkflowManager")
+		logger.Error(nil, "Invalid argument type for NewWorkflowManagerWithNamespace")
 		return nil, fmt.Errorf("invalid argument type: expected client.Client or *Config")
 	}
 
@@ -117,6 +101,14 @@ func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
 		metricsCloser: metricsCloser,
 		namespace:     namespace,
 	}, nil
+}
+
+// NewWorkflowManager creates a new WorkflowManager instance.
+// Accepts either a client.Client or *Config.
+// When a client.Client is provided the namespace defaults to "default";
+// use NewWorkflowManagerWithNamespace to specify a different namespace.
+func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
+	return NewWorkflowManagerWithNamespace(clientOrConfig, "default")
 }
 
 // Close closes the Workflow Manager and its client if it was created by the manager
@@ -138,7 +130,8 @@ func (wm *WorkflowManager) Close() {
 	logger.Debug("Workflow Manager closed")
 }
 
-// GetClient returns the underlying Temporal client
+// GetClient returns the internal Temporal client. Callers must not close this
+// client independently; use Close() on the manager instead.
 func (wm *WorkflowManager) GetClient() client.Client {
 	return wm.client
 }
@@ -160,7 +153,7 @@ func (wm *WorkflowManager) ListWorkflows(ctx context.Context, pageSize int, quer
 	response, err := wm.client.WorkflowService().ListWorkflowExecutions(ctx, request)
 	if err != nil {
 		logger.Error(err, "Failed to list workflow executions")
-		return nil, err
+		return nil, fmt.Errorf("list workflow executions: %w", err)
 	}
 
 	workflows := make([]*WorkflowDetails, 0, len(response.Executions))
@@ -199,7 +192,7 @@ func (wm *WorkflowManager) DescribeWorkflow(ctx context.Context, workflowID, run
 		logger.Error(err, "Failed to describe workflow execution",
 			otel.F("workflowID", workflowID),
 			otel.F("runID", runID))
-		return nil, err
+		return nil, fmt.Errorf("describe workflow %q: %w", workflowID, err)
 	}
 
 	details := &WorkflowDetails{
@@ -263,7 +256,7 @@ func (wm *WorkflowManager) GetWorkflowHistory(ctx context.Context, workflowID, r
 	if err != nil {
 		logger.Error(err, "Failed to get workflow history",
 			otel.F("workflowID", workflowID))
-		return nil, err
+		return nil, fmt.Errorf("get workflow history %q: %w", workflowID, err)
 	}
 
 	logger.Debug("Workflow history retrieved successfully",
@@ -284,7 +277,7 @@ func (wm *WorkflowManager) CancelWorkflow(ctx context.Context, workflowID, runID
 	if err != nil {
 		logger.Error(err, "Failed to cancel workflow",
 			otel.F("workflowID", workflowID))
-		return err
+		return fmt.Errorf("cancel workflow %q: %w", workflowID, err)
 	}
 
 	logger.Debug("Workflow canceled successfully",
@@ -305,7 +298,7 @@ func (wm *WorkflowManager) TerminateWorkflow(ctx context.Context, workflowID, ru
 	if err != nil {
 		logger.Error(err, "Failed to terminate workflow",
 			otel.F("workflowID", workflowID))
-		return err
+		return fmt.Errorf("terminate workflow %q: %w", workflowID, err)
 	}
 
 	logger.Debug("Workflow terminated successfully",
@@ -327,7 +320,7 @@ func (wm *WorkflowManager) SignalWorkflow(ctx context.Context, workflowID, runID
 		logger.Error(err, "Failed to signal workflow",
 			otel.F("workflowID", workflowID),
 			otel.F("signalName", signalName))
-		return err
+		return fmt.Errorf("signal workflow %q with %q: %w", workflowID, signalName, err)
 	}
 
 	logger.Debug("Workflow signaled successfully",
@@ -350,7 +343,7 @@ func (wm *WorkflowManager) QueryWorkflow(ctx context.Context, workflowID, runID,
 		logger.Error(err, "Failed to query workflow",
 			otel.F("workflowID", workflowID),
 			otel.F("queryType", queryType))
-		return nil, err
+		return nil, fmt.Errorf("query workflow %q type %q: %w", workflowID, queryType, err)
 	}
 
 	logger.Debug("Workflow queried successfully",
@@ -443,7 +436,7 @@ func (wm *WorkflowManager) CountWorkflows(ctx context.Context, query string) (in
 	response, err := wm.client.WorkflowService().CountWorkflowExecutions(ctx, request)
 	if err != nil {
 		logger.Error(err, "Failed to count workflow executions")
-		return 0, err
+		return 0, fmt.Errorf("count workflow executions: %w", err)
 	}
 
 	logger.Debug("Workflows counted successfully", otel.F("count", response.Count))
@@ -458,36 +451,41 @@ func (wm *WorkflowManager) GetDashboardStats(ctx context.Context) (*DashboardSta
 
 	stats := &DashboardStats{}
 
-	// Count workflows by status
-	runningCount, err := wm.CountWorkflows(ctx, "ExecutionStatus='Running'")
+	// Count workflows by status using the enum's String() method to avoid hardcoded strings.
+	runningStatus := enums.WORKFLOW_EXECUTION_STATUS_RUNNING.String()
+	runningCount, err := wm.CountWorkflows(ctx, fmt.Sprintf("ExecutionStatus='%s'", runningStatus))
 	if err != nil {
 		logger.Error(err, "Failed to count running workflows")
 		return nil, err
 	}
 	stats.TotalRunning = runningCount
 
-	completedCount, err := wm.CountWorkflows(ctx, "ExecutionStatus='Completed'")
+	completedStatus := enums.WORKFLOW_EXECUTION_STATUS_COMPLETED.String()
+	completedCount, err := wm.CountWorkflows(ctx, fmt.Sprintf("ExecutionStatus='%s'", completedStatus))
 	if err != nil {
 		logger.Error(err, "Failed to count completed workflows")
 		return nil, err
 	}
 	stats.TotalCompleted = completedCount
 
-	failedCount, err := wm.CountWorkflows(ctx, "ExecutionStatus='Failed'")
+	failedStatus := enums.WORKFLOW_EXECUTION_STATUS_FAILED.String()
+	failedCount, err := wm.CountWorkflows(ctx, fmt.Sprintf("ExecutionStatus='%s'", failedStatus))
 	if err != nil {
 		logger.Error(err, "Failed to count failed workflows")
 		return nil, err
 	}
 	stats.TotalFailed = failedCount
 
-	canceledCount, err := wm.CountWorkflows(ctx, "ExecutionStatus='Canceled'")
+	canceledStatus := enums.WORKFLOW_EXECUTION_STATUS_CANCELED.String()
+	canceledCount, err := wm.CountWorkflows(ctx, fmt.Sprintf("ExecutionStatus='%s'", canceledStatus))
 	if err != nil {
 		logger.Error(err, "Failed to count canceled workflows")
 		return nil, err
 	}
 	stats.TotalCanceled = canceledCount
 
-	terminatedCount, err := wm.CountWorkflows(ctx, "ExecutionStatus='Terminated'")
+	terminatedStatus := enums.WORKFLOW_EXECUTION_STATUS_TERMINATED.String()
+	terminatedCount, err := wm.CountWorkflows(ctx, fmt.Sprintf("ExecutionStatus='%s'", terminatedStatus))
 	if err != nil {
 		logger.Error(err, "Failed to count terminated workflows")
 		return nil, err
@@ -546,7 +544,7 @@ func (wm *WorkflowManager) GetWorkflowResult(ctx context.Context, workflowID, ru
 	if err != nil {
 		logger.Error(err, "Failed to get workflow result",
 			otel.F("workflowID", workflowID))
-		return err
+		return fmt.Errorf("get workflow result %q: %w", workflowID, err)
 	}
 
 	logger.Debug("Workflow result retrieved successfully",

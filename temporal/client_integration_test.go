@@ -188,7 +188,7 @@ func TestClientConfig(t *testing.T) {
 		config := DefaultConfig()
 		assert.Equal(t, "localhost:7233", config.HostPort)
 		assert.Equal(t, "default", config.Namespace)
-		assert.Equal(t, "0.0.0.0:9090", config.MetricsListenAddress)
+		assert.Equal(t, "127.0.0.1:9090", config.MetricsListenAddress)
 	})
 
 	t.Run("CustomConfig", func(t *testing.T) {

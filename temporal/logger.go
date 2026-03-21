@@ -50,7 +50,7 @@ func (z *ZerologAdapter) log(event *zerolog.Event, msg string, keyvals ...interf
 }
 
 func (z *ZerologAdapter) WithCallerSkip(skip int) temporallog.Logger {
-	// Create a new logger with the caller skip
+	// +2 accounts for: this adapter method frame + zerolog internal frame
 	newLogger := z.logger.With().CallerWithSkipFrameCount(skip + 2).Logger()
 	return NewZerologAdapter(newLogger)
 }

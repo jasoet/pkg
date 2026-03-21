@@ -49,7 +49,7 @@ func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
 			otel.F("namespace", v.Namespace))
 
 		var err error
-		temporalClient, metricsCloser, err = NewClientWithMetrics(v, false)
+		temporalClient, metricsCloser, err = NewClientWithMetrics(v, true)
 		if err != nil {
 			logger.Error(err, "Failed to create Temporal client for Schedule Manager")
 			return nil, fmt.Errorf("failed to create Temporal client: %w", err)
@@ -100,7 +100,7 @@ func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string
 	sh, err := sm.client.ScheduleClient().Create(ctx, options)
 	if err != nil {
 		logger.Error(err, "Failed to create schedule", otel.F("scheduleID", scheduleID))
-		return nil, err
+		return nil, fmt.Errorf("create schedule %q: %w", scheduleID, err)
 	}
 
 	sm.mu.Lock()
@@ -119,7 +119,7 @@ func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, option
 	sh, err := sm.client.ScheduleClient().Create(ctx, options)
 	if err != nil {
 		logger.Error(err, "Failed to create schedule", otel.F("scheduleName", options.ID))
-		return nil, err
+		return nil, fmt.Errorf("create schedule %q: %w", options.ID, err)
 	}
 
 	sm.mu.Lock()
@@ -191,7 +191,7 @@ func (sm *ScheduleManager) DeleteSchedules(ctx context.Context) error {
 		if err != nil {
 			sm.mu.RUnlock()
 			logger.Error(err, "Failed to delete schedule", otel.F("scheduleName", name))
-			return err
+			return fmt.Errorf("delete schedule %q: %w", name, err)
 		}
 		logger.Debug("Schedule deleted successfully", otel.F("scheduleName", name))
 	}
@@ -232,7 +232,7 @@ func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (
 	_, err := handle.Describe(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to get schedule", otel.F("scheduleID", scheduleID))
-		return nil, err
+		return nil, fmt.Errorf("get schedule %q: %w", scheduleID, err)
 	}
 
 	logger.Debug("Schedule retrieved successfully", otel.F("scheduleID", scheduleID))
@@ -253,14 +253,14 @@ func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*cli
 	})
 	if err != nil {
 		logger.Error(err, "Failed to create schedule list iterator")
-		return nil, err
+		return nil, fmt.Errorf("list schedules: %w", err)
 	}
 
 	for iter.HasNext() {
 		schedule, err := iter.Next()
 		if err != nil {
 			logger.Error(err, "Failed to get next schedule from iterator")
-			return nil, err
+			return nil, fmt.Errorf("iterate schedules: %w", err)
 		}
 		schedules = append(schedules, schedule)
 
@@ -301,7 +301,7 @@ func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string
 	})
 	if err != nil {
 		logger.Error(err, "Failed to update schedule", otel.F("scheduleID", scheduleID))
-		return err
+		return fmt.Errorf("update schedule %q: %w", scheduleID, err)
 	}
 
 	logger.Debug("Schedule updated successfully", otel.F("scheduleID", scheduleID))
@@ -318,7 +318,7 @@ func (sm *ScheduleManager) DeleteSchedule(ctx context.Context, scheduleID string
 	err := handle.Delete(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to delete schedule", otel.F("scheduleID", scheduleID))
-		return err
+		return fmt.Errorf("delete schedule %q: %w", scheduleID, err)
 	}
 
 	// Remove from local handlers map if it exists

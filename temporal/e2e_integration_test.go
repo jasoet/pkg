@@ -275,6 +275,8 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	config.HostPort = container.HostPort()
 	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
+	// wm is intentionally shared across subtests in this e2e suite. Each subtest
+	// registers its own task queue so there is no cross-subtest worker conflict.
 	wm, err := NewWorkerManager(config)
 	require.NoError(t, err, "Failed to create WorkerManager")
 	defer wm.Close()
@@ -430,7 +432,8 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 				TaskQueue: taskQueue + "-parallel",
 			}
 
-			workflowCtx, _ := context.WithTimeout(context.Background(), 60*time.Second)
+			workflowCtx, workflowCtxCancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer workflowCtxCancel()
 			workflowRun, err := temporalClient.ExecuteWorkflow(workflowCtx, options, OrderProcessingWorkflow, orderID, customerID, amount)
 			require.NoError(t, err, "Failed to start parallel workflow %d", i)
 			workflows[i] = workflowRun

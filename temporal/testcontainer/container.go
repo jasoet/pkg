@@ -103,7 +103,9 @@ func Start(ctx context.Context, opts Options) (*Container, error) {
 		opts.Logger.Logf("Temporal container started at %s", hostPort)
 	}
 
-	// Wait for Temporal to fully initialize
+	// Wait for Temporal to fully initialize. The port being available (confirmed
+	// by WaitingFor above) does not guarantee that the server is ready to accept
+	// RPC connections; this additional buffer absorbs the remaining startup delay.
 	time.Sleep(opts.InitialWaitTime)
 
 	return &Container{
