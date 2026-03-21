@@ -54,8 +54,12 @@ type LogHelper struct {
 // NewLogHelper creates a logger that uses OTel when available, zerolog otherwise.
 // When OTel is enabled, logs are automatically correlated with active spans.
 //
+// Note: ctx is captured at construction time. The LogHelper always uses this
+// context for trace correlation and log emission. If the active span changes
+// after construction, create a new LogHelper with the updated context.
+//
 // Parameters:
-//   - ctx: Context for trace correlation
+//   - ctx: Context for trace correlation (captured at construction time)
 //   - config: OTel configuration (can be nil for zerolog-only mode)
 //   - scopeName: OpenTelemetry scope name (e.g., "github.com/jasoet/pkg/v2/argo")
 //   - function: Function name to include in logs (optional, can be empty string)
@@ -217,6 +221,7 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 // emitOTel emits a log via OpenTelemetry with automatic trace correlation.
 func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Field) {
 	var record otellog.Record
+	record.SetTimestamp(time.Now())
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
 

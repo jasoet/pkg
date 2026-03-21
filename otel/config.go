@@ -3,6 +3,8 @@ package otel
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel/log"
 	noopl "go.opentelemetry.io/otel/log/noop"
@@ -29,9 +31,8 @@ var (
 // TracerProvider and MeterProvider are optional - nil values result in no-op implementations.
 // LoggerProvider defaults to zerolog-based provider when using NewConfig().
 //
-// Config should be treated as immutable after creation and initial configuration
-// via With* methods. Do not modify fields directly after passing Config to consumers,
-// as concurrent access is not synchronized.
+// Config methods (With*, Disable*) mutate the receiver. Callers sharing a *Config
+// across goroutines must not mutate it after sharing.
 type Config struct {
 	// TracerProvider for distributed tracing
 	// If nil, tracing will be disabled (no-op tracer)
@@ -165,7 +166,7 @@ func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
 	}
 	provider, err := NewLoggerProviderWithOptions(serviceName, opts...)
 	if err != nil {
-		// Fall back to no-op provider singleton if creation fails
+		fmt.Fprintf(os.Stderr, "otel: failed to create logger provider: %v, falling back to no-op\n", err)
 		return noopLoggerProvider
 	}
 	return provider

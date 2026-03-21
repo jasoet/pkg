@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -96,7 +95,7 @@ func StartSpan(ctx context.Context, tracerName, operationName string, opts ...Sp
 	if config := ConfigFromContext(ctx); config != nil && config.TracerProvider != nil {
 		tracer = config.TracerProvider.Tracer(tracerName)
 	} else {
-		tracer = otel.Tracer(tracerName)
+		tracer = noopTracerProvider.Tracer(tracerName)
 	}
 
 	ctx, span := tracer.Start(ctx, operationName,
@@ -261,9 +260,6 @@ func toAttribute(key string, value any) attribute.KeyValue {
 
 // toString converts any value to a string
 func toString(v any) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
 	if stringer, ok := v.(interface{ String() string }); ok {
 		return stringer.String()
 	}
@@ -276,7 +272,6 @@ func toString(v any) string {
 type LayerContext struct {
 	Span   *SpanHelper
 	Logger *LogHelper
-	fields []Field // Base fields for all logs
 }
 
 // Context returns the span's context for passing to child operations.
@@ -363,7 +358,6 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName).WithFields(allFields...),
-		fields: allFields,
 	}
 }
 
@@ -398,7 +392,6 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName).WithFields(allFields...),
-		fields: allFields,
 	}
 }
 
@@ -433,7 +426,6 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName).WithFields(allFields...),
-		fields: allFields,
 	}
 }
 
@@ -478,7 +470,6 @@ func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, oper
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName).WithFields(allFields...),
-		fields: allFields,
 	}
 }
 
@@ -516,7 +507,6 @@ func (l *LayeredSpanHelper) StartRepository(ctx context.Context, component, oper
 	return &LayerContext{
 		Span:   span,
 		Logger: span.Logger(tracerName).WithFields(allFields...),
-		fields: allFields,
 	}
 }
 

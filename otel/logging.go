@@ -39,7 +39,12 @@ func WithConsoleOutput(enabled bool) LoggerProviderOption {
 	}
 }
 
-// WithOTLPEndpoint enables OTLP log export
+// WithOTLPEndpoint enables OTLP log export.
+// The endpoint format depends on the exporter protocol:
+//   - HTTP (otlploghttp): full URL, e.g. "https://collector.example.com:4318"
+//   - gRPC (otlploggrpc): host:port without scheme, e.g. "collector.example.com:4317"
+//
+// This package uses otlploghttp, so provide a full URL with scheme.
 func WithOTLPEndpoint(endpoint string, insecure bool) LoggerProviderOption {
 	return func(cfg *loggerProviderConfig) {
 		cfg.otlpEndpoint = endpoint
@@ -59,6 +64,11 @@ func WithLogLevel(level LogLevel) LoggerProviderOption {
 // NewLoggerProviderWithOptions creates a LoggerProvider with flexible options.
 // It supports both console output (zerolog) and OTLP export, or both simultaneously.
 //
+// Console output uses a synchronous processor (SimpleProcessor) intentionally,
+// so that log records are written immediately and are visible without buffering.
+// This is appropriate for development and for ensuring log visibility on process exit.
+// OTLP export uses a BatchProcessor for efficiency.
+//
 // Parameters:
 //   - serviceName: Name of the service
 //   - opts: Optional configuration options
@@ -71,7 +81,7 @@ func WithLogLevel(level LogLevel) LoggerProviderOption {
 //
 //	provider, err := otel.NewLoggerProviderWithOptions("my-service",
 //	    otel.WithLogLevel(logging.LogLevelDebug),
-//	    otel.WithOTLPEndpoint("localhost:4318", true),
+//	    otel.WithOTLPEndpoint("https://localhost:4318", true),
 //	    otel.WithConsoleOutput(true))
 func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOption) (log.LoggerProvider, error) {
 	cfg := &loggerProviderConfig{
@@ -201,12 +211,15 @@ func (e *consoleExporter) Export(ctx context.Context, records []sdklog.Record) e
 	return nil
 }
 
-// Shutdown implements sdklog.Exporter interface
+// Shutdown implements sdklog.Exporter interface.
+// It is intentionally a no-op: console output (stderr) requires no teardown.
 func (e *consoleExporter) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// ForceFlush implements sdklog.Exporter interface
+// ForceFlush implements sdklog.Exporter interface.
+// It is intentionally a no-op: each record is written synchronously, so there
+// is no internal buffer to flush.
 func (e *consoleExporter) ForceFlush(ctx context.Context) error {
 	return nil
 }
@@ -268,6 +281,6 @@ func addAttributeToEvent(event *zerolog.Event, kv log.KeyValue) *zerolog.Event {
 	case log.KindMap:
 		return event.Interface(key, value.AsMap())
 	default:
-		return event.Interface(key, value.AsString())
+		return event.Interface(key, fmt.Sprint(value))
 	}
 }
