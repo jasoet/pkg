@@ -134,7 +134,7 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		tunnel := New(config)
 		require.NotNil(t, tunnel)
 
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		require.NoError(t, err, "Failed to start SSH tunnel")
 		defer tunnel.Close()
 
@@ -165,7 +165,7 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		assert.Error(t, err, "Expected error with invalid credentials")
 		assert.Contains(t, err.Error(), "SSH dial error", "Error should mention SSH dial")
 	})
@@ -184,7 +184,7 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		assert.Error(t, err, "Expected error with invalid host")
 		assert.Contains(t, err.Error(), "SSH dial error", "Error should mention SSH dial")
 	})
@@ -203,9 +203,9 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		assert.Error(t, err, "Expected error with invalid local port")
-		assert.Contains(t, err.Error(), "Local listen error", "Error should mention local listen")
+		assert.Contains(t, err.Error(), "local listen error", "Error should mention local listen")
 	})
 
 	t.Run("Close closes active connection", func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		require.NoError(t, err, "Failed to start SSH tunnel")
 
 		time.Sleep(1 * time.Second)
@@ -264,8 +264,8 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		tunnel1 := New(config1)
 		tunnel2 := New(config2)
 
-		err1 := tunnel1.Start()
-		err2 := tunnel2.Start()
+		err1 := tunnel1.Start(ctx)
+		err2 := tunnel2.Start(ctx)
 
 		assert.NoError(t, err1, "First tunnel should start successfully")
 		assert.NoError(t, err2, "Second tunnel should start successfully")
@@ -303,7 +303,7 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		}
 
 		tunnel := New(config)
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		require.NoError(t, err, "Failed to start SSH tunnel")
 		defer tunnel.Close()
 
@@ -343,7 +343,7 @@ func TestSSHTunnelConnectionTimeout(t *testing.T) {
 		tunnel := New(config)
 
 		start := time.Now()
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		elapsed := time.Since(start)
 
 		assert.Error(t, err, "Expected error when connecting to unreachable host")

@@ -1,6 +1,10 @@
 package ssh
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"net"
 	"testing"
 	"time"
@@ -142,7 +146,7 @@ func TestGetHostKeyCallback(t *testing.T) {
 		callback, err := tunnel.getHostKeyCallback()
 		assert.Error(t, err)
 		assert.Nil(t, callback)
-		assert.Contains(t, err.Error(), "failed to load known hosts file")
+		assert.Contains(t, err.Error(), "cannot load known hosts file")
 	})
 
 	t.Run("InsecureIgnoreHostKey works with different hosts", func(t *testing.T) {
@@ -320,7 +324,7 @@ func TestTunnel_DoubleStartGuard(t *testing.T) {
 		tunnel := &Tunnel{}
 		tunnel.client = &ssh.Client{}
 
-		err := tunnel.Start()
+		err := tunnel.Start(context.Background())
 		require.Error(t, err)
 		assert.Equal(t, "tunnel already started", err.Error())
 	})
@@ -330,19 +334,14 @@ func TestTunnel_DoubleStartGuard(t *testing.T) {
 // Helper functions for testing
 // ============================================================================
 
-// generateTestKey generates a test Ed25519 SSH private key
+// generateTestKey generates a fresh Ed25519 SSH private key for testing.
 func generateTestKey(t *testing.T) []byte {
 	t.Helper()
-	// Pre-generated Ed25519 test key (not used in production)
-	key := `-----BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-QyNTUxOQAAACA08n7gs4YIb2GUXZimqMUHm8XhtSFnaDjtyxNZGHVcDAAAAKgDzd9hA83f
-YQAAAAtzc2gtZWQyNTUxOQAAACA08n7gs4YIb2GUXZimqMUHm8XhtSFnaDjtyxNZGHVcDA
-AAAEDNaMtMq/J8fWuoxBg9hFGUKGRkpSNkLAfHFkjERLyg/TTyfuCzhghvYZRdmKaoxQeb
-xeG1IWdoOO3LE1kYdVwMAAAAIGphc29ldEBKYXNvZXRzLU1hY0Jvb2stQWlyLmxvY2FsAQ
-IDBAU=
------END OPENSSH PRIVATE KEY-----`
-	return []byte(key)
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	require.NoError(t, err)
+	return pem.EncodeToMemory(block)
 }
 
 // ============================================================================

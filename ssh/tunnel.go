@@ -69,6 +69,11 @@ func New(config Config) *Tunnel {
 
 // getHostKeyCallback returns the appropriate host key callback based on configuration
 func (t *Tunnel) getHostKeyCallback() (ssh.HostKeyCallback, error) {
+	// InsecureIgnoreHostKey and KnownHostsFile are mutually exclusive
+	if t.config.InsecureIgnoreHostKey && t.config.KnownHostsFile != "" {
+		return nil, fmt.Errorf("InsecureIgnoreHostKey and KnownHostsFile cannot both be set")
+	}
+
 	// If explicitly set to ignore host keys (NOT recommended for production)
 	if t.config.InsecureIgnoreHostKey {
 		// #nosec G106 -- Insecure host key verification is intentionally configurable for development/testing
@@ -79,7 +84,7 @@ func (t *Tunnel) getHostKeyCallback() (ssh.HostKeyCallback, error) {
 	if t.config.KnownHostsFile != "" {
 		callback, err := knownhosts.New(t.config.KnownHostsFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load known hosts file %s: %w", t.config.KnownHostsFile, err)
+			return nil, fmt.Errorf("cannot load known hosts file %q: %w", t.config.KnownHostsFile, err)
 		}
 		return callback, nil
 	}
@@ -119,8 +124,9 @@ func (t *Tunnel) getAuthMethods() ([]ssh.AuthMethod, error) {
 	return methods, nil
 }
 
-// Start establishes the SSH connection and begins forwarding traffic
-func (t *Tunnel) Start() error {
+// Start establishes the SSH connection and begins forwarding traffic.
+// The provided ctx is used for logger creation and SSH dial operations.
+func (t *Tunnel) Start(ctx context.Context) error {
 	t.mu.Lock()
 	if t.client != nil {
 		t.mu.Unlock()
@@ -129,7 +135,23 @@ func (t *Tunnel) Start() error {
 	t.stopCh = make(chan struct{})
 	t.mu.Unlock()
 
-	ctx := context.Background()
+	// Input validation
+	if t.config.Host == "" {
+		return fmt.Errorf("SSH host is required")
+	}
+	if t.config.Port <= 0 || t.config.Port > 65535 {
+		return fmt.Errorf("invalid SSH port: %d", t.config.Port)
+	}
+	if t.config.User == "" {
+		return fmt.Errorf("SSH user is required")
+	}
+	if t.config.RemoteHost == "" {
+		return fmt.Errorf("remote host is required")
+	}
+	if t.config.RemotePort <= 0 || t.config.RemotePort > 65535 {
+		return fmt.Errorf("invalid remote port: %d", t.config.RemotePort)
+	}
+
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.Start")
 
 	hostKeyCallback, err := t.getHostKeyCallback()
@@ -147,6 +169,10 @@ func (t *Tunnel) Start() error {
 		Auth:            authMethods,
 		HostKeyCallback: hostKeyCallback,
 		Timeout:         t.config.Timeout,
+	}
+
+	if t.config.InsecureIgnoreHostKey {
+		logger.Warn("InsecureIgnoreHostKey is enabled - SSH host key verification is disabled")
 	}
 
 	serverEndpoint := fmt.Sprintf("%s:%d", t.config.Host, t.config.Port)
@@ -170,7 +196,7 @@ func (t *Tunnel) Start() error {
 		t.client = nil
 		t.mu.Unlock()
 		client.Close()
-		return fmt.Errorf("Local listen error: %w", err)
+		return fmt.Errorf("local listen error: %w", err)
 	}
 
 	t.mu.Lock()
@@ -203,7 +229,22 @@ func (t *Tunnel) Start() error {
 	return nil
 }
 
-// forward handles the forwarding of data between the local and remote connections
+// LocalAddr returns the local address the tunnel listener is bound to.
+// Returns an empty string if the tunnel is not started.
+func (t *Tunnel) LocalAddr() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.listener != nil {
+		return t.listener.Addr().String()
+	}
+	return ""
+}
+
+// forward handles the forwarding of data between the local and remote connections.
+//
+// Note: half-close (CloseWrite) is not implemented here. Both directions are
+// copied concurrently and both connections are closed once both copies finish.
+// This may affect streaming protocols that rely on half-close semantics.
 func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.forward")
@@ -229,12 +270,16 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(remoteConn, localConn) //nolint:errcheck
+		if _, err := io.Copy(remoteConn, localConn); err != nil {
+			logger.Debug("copy local->remote ended", otel.F("err", err.Error()))
+		}
 	}()
 
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(localConn, remoteConn) //nolint:errcheck
+		if _, err := io.Copy(localConn, remoteConn); err != nil {
+			logger.Debug("copy remote->local ended", otel.F("err", err.Error()))
+		}
 	}()
 
 	wg.Wait()

@@ -12,6 +12,7 @@ The `ssh` package provides production-ready SSH tunneling functionality for secu
 
 - **Port Forwarding**: Forward local port to remote endpoint via SSH
 - **Password Authentication**: Simple password-based auth
+- **Key-Based Authentication**: SSH private key (Ed25519, RSA, etc.) with optional passphrase
 - **Configurable Timeout**: Control connection timeouts
 - **Host Key Verification**: Optional known_hosts checking
 - **Concurrent Connections**: Handles multiple simultaneous connections
@@ -56,7 +57,7 @@ func main() {
 
     tunnel := ssh.New(config)
 
-    if err := tunnel.Start(); err != nil {
+    if err := tunnel.Start(ctx); err != nil {
         panic(err)
     }
     defer tunnel.Close()
@@ -86,7 +87,7 @@ config := ssh.Config{
 }
 
 tunnel := ssh.New(config)
-tunnel.Start()
+tunnel.Start(ctx)
 defer tunnel.Close()
 
 // Connect to database through tunnel
@@ -168,7 +169,7 @@ config := ssh.Config{
 }
 
 tunnel := ssh.New(config)
-tunnel.Start()
+tunnel.Start(ctx)
 defer tunnel.Close()
 
 // Connect to production DB securely
@@ -200,8 +201,8 @@ redisTunnel := ssh.New(ssh.Config{
     LocalPort:  16379,
 })
 
-dbTunnel.Start()
-redisTunnel.Start()
+dbTunnel.Start(ctx)
+redisTunnel.Start(ctx)
 
 defer dbTunnel.Close()
 defer redisTunnel.Close()
@@ -214,7 +215,7 @@ defer redisTunnel.Close()
 ```go
 // Start tunnel for specific operation
 tunnel := ssh.New(config)
-tunnel.Start()
+tunnel.Start(ctx)
 
 // Perform operation
 db, _ := sql.Open("postgres", "host=localhost port=15432 ...")
@@ -285,7 +286,7 @@ config := ssh.Config{
 ```go
 tunnel := ssh.New(config)
 
-if err := tunnel.Start(); err != nil {
+if err := tunnel.Start(ctx); err != nil {
     switch {
     case strings.Contains(err.Error(), "SSH dial error"):
         // Cannot reach SSH server
@@ -295,7 +296,7 @@ if err := tunnel.Start(); err != nil {
         // Invalid credentials
         log.Printf("Invalid SSH credentials: %v", err)
 
-    case strings.Contains(err.Error(), "Local listen error"):
+    case strings.Contains(err.Error(), "local listen error"):
         // Port already in use
         log.Printf("Local port %d already in use", config.LocalPort)
 
@@ -316,7 +317,7 @@ ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
 
 tunnel := ssh.New(config)
-tunnel.Start()
+tunnel.Start(ctx)
 
 // Close tunnel when context cancelled
 go func() {
@@ -332,7 +333,7 @@ func startTunnelWithRetry(config ssh.Config, maxRetries int) (*ssh.Tunnel, error
     tunnel := ssh.New(config)
 
     for i := 0; i < maxRetries; i++ {
-        err := tunnel.Start()
+        err := tunnel.Start(ctx)
         if err == nil {
             return tunnel, nil
         }
@@ -358,7 +359,7 @@ func checkTunnelHealth(localPort int) error {
 }
 
 // Usage
-tunnel.Start()
+tunnel.Start(ctx)
 if err := checkTunnelHealth(config.LocalPort); err != nil {
     log.Fatal(err)
 }
@@ -371,14 +372,14 @@ if err := checkTunnelHealth(config.LocalPort); err != nil {
 ```go
 // ✅ Good: Use defer
 tunnel := ssh.New(config)
-if err := tunnel.Start(); err != nil {
+if err := tunnel.Start(ctx); err != nil {
     return err
 }
 defer tunnel.Close()
 
 // ❌ Bad: Forget to close
 tunnel := ssh.New(config)
-tunnel.Start()
+tunnel.Start(ctx)
 // Tunnel leaks!
 ```
 
@@ -398,7 +399,7 @@ redisTunnel := ssh.New(ssh.Config{LocalPort: 15000, ...}) // Conflict!
 
 ```go
 // ✅ Good: Test before using
-tunnel.Start()
+tunnel.Start(ctx)
 
 conn, err := net.DialTimeout("tcp", "localhost:15432", 5*time.Second)
 if err != nil {
@@ -485,7 +486,7 @@ func TestSSHTunnel(t *testing.T) {
     }
 
     tunnel := ssh.New(config)
-    err := tunnel.Start()
+    err := tunnel.Start(ctx)
     assert.NoError(t, err)
     defer tunnel.Close()
 }
@@ -531,7 +532,7 @@ config := ssh.Config{
 
 ### Port Already in Use
 
-**Problem**: `Local listen error: address already in use`
+**Problem**: `local listen error: address already in use`
 
 **Solutions:**
 ```go
@@ -572,9 +573,9 @@ config := ssh.Config{
 
 ## Limitations
 
-1. **Password Only**: Currently supports password auth only (no key-based auth)
-2. **TCP Only**: Only TCP port forwarding (no UDP)
-3. **Single SSH Server**: One SSH server per tunnel
+1. **TCP Only**: Only TCP port forwarding (no UDP)
+2. **Single SSH Server**: One SSH server per tunnel
+3. **No half-close**: Half-close (CloseWrite) is not implemented and may affect streaming protocols
 
 ## Examples
 
