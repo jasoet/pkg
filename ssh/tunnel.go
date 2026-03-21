@@ -20,7 +20,7 @@ type Config struct {
 	Host     string `yaml:"host" mapstructure:"host"`
 	Port     int    `yaml:"port" mapstructure:"port"`
 	User     string `yaml:"user" mapstructure:"user"`
-	Password string `yaml:"password" mapstructure:"password"`
+	Password string `yaml:"-" mapstructure:"-"`
 
 	// SSH private key for key-based authentication (PEM-encoded)
 	PrivateKey []byte `yaml:"-" mapstructure:"-"`
@@ -51,6 +51,8 @@ type Tunnel struct {
 	client   *ssh.Client
 	listener net.Listener
 	mu       sync.Mutex
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 // New creates a new SSH tunnel with the given configuration
@@ -119,6 +121,14 @@ func (t *Tunnel) getAuthMethods() ([]ssh.AuthMethod, error) {
 
 // Start establishes the SSH connection and begins forwarding traffic
 func (t *Tunnel) Start() error {
+	t.mu.Lock()
+	if t.client != nil {
+		t.mu.Unlock()
+		return fmt.Errorf("tunnel already started")
+	}
+	t.stopCh = make(chan struct{})
+	t.mu.Unlock()
+
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.Start")
 
@@ -142,18 +152,24 @@ func (t *Tunnel) Start() error {
 	serverEndpoint := fmt.Sprintf("%s:%d", t.config.Host, t.config.Port)
 	logger.Debug("Connecting to SSH server", otel.F("endpoint", serverEndpoint))
 
-	t.client, err = ssh.Dial("tcp", serverEndpoint, sshConfig)
+	client, err := ssh.Dial("tcp", serverEndpoint, sshConfig)
 	if err != nil {
 		return fmt.Errorf("SSH dial error: %w", err)
 	}
+
+	t.mu.Lock()
+	t.client = client
+	t.mu.Unlock()
 
 	localEndpoint := fmt.Sprintf("localhost:%d", t.config.LocalPort)
 	remoteEndpoint := fmt.Sprintf("%s:%d", t.config.RemoteHost, t.config.RemotePort)
 
 	listener, err := net.Listen("tcp", localEndpoint)
 	if err != nil {
-		t.client.Close()
+		t.mu.Lock()
 		t.client = nil
+		t.mu.Unlock()
+		client.Close()
 		return fmt.Errorf("Local listen error: %w", err)
 	}
 
@@ -169,10 +185,18 @@ func (t *Tunnel) Start() error {
 		for {
 			localConn, err := listener.Accept()
 			if err != nil {
-				// Listener was closed, exit goroutine
-				return
+				select {
+				case <-t.stopCh:
+					return
+				default:
+					continue
+				}
 			}
-			go t.forward(localConn, remoteEndpoint)
+			t.wg.Add(1)
+			go func() {
+				defer t.wg.Done()
+				t.forward(localConn, remoteEndpoint)
+			}()
 		}
 	}()
 
@@ -184,7 +208,16 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.forward")
 
-	remoteConn, err := t.client.Dial("tcp", remoteAddr)
+	t.mu.Lock()
+	client := t.client
+	t.mu.Unlock()
+
+	if client == nil {
+		localConn.Close()
+		return
+	}
+
+	remoteConn, err := client.Dial("tcp", remoteAddr)
 	if err != nil {
 		logger.Error(err, "SSH tunnel dial error", otel.F("remoteAddr", remoteAddr))
 		localConn.Close()
@@ -212,15 +245,28 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 // Close terminates the SSH connection and stops the tunnel
 func (t *Tunnel) Close() error {
 	t.mu.Lock()
-	listener := t.listener
-	t.listener = nil
+	if t.client == nil {
+		t.mu.Unlock()
+		return nil
+	}
+
+	if t.stopCh != nil {
+		select {
+		case <-t.stopCh:
+		default:
+			close(t.stopCh)
+		}
+	}
+
+	if t.listener != nil {
+		_ = t.listener.Close()
+		t.listener = nil
+	}
+
+	client := t.client
+	t.client = nil
 	t.mu.Unlock()
 
-	if listener != nil {
-		listener.Close()
-	}
-	if t.client != nil {
-		return t.client.Close()
-	}
-	return nil
+	t.wg.Wait()
+	return client.Close()
 }

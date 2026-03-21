@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNew(t *testing.T) {
@@ -302,6 +303,26 @@ func TestTunnelStruct(t *testing.T) {
 		assert.Equal(t, "example.com", tunnel.config.Host)
 		assert.Nil(t, tunnel.client)
 		assert.Nil(t, tunnel.listener)
+	})
+}
+
+func TestTunnel_PasswordNotInYAML(t *testing.T) {
+	cfg := Config{Password: "secret123"}
+	data, err := yaml.Marshal(cfg)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "secret123")
+}
+
+func TestTunnel_DoubleStartGuard(t *testing.T) {
+	t.Run("returns error when tunnel is already started", func(t *testing.T) {
+		// Since tunnel.go is in the same package, we can set unexported fields directly.
+		// Set client to a non-nil sentinel value to simulate a started tunnel.
+		tunnel := &Tunnel{}
+		tunnel.client = &ssh.Client{}
+
+		err := tunnel.Start()
+		require.Error(t, err)
+		assert.Equal(t, "tunnel already started", err.Error())
 	})
 }
 
