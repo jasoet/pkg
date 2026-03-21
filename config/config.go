@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -10,8 +11,8 @@ import (
 // LoadString loads configuration from a string with optional environment variable support.
 // Parameters:
 // - configString: The configuration string in YAML format
-// - envPrefix: Optional environment variable prefix (default: "ENV")
-// - configFn: Optional function to customize viper configuration before unmarshaling
+// - envPrefix: Optional environment variable prefix (default: "ENV"). Only the first value
+//   is used; any additional values are ignored.
 func LoadString[T any](configString string, envPrefix ...string) (*T, error) {
 	// For backward compatibility
 	return LoadStringWithConfig[T](configString, nil, envPrefix...)
@@ -22,7 +23,8 @@ func LoadString[T any](configString string, envPrefix ...string) (*T, error) {
 // Parameters:
 // - configString: The configuration string in YAML format
 // - configFn: Optional function to customize viper configuration before unmarshaling
-// - envPrefix: Optional environment variable prefix (default: "ENV")
+// - envPrefix: Optional environment variable prefix (default: "ENV"). Only the first value
+//   is used; any additional values are ignored.
 func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper), envPrefix ...string) (*T, error) {
 	viperConfig := viper.New()
 
@@ -38,7 +40,7 @@ func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper
 	viperConfig.SetConfigType("yaml")
 	err := viperConfig.ReadConfig(strings.NewReader(configString))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config: failed to parse YAML: %w", err)
 	}
 
 	// Apply custom configuration if provided
@@ -50,7 +52,7 @@ func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper
 
 	err = viperConfig.Unmarshal(&config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config: failed to unmarshal into %T: %w", config, err)
 	}
 	return &config, nil
 }
@@ -58,8 +60,11 @@ func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper
 // NestedEnvVars processes environment variables with a specific prefix and sets them in the viper configuration.
 // This function is useful for handling nested configuration structures from environment variables.
 // Parameters:
-// - prefix: The prefix for environment variables to process
-// - keyDepth: The depth at which entity names are found in the key parts
+// - prefix: The prefix for environment variables to process (e.g. "MY_APP_")
+// - keyDepth: The zero-based index into the full underscore-split key (including prefix tokens)
+//   at which the entity name token is located. For example, given the env var MY_APP_USER_NAME,
+//   the split parts are ["MY", "APP", "USER", "NAME"]. With keyDepth=2, "USER" (index 2) is
+//   treated as the entity name and "NAME" becomes the field name.
 // - configPath: The base path in the configuration where values should be set
 // - viperConfig: The viper configuration instance to modify
 //

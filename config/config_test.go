@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -10,11 +9,11 @@ import (
 
 // TestConfig is a sample configuration struct for testing
 type TestConfig struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
+	Name    string `yaml:"name" mapstructure:"name"`
+	Version string `yaml:"version" mapstructure:"version"`
 	Nested  struct {
-		Value int `yaml:"value"`
-	} `yaml:"nested"`
+		Value int `yaml:"value" mapstructure:"value"`
+	} `yaml:"nested" mapstructure:"nested"`
 }
 
 // StringSliceConfig is a configuration struct with a string slice field
@@ -39,8 +38,7 @@ nested:
 	assert.Equal(t, 42, config.Nested.Value)
 
 	// Test with environment variables
-	os.Setenv("ENV_NAME", "env-app")
-	defer os.Unsetenv("ENV_NAME")
+	t.Setenv("ENV_NAME", "env-app")
 
 	config, err = LoadString[TestConfig](yamlConfig)
 	assert.NoError(t, err)
@@ -49,8 +47,7 @@ nested:
 	assert.Equal(t, 42, config.Nested.Value)
 
 	// Test with custom environment prefix
-	os.Setenv("CUSTOM_NAME", "custom-app")
-	defer os.Unsetenv("CUSTOM_NAME")
+	t.Setenv("CUSTOM_NAME", "custom-app")
 
 	config, err = LoadString[TestConfig](yamlConfig, "CUSTOM")
 	assert.NoError(t, err)
@@ -79,8 +76,7 @@ nested:
 	assert.Equal(t, 100, config.Nested.Value)
 
 	// Test with NestedEnvVars
-	os.Setenv("TEST_GOERS_ACCOUNTS_USER_NAME", "test-user")
-	defer os.Unsetenv("TEST_GOERS_ACCOUNTS_USER_NAME")
+	t.Setenv("TEST_GOERS_ACCOUNTS_USER_NAME", "test-user")
 
 	nestedConfigFn := func(v *viper.Viper) {
 		NestedEnvVars("TEST_GOERS_ACCOUNTS_", 3, "goers.accounts", v)
@@ -103,16 +99,10 @@ nested:
 
 func TestNestedEnvVars(t *testing.T) {
 	// Setup test environment variables
-	os.Setenv("TEST_APP_USER_NAME", "john")
-	os.Setenv("TEST_APP_USER_EMAIL", "john@example.com")
-	os.Setenv("TEST_APP_ADMIN_NAME", "admin")
-	os.Setenv("TEST_APP_ADMIN_EMAIL", "admin@example.com")
-	defer func() {
-		os.Unsetenv("TEST_APP_USER_NAME")
-		os.Unsetenv("TEST_APP_USER_EMAIL")
-		os.Unsetenv("TEST_APP_ADMIN_NAME")
-		os.Unsetenv("TEST_APP_ADMIN_EMAIL")
-	}()
+	t.Setenv("TEST_APP_USER_NAME", "john")
+	t.Setenv("TEST_APP_USER_EMAIL", "john@example.com")
+	t.Setenv("TEST_APP_ADMIN_NAME", "admin")
+	t.Setenv("TEST_APP_ADMIN_EMAIL", "admin@example.com")
 
 	// Create viper instance
 	v := viper.New()
@@ -161,8 +151,7 @@ features:
 	assert.Equal(t, []string{"feature1", "feature2"}, config.Features)
 
 	// Test with environment variables overriding string slices
-	os.Setenv("ENV_TAGS", "env-tag1,env-tag2,env-tag3")
-	defer os.Unsetenv("ENV_TAGS")
+	t.Setenv("ENV_TAGS", "env-tag1,env-tag2,env-tag3")
 
 	config, err = LoadStringWithConfig[StringSliceConfig](yamlConfig, nil)
 	assert.NoError(t, err)
@@ -171,12 +160,8 @@ features:
 	assert.Equal(t, []string{"feature1", "feature2"}, config.Features)
 
 	// Test with custom environment prefix
-	os.Setenv("CUSTOM_FEATURES", "custom-feature1,custom-feature2,custom-feature3")
-	os.Setenv("CUSTOM_TAGS", "custom-tag1,custom-tag2,custom-tag3")
-	defer func() {
-		os.Unsetenv("CUSTOM_FEATURES")
-		os.Unsetenv("CUSTOM_TAGS")
-	}()
+	t.Setenv("CUSTOM_FEATURES", "custom-feature1,custom-feature2,custom-feature3")
+	t.Setenv("CUSTOM_TAGS", "custom-tag1,custom-tag2,custom-tag3")
 
 	// Use LoadStringWithConfig directly with custom prefix
 	config, err = LoadStringWithConfig[StringSliceConfig](yamlConfig, nil, "CUSTOM")
@@ -184,4 +169,10 @@ features:
 	assert.Equal(t, "slice-app", config.Name)
 	assert.Equal(t, []string{"custom-tag1", "custom-tag2", "custom-tag3"}, config.Tags)
 	assert.Equal(t, []string{"custom-feature1", "custom-feature2", "custom-feature3"}, config.Features)
+}
+
+func TestLoadString_InvalidYAML(t *testing.T) {
+	_, err := LoadString[TestConfig]("not: valid: yaml: [")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse YAML")
 }
