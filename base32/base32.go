@@ -127,11 +127,9 @@ func DecodeBase32(encoded string) (uint64, error) {
 		if result > math.MaxUint64/32 {
 			return 0, fmt.Errorf("value overflow at position %d", i)
 		}
-		next := result*32 + uint64(value)
-		if next < result {
-			return 0, fmt.Errorf("value overflow at position %d", i)
-		}
-		result = next
+		// The pre-check above (result > math.MaxUint64/32) is sufficient to prevent overflow;
+		// a secondary next < result check is unreachable and has been removed.
+		result = result*32 + uint64(value)
 	}
 
 	return result, nil
@@ -172,9 +170,21 @@ func IsValidBase32Char(c rune) bool {
 	return ok
 }
 
+// normalizeReplacer performs single-pass replacement of confusable characters and separators.
+var normalizeReplacer = strings.NewReplacer(
+	"-", "",
+	" ", "",
+	"\t", "",
+	"\n", "",
+	"\r", "",
+	"I", "1",
+	"L", "1",
+	"O", "0",
+)
+
 // NormalizeBase32 normalizes a Base32 string by:
 //   - Converting to uppercase
-//   - Removing dashes and spaces
+//   - Removing dashes, spaces, tabs, and newlines
 //   - Correcting common mistakes (I→1, L→1, O→0)
 //
 // This function is useful for processing user input to ensure consistency.
@@ -184,16 +194,6 @@ func IsValidBase32Char(c rune) bool {
 //	base32.NormalizeBase32("abc-def")   // "ABCDEF"
 //	base32.NormalizeBase32("1O 2I")     // "1021"
 //	base32.NormalizeBase32("hell0")     // "HELL0"
-//
-// normalizeReplacer performs single-pass replacement of confusable characters and separators.
-var normalizeReplacer = strings.NewReplacer(
-	"-", "",
-	" ", "",
-	"I", "1",
-	"L", "1",
-	"O", "0",
-)
-
 func NormalizeBase32(input string) string {
 	return normalizeReplacer.Replace(strings.ToUpper(input))
 }
@@ -213,11 +213,14 @@ func EncodeBase32Compact(value uint64) string {
 		return "0"
 	}
 
-	var result []byte
+	// Build digits into a fixed-size array in reverse order to avoid O(N²) prepend.
+	var buf [13]byte // ceil(64/5) = 13 Base32 digits max for uint64
+	pos := len(buf)
 	for value > 0 {
-		result = append([]byte{base32Alphabet[value%32]}, result...)
+		pos--
+		buf[pos] = base32Alphabet[value%32]
 		value /= 32
 	}
 
-	return string(result)
+	return string(buf[pos:])
 }

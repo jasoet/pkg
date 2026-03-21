@@ -38,10 +38,16 @@ import (
 
 func main() {
     // Encode a number
-    id := base32.EncodeBase32(12345, 8)  // "0000C1P9"
+    id, err := base32.EncodeBase32(12345, 8)  // "0000C1S", nil
+    if err != nil {
+        panic(err)
+    }
 
     // Add checksum for error detection
-    idWithChecksum := base32.AppendChecksum(id)
+    idWithChecksum, err := base32.AppendChecksum(id)
+    if err != nil {
+        panic(err)
+    }
 
     // Validate checksum
     if base32.ValidateChecksum(idWithChecksum) {
@@ -75,10 +81,10 @@ decoded, _ := base32.DecodeBase32(shortCode)
 timestamp := uint64(time.Now().Unix())
 sequence := uint64(12345)
 
-timeCode := base32.EncodeBase32(timestamp, 8)
-seqCode := base32.EncodeBase32(sequence, 4)
+timeCode, _ := base32.EncodeBase32(timestamp, 8)
+seqCode, _ := base32.EncodeBase32(sequence, 4)
 
-orderID := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
+orderID, _ := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
 // ORD-6HG4K2N0-00C1P9XY
 ```
 
@@ -88,10 +94,10 @@ orderID := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
 productID := uint64(42)
 customerID := uint64(789)
 
-product := base32.EncodeBase32(productID, 2)
-customer := base32.EncodeBase32(customerID, 4)
+product, _ := base32.EncodeBase32(productID, 2)
+customer, _ := base32.EncodeBase32(customerID, 4)
 
-licenseKey := base32.AppendChecksum(product + customer)
+licenseKey, _ := base32.AppendChecksum(product + customer)
 // Format: 16-00NC-XY
 ```
 
@@ -99,8 +105,8 @@ licenseKey := base32.AppendChecksum(product + customer)
 
 ```go
 voucherID := uint64(9999)
-code := base32.EncodeBase32(voucherID, 4)
-codeWithChecksum := base32.AppendChecksum(code)
+code, _ := base32.EncodeBase32(voucherID, 4)
+codeWithChecksum, _ := base32.AppendChecksum(code)
 // 09ZZ-XY (easy to type, error-correcting)
 ```
 
@@ -116,22 +122,22 @@ deviceID := base32.EncodeBase32Compact(deviceSerial)
 
 ### Base32 Encoding
 
-#### `EncodeBase32(value uint64, length int) string`
+#### `EncodeBase32(value uint64, length int) (string, error)`
 
 Encodes an unsigned integer to a fixed-length Base32 string.
 
 ```go
-base32.EncodeBase32(42, 4)     // "0016"
-base32.EncodeBase32(12345, 6)  // "00C1P9"
+encoded, err := base32.EncodeBase32(42, 4)     // "001A", nil
+encoded, err := base32.EncodeBase32(12345, 6)  // "000C1S", nil
 ```
 
 #### `EncodeBase32Compact(value uint64) string`
 
-Encodes to the minimum number of characters needed.
+Encodes to the minimum number of characters needed (no error return).
 
 ```go
-base32.EncodeBase32Compact(0)      // "0"
-base32.EncodeBase32Compact(12345)  // "C1P9"
+encoded := base32.EncodeBase32Compact(0)      // "0"
+encoded := base32.EncodeBase32Compact(12345)  // "C1S"
 ```
 
 #### `DecodeBase32(encoded string) (uint64, error)`
@@ -168,20 +174,20 @@ base32.IsValidBase32Char('U')  // false
 
 ### Checksums
 
-#### `CalculateChecksum(data string) string`
+#### `CalculateChecksum(data string) (string, error)`
 
 Computes a 2-character CRC-10 checksum.
 
 ```go
-checksum := base32.CalculateChecksum("ABC123")  // "XY"
+checksum, err := base32.CalculateChecksum("ABC123")  // "XY", nil
 ```
 
-#### `AppendChecksum(data string) string`
+#### `AppendChecksum(data string) (string, error)`
 
 Adds checksum to the end of data.
 
 ```go
-withChecksum := base32.AppendChecksum("ABC123")  // "ABC123XY"
+withChecksum, err := base32.AppendChecksum("ABC123")  // "ABC123XY", nil
 ```
 
 #### `ValidateChecksum(input string) bool`
@@ -224,7 +230,7 @@ The CRC-10 checksum provides excellent error detection:
 
 ```go
 // Valid ID
-validID := base32.AppendChecksum("ABC123")
+validID, _ := base32.AppendChecksum("ABC123")
 
 // Corrupted ID (A → X)
 corrupted := "XBC123" + base32.ExtractChecksum(validID)
@@ -279,7 +285,7 @@ This design minimizes human transcription errors.
 1. **Always use checksums for user-facing IDs**
    ```go
    // ✓ Good
-   id := base32.AppendChecksum(data)
+   id, err := base32.AppendChecksum(data)
 
    // ✗ Avoid
    id := data  // No error detection

@@ -30,6 +30,10 @@ const crc10Polynomial = 0x233
 //   - A 2-character Base32 checksum
 //   - An error if the input contains invalid characters
 func CalculateChecksum(data string) (string, error) {
+	if data == "" {
+		return "", fmt.Errorf("empty Base32 string")
+	}
+
 	crc := uint16(0)
 
 	// Process each character in the data

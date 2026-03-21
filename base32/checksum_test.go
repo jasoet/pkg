@@ -45,6 +45,12 @@ func TestCalculateChecksum(t *testing.T) {
 	}
 }
 
+func TestCalculateChecksum_EmptyString(t *testing.T) {
+	_, err := CalculateChecksum("")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty Base32 string")
+}
+
 func TestCalculateChecksumDifferentInputs(t *testing.T) {
 	// Different inputs should produce different checksums (with high probability)
 	data1 := "ABC123"

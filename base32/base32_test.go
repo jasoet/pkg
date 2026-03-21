@@ -1,6 +1,7 @@
 package base32
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,7 +91,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	}
 
 	for _, original := range testCases {
-		t.Run(string(rune(original)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d", original), func(t *testing.T) {
 			encoded, err := EncodeBase32(original, 10)
 			assert.NoError(t, err)
 
