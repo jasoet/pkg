@@ -1,9 +1,9 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -68,27 +68,23 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, con
 	}
 	defer logs.Close()
 
-	// Read logs — ContainerLogs respects context cancellation, so blocking
-	// reads will unblock when the timeout fires. No select/default needed.
-	buf := make([]byte, 8192)
-	for {
-		n, err := logs.Read(buf)
-		if n > 0 {
-			if w.pattern.MatchString(string(buf[:n])) {
-				return nil
-			}
-		}
-		if err != nil {
-			if err == io.EOF {
-				return fmt.Errorf("container stopped before log pattern found: %s", w.pattern.String())
-			}
-			// Context cancellation surfaces as a read error
-			if ctx.Err() != nil {
-				return fmt.Errorf("timeout waiting for log pattern: %s", w.pattern.String())
-			}
-			return fmt.Errorf("error reading logs: %w", err)
+	// Use bufio.Scanner to read complete lines, avoiding chunk-boundary false negatives
+	// where a pattern could be split across two Read calls.
+	// ContainerLogs respects context cancellation, so Scan() will unblock when the timeout fires.
+	scanner := bufio.NewScanner(logs)
+	for scanner.Scan() {
+		if w.pattern.MatchString(scanner.Text()) {
+			return nil
 		}
 	}
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("timeout waiting for log pattern: %s", w.pattern.String())
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading logs: %w", err)
+	}
+	return fmt.Errorf("container stopped before log pattern found: %s", w.pattern.String())
 }
 
 // waitForPort waits for a port to be listening.
@@ -328,6 +324,11 @@ func (w *waitFunc) WaitUntilReady(ctx context.Context, cli *client.Client, conta
 }
 
 // multiWait combines multiple wait strategies (ALL must pass).
+// Note on timeout behavior: multiWait sets an outer deadline via WithStartupTimeout (default 120s).
+// Each child strategy also has its own independent timeout. The effective timeout for each child
+// is min(child timeout, remaining time on the outer deadline). To avoid unexpected early expiration,
+// set the outer timeout to be at least as large as the sum of all child timeouts, or rely solely on
+// the outer timeout by setting child timeouts to a large value.
 type multiWait struct {
 	strategies []WaitStrategy
 	timeout    time.Duration

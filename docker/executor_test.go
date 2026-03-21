@@ -664,6 +664,19 @@ func TestExecutor_StdoutStderr(t *testing.T) {
 func BenchmarkExecutor_StartStop(b *testing.B) {
 	ctx := context.Background()
 
+	exec, err := docker.New(
+		docker.WithImage("alpine:latest"),
+		docker.WithCmd("sleep", "1"),
+		docker.WithAutoRemove(true),
+	)
+	if err != nil {
+		b.Skip("Docker not available:", err)
+	}
+	if startErr := exec.Start(ctx); startErr != nil {
+		b.Skip("Docker not available:", startErr)
+	}
+	exec.Terminate(ctx)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		exec, _ := docker.New(
@@ -680,15 +693,20 @@ func BenchmarkExecutor_StartStop(b *testing.B) {
 func BenchmarkExecutor_GetStatus(b *testing.B) {
 	ctx := context.Background()
 
-	exec, _ := docker.New(
+	exec, err := docker.New(
 		docker.WithImage("nginx:alpine"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
 		),
 	)
+	if err != nil {
+		b.Skip("Docker not available:", err)
+	}
 
-	exec.Start(ctx)
+	if startErr := exec.Start(ctx); startErr != nil {
+		b.Skip("Docker not available:", startErr)
+	}
 	defer exec.Terminate(ctx)
 
 	b.ResetTimer()
@@ -700,13 +718,18 @@ func BenchmarkExecutor_GetStatus(b *testing.B) {
 func BenchmarkExecutor_GetLogs(b *testing.B) {
 	ctx := context.Background()
 
-	exec, _ := docker.New(
+	exec, err := docker.New(
 		docker.WithImage("alpine:latest"),
 		docker.WithCmd("echo", "test log"),
 		docker.WithAutoRemove(true),
 	)
+	if err != nil {
+		b.Skip("Docker not available:", err)
+	}
 
-	exec.Start(ctx)
+	if startErr := exec.Start(ctx); startErr != nil {
+		b.Skip("Docker not available:", startErr)
+	}
 	defer exec.Terminate(ctx)
 
 	time.Sleep(1 * time.Second)

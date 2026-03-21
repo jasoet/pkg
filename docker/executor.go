@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/docker/pkg/stdcopy"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -109,6 +110,10 @@ func (e *Executor) Start(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if e.client == nil {
+		return fmt.Errorf("executor has been closed")
+	}
+
 	// Guard against double-start which would leak containers.
 	if e.containerID != "" {
 		return fmt.Errorf("container already started: %s", e.containerID)
@@ -168,6 +173,8 @@ func (e *Executor) Start(ctx context.Context) error {
 
 // Stop gracefully stops the container (sends SIGTERM).
 // The container can still be restarted after stopping.
+// Note: There is a small TOCTOU window between the containerID check and the Docker API call.
+// Concurrent Terminate() may cause a benign "container not found" error.
 func (e *Executor) Stop(ctx context.Context) error {
 	e.mu.RLock()
 	containerID := e.containerID
@@ -247,6 +254,8 @@ func (e *Executor) terminate(ctx context.Context) error {
 }
 
 // Restart restarts the container.
+// Note: There is a small TOCTOU window between the containerID check and the Docker API call.
+// Concurrent Terminate() may cause a benign "container not found" error.
 func (e *Executor) Restart(ctx context.Context) error {
 	e.mu.RLock()
 	containerID := e.containerID
@@ -321,8 +330,16 @@ func (e *Executor) ContainerID() string {
 
 // Close closes the Docker client connection.
 // The container is NOT terminated automatically - call Terminate() first if needed.
+// After Close(), any method that uses the Docker client will return an error.
 func (e *Executor) Close() error {
-	return e.client.Close()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.client == nil {
+		return nil
+	}
+	err := e.client.Close()
+	e.client = nil
+	return err
 }
 
 // pullImage pulls the container image if not already present.
@@ -330,9 +347,12 @@ func (e *Executor) pullImage(ctx context.Context) error {
 	// Check if image exists locally
 	_, err := e.client.ImageInspect(ctx, e.config.image)
 	if err == nil {
-		// Image already exists
-		return nil
+		return nil // image exists
 	}
+	if !errdefs.IsNotFound(err) {
+		return fmt.Errorf("failed to inspect image %s: %w", e.config.image, err)
+	}
+	// Image not found, proceed to pull
 
 	// Pull image
 	reader, err := e.client.ImagePull(ctx, e.config.image, image.PullOptions{})

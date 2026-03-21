@@ -18,7 +18,9 @@ type LogEntry struct {
 	// Content is the log line content
 	Content string
 
-	// Timestamp is when the log was generated (if timestamps enabled)
+	// Timestamp is when the log was generated (if timestamps enabled).
+	// Note: Timestamp is not currently populated by StreamLogs or Logs; it remains the zero value.
+	// To obtain timestamps, enable WithTimestamps() and parse the prefix from Content manually.
 	Timestamp time.Time
 }
 

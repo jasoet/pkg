@@ -92,6 +92,9 @@ func (e *Executor) Status(ctx context.Context) (*Status, error) {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
+	// State holds the machine-readable container state (e.g., "running", "exited").
+	// Status holds the same value; Docker's inspect API does not expose a separate
+	// human-readable status string beyond inspect.State.Status.
 	status := &Status{
 		ID:         inspect.ID,
 		Name:       inspect.Name,

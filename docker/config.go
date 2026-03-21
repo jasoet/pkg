@@ -48,7 +48,8 @@ type ContainerRequest struct {
 	// Key: host path, Value: container path
 	Volumes map[string]string
 
-	// BindMounts provides detailed volume configuration
+	// BindMounts allows raw Docker bind mount specs. Use with caution: callers are responsible for
+	// ensuring mount paths do not expose sensitive host directories.
 	// Key: container path, Value: bind mount spec
 	BindMounts map[string]string
 
@@ -127,6 +128,21 @@ type config struct {
 
 // Option is a functional option for configuring the executor.
 type Option func(*config) error
+
+// parsePort parses a port string in the format "8080", "8080/tcp", or "8080/udp"
+// and returns a nat.Port. The protocol defaults to defaultProtocol (tcp) if not specified.
+func parsePort(s string) (nat.Port, error) {
+	protocol := defaultProtocol
+	portNum := s
+	if strings.Contains(s, "/") {
+		parts := strings.Split(s, "/")
+		if len(parts) == 2 {
+			portNum = parts[0]
+			protocol = parts[1]
+		}
+	}
+	return nat.NewPort(protocol, portNum)
+}
 
 // validate checks if the configuration is valid.
 func (c *config) validate() error {
@@ -211,20 +227,7 @@ func WithRequest(req ContainerRequest) Option {
 
 		// Exposed ports
 		for _, port := range req.ExposedPorts {
-			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
-			protocol := defaultProtocol
-			portNum := port
-
-			// Check if protocol is specified
-			if strings.Contains(port, "/") {
-				parts := strings.Split(port, "/")
-				if len(parts) == 2 {
-					portNum = parts[0]
-					protocol = parts[1]
-				}
-			}
-
-			natPort, err := nat.NewPort(protocol, portNum)
+			natPort, err := parsePort(port)
 			if err != nil {
 				return fmt.Errorf("invalid exposed port %s: %w", port, err)
 			}
@@ -233,20 +236,7 @@ func WithRequest(req ContainerRequest) Option {
 
 		// Port bindings
 		for containerPort, hostPort := range req.PortBindings {
-			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
-			protocol := defaultProtocol
-			portNum := containerPort
-
-			// Check if protocol is specified
-			if strings.Contains(containerPort, "/") {
-				parts := strings.Split(containerPort, "/")
-				if len(parts) == 2 {
-					portNum = parts[0]
-					protocol = parts[1]
-				}
-			}
-
-			natPort, err := nat.NewPort(protocol, portNum)
+			natPort, err := parsePort(containerPort)
 			if err != nil {
 				return fmt.Errorf("invalid container port %s: %w", containerPort, err)
 			}
@@ -396,20 +386,7 @@ func WithPorts(portMapping string) Option {
 func WithPortBindings(bindings map[string]string) Option {
 	return func(c *config) error {
 		for containerPort, hostPort := range bindings {
-			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
-			protocol := "tcp"
-			portNum := containerPort
-
-			// Check if protocol is specified
-			if strings.Contains(containerPort, "/") {
-				parts := strings.Split(containerPort, "/")
-				if len(parts) == 2 {
-					portNum = parts[0]
-					protocol = parts[1]
-				}
-			}
-
-			natPort, err := nat.NewPort(protocol, portNum)
+			natPort, err := parsePort(containerPort)
 			if err != nil {
 				return fmt.Errorf("invalid container port %s: %w", containerPort, err)
 			}
@@ -427,20 +404,7 @@ func WithPortBindings(bindings map[string]string) Option {
 func WithExposedPorts(ports ...string) Option {
 	return func(c *config) error {
 		for _, port := range ports {
-			// Parse port format: "8080" or "8080/tcp" or "8080/udp"
-			protocol := "tcp"
-			portNum := port
-
-			// Check if protocol is specified
-			if strings.Contains(port, "/") {
-				parts := strings.Split(port, "/")
-				if len(parts) == 2 {
-					portNum = parts[0]
-					protocol = parts[1]
-				}
-			}
-
-			natPort, err := nat.NewPort(protocol, portNum)
+			natPort, err := parsePort(port)
 			if err != nil {
 				return fmt.Errorf("invalid port %s: %w", port, err)
 			}
@@ -547,6 +511,7 @@ func WithAutoRemove(autoRemove bool) Option {
 }
 
 // WithPrivileged runs the container in privileged mode.
+// WARNING: Privileged containers have full access to the host. Only use with trusted images.
 func WithPrivileged(privileged bool) Option {
 	return func(c *config) error {
 		c.privileged = privileged
@@ -554,7 +519,8 @@ func WithPrivileged(privileged bool) Option {
 	}
 }
 
-// WithCapAdd adds Linux capabilities.
+// WithCapAdd adds Linux capabilities to the container.
+// WARNING: Adding capabilities increases the container's privileges. Only add capabilities that are strictly required.
 func WithCapAdd(caps ...string) Option {
 	return func(c *config) error {
 		c.capAdd = append(c.capAdd, caps...)
