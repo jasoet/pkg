@@ -109,6 +109,11 @@ func (e *Executor) Start(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// Guard against double-start which would leak containers.
+	if e.containerID != "" {
+		return fmt.Errorf("container already started: %s", e.containerID)
+	}
+
 	// Trace with OTel
 	if e.otel != nil {
 		var span trace.Span

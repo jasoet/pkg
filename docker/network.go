@@ -174,11 +174,12 @@ func (e *Executor) GetIPAddress(ctx context.Context, network string) (string, er
 
 // ConnectionString builds a connection string for the container.
 // This is useful for database containers.
+// Use {{endpoint}} as the placeholder for the host:port value.
 //
 // Example:
 //
 //	// For PostgreSQL
-//	connStr, err := exec.ConnectionString(ctx, "5432/tcp", "postgres://user:pass@%s/db")
+//	connStr, err := exec.ConnectionString(ctx, "5432/tcp", "postgres://user:pass@{{endpoint}}/db")
 //	// Result: "postgres://user:pass@localhost:32768/db"
 func (e *Executor) ConnectionString(ctx context.Context, containerPort, template string) (string, error) {
 	endpoint, err := e.Endpoint(ctx, containerPort)
@@ -186,7 +187,7 @@ func (e *Executor) ConnectionString(ctx context.Context, containerPort, template
 		return "", err
 	}
 
-	return fmt.Sprintf(template, endpoint), nil
+	return strings.ReplaceAll(template, "{{endpoint}}", endpoint), nil
 }
 
 // NatPort is a helper to create a nat.Port from a string.

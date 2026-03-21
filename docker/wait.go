@@ -22,16 +22,20 @@ type WaitStrategy interface {
 
 // waitForLog waits for a specific log pattern to appear.
 type waitForLog struct {
-	pattern *regexp.Regexp
-	timeout time.Duration
+	pattern    *regexp.Regexp
+	compileErr error
+	timeout    time.Duration
 }
 
 // WaitForLog creates a wait strategy that waits for a log pattern.
 // Pattern can be a simple string or regex pattern.
+// If the pattern is invalid, WaitUntilReady will return an error instead of panicking.
 func WaitForLog(pattern string) *waitForLog {
+	compiled, err := regexp.Compile(pattern)
 	return &waitForLog{
-		pattern: regexp.MustCompile(pattern),
-		timeout: 60 * time.Second,
+		pattern:    compiled,
+		compileErr: err,
+		timeout:    60 * time.Second,
 	}
 }
 
@@ -43,6 +47,10 @@ func (w *waitForLog) WithStartupTimeout(timeout time.Duration) *waitForLog {
 
 // WaitUntilReady implements WaitStrategy.
 func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+	if w.compileErr != nil {
+		return fmt.Errorf("invalid regex pattern: %w", w.compileErr)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 

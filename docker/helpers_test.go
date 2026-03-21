@@ -183,7 +183,7 @@ func TestNetwork_ConnectionString(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	connStr, err := exec.ConnectionString(ctx, "80/tcp", "http://%s/api")
+	connStr, err := exec.ConnectionString(ctx, "80/tcp", "http://{{endpoint}}/api")
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost:8892/api", connStr)
 }
