@@ -20,7 +20,15 @@ type Func[T any] func(ctx context.Context) (T, error)
 // Returns a map of results indexed by the provided keys, and the first causal error
 // encountered (preferring real errors over context cancellation errors).
 // If a function panics, the panic is recovered and converted to an error.
+//
+// Note: Only the first causal (non-context) error is returned. Secondary errors from other goroutines are discarded.
 func ExecuteConcurrently[T any](ctx context.Context, funcs map[string]Func[T]) (map[string]T, error) {
+	for key, fn := range funcs {
+		if fn == nil {
+			return nil, fmt.Errorf("nil function provided for key %q", key)
+		}
+	}
+
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -40,7 +48,11 @@ func ExecuteConcurrently[T any](ctx context.Context, funcs map[string]Func[T]) (
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %v", key, r)}
+					if err, ok := r.(error); ok {
+						resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %w", key, err)}
+					} else {
+						resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %v", key, r)}
+					}
 					cancel()
 				}
 			}()
@@ -53,6 +65,8 @@ func ExecuteConcurrently[T any](ctx context.Context, funcs map[string]Func[T]) (
 		}(key, fn)
 	}
 
+	// The closer goroutine waits for all workers to complete before closing the channel.
+	// It terminates when all worker goroutines exit (which happens when context is cancelled).
 	go func() {
 		wg.Wait()
 		close(resultCh)

@@ -108,17 +108,6 @@ Generic function type for concurrent execution:
 type Func[T any] func(ctx context.Context) (T, error)
 ```
 
-#### Result[T any]
-
-Holds the result of a concurrent operation:
-
-```go
-type Result[T any] struct {
-    Value T
-    Err   error
-}
-```
-
 ### Functions
 
 #### ExecuteConcurrently
