@@ -127,6 +127,21 @@ func TestNestedEnvVars(t *testing.T) {
 	assert.Equal(t, "admin@example.com", v.GetString("app.admin.email"))
 }
 
+func TestNestedEnvVars_NegativeKeyDepth(t *testing.T) {
+	v := viper.New()
+	t.Setenv("TEST_APP_DB_HOST", "localhost")
+	assert.NotPanics(t, func() {
+		NestedEnvVars("TEST_APP_", -1, "app", v)
+	})
+}
+
+func TestNestedEnvVars_MultiSegmentFieldName(t *testing.T) {
+	v := viper.New()
+	t.Setenv("TEST_APP_DB_CONNECTION_TIMEOUT", "30")
+	NestedEnvVars("TEST_APP_", 2, "app", v)
+	assert.Equal(t, "30", v.GetString("app.db.connection_timeout"))
+}
+
 func TestStringSliceConfig(t *testing.T) {
 	// Test basic string slice configuration loading
 	yamlConfig := `

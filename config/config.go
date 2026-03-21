@@ -62,7 +62,14 @@ func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper
 // - keyDepth: The depth at which entity names are found in the key parts
 // - configPath: The base path in the configuration where values should be set
 // - viperConfig: The viper configuration instance to modify
+//
+// NOTE: This function is NOT goroutine-safe when called with a shared *viper.Viper instance.
+// Concurrent calls sharing the same viperConfig must be protected by an external mutex.
 func NestedEnvVars(prefix string, keyDepth int, configPath string, viperConfig *viper.Viper) {
+	if keyDepth < 0 {
+		return
+	}
+
 	nestedEnvVars := make(map[string]map[string]string)
 
 	for _, env := range os.Environ() {
@@ -75,7 +82,7 @@ func NestedEnvVars(prefix string, keyDepth int, configPath string, viperConfig *
 				keyParts := strings.Split(envKey, "_")
 				if len(keyParts) >= keyDepth+2 { // +2 for the entity name and field
 					entityName := strings.ToLower(keyParts[keyDepth])
-					fieldName := strings.ToLower(keyParts[keyDepth+1])
+					fieldName := strings.ToLower(strings.Join(keyParts[keyDepth+1:], "_"))
 
 					if _, ok := nestedEnvVars[entityName]; !ok {
 						nestedEnvVars[entityName] = make(map[string]string)
