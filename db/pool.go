@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
@@ -75,10 +76,10 @@ func (c *ConnectionConfig) effectiveTimeout() time.Duration {
 	return c.Timeout
 }
 
-// effectiveSSLMode returns the configured SSL mode or "disable" if empty.
+// effectiveSSLMode returns the configured SSL mode or "require" if empty.
 func (c *ConnectionConfig) effectiveSSLMode() string {
 	if c.SSLMode == "" {
-		return "disable"
+		return "require"
 	}
 	return c.SSLMode
 }
@@ -112,8 +113,10 @@ func (c *ConnectionConfig) Validate() error {
 	return nil
 }
 
-// Dsn builds the data source name string for the configured database type.
-func (c *ConnectionConfig) Dsn() string {
+// dsn builds the data source name string for the configured database type.
+// It is unexported to prevent accidental logging of credentials.
+// Use RedactedDsn() for safe logging.
+func (c *ConnectionConfig) dsn() string {
 	timeout := c.effectiveTimeout()
 	sslMode := c.effectiveSSLMode()
 
@@ -134,6 +137,16 @@ func (c *ConnectionConfig) Dsn() string {
 	}
 }
 
+// RedactedDsn returns the DSN with the password replaced by "***",
+// safe for use in logs and error messages.
+func (c *ConnectionConfig) RedactedDsn() string {
+	original := c.dsn()
+	if c.Password != "" {
+		return strings.ReplaceAll(original, c.Password, "***")
+	}
+	return original
+}
+
 // Pool creates a new GORM database connection pool.
 //
 // It validates the DSN, opens the connection, configures pool parameters,
@@ -143,7 +156,7 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	dsn := c.Dsn()
+	dsn := c.dsn()
 
 	var dialector gorm.Dialector
 	switch c.DbType {
@@ -161,12 +174,12 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 		Logger: logger.Default.LogMode(c.effectiveGormLogLevel()),
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open database connection to %s:%d/%s: %w", c.Host, c.Port, c.DbName, err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
 	// Configure connection pool
@@ -180,7 +193,7 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	}
 
 	if err := sqlDB.Ping(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to ping database at %s:%d/%s: %w", c.Host, c.Port, c.DbName, err)
 	}
 
 	// Install OpenTelemetry instrumentation if configured

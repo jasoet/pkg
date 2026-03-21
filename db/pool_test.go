@@ -69,7 +69,7 @@ func TestCustomValidationTags(t *testing.T) {
 	assert.Error(t, err, "invalid custom struct should fail validation")
 }
 
-func TestConnectionConfig_Dsn(t *testing.T) {
+func TestConnectionConfig_dsn(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  ConnectionConfig
@@ -99,7 +99,7 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 				DbName:   "test",
 				Timeout:  3 * time.Second,
 			},
-			wantDsn: "user=postgres password=password host=localhost port=5432 dbname=test sslmode=disable connect_timeout=3",
+			wantDsn: "user=postgres password=password host=localhost port=5432 dbname=test sslmode=require connect_timeout=3",
 		},
 		{
 			name: "Different port",
@@ -138,7 +138,7 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 				DbName:   "test",
 				Timeout:  5 * time.Second,
 			},
-			wantDsn: "sqlserver://sa:password@localhost:1433?database=test&connectTimeout=5s&encrypt=disable",
+			wantDsn: "sqlserver://sa:password@localhost:1433?database=test&connectTimeout=5s&encrypt=require",
 		},
 		{
 			name: "Postgres with custom SSLMode",
@@ -171,7 +171,7 @@ func TestConnectionConfig_Dsn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDsn := tt.config.Dsn()
+			gotDsn := tt.config.dsn()
 			assert.Equal(t, tt.wantDsn, gotDsn)
 		})
 	}
@@ -190,10 +190,10 @@ func TestEffectiveTimeout(t *testing.T) {
 
 func TestEffectiveSSLMode(t *testing.T) {
 	c := &ConnectionConfig{}
-	assert.Equal(t, "disable", c.effectiveSSLMode())
-
-	c.SSLMode = "require"
 	assert.Equal(t, "require", c.effectiveSSLMode())
+
+	c.SSLMode = "disable"
+	assert.Equal(t, "disable", c.effectiveSSLMode())
 }
 
 func TestEffectiveGormLogLevel(t *testing.T) {
@@ -332,6 +332,21 @@ func TestConnectionConfig_Pool_EmptyDSN(t *testing.T) {
 
 	_, err := config.Pool()
 	assert.Error(t, err)
+}
+
+func TestRedactedDsn_MasksPassword(t *testing.T) {
+	cfg := ConnectionConfig{
+		Host: "localhost", Port: 5432, Username: "admin",
+		Password: "supersecret", DbName: "testdb", DbType: Postgresql,
+	}
+	redacted := cfg.RedactedDsn()
+	assert.Contains(t, redacted, "***")
+	assert.NotContains(t, redacted, "supersecret")
+}
+
+func TestEffectiveSSLMode_DefaultsToRequire(t *testing.T) {
+	cfg := ConnectionConfig{}
+	assert.Equal(t, "require", cfg.effectiveSSLMode())
 }
 
 func TestConnectionConfig_SQLDB_ConnectionFailure(t *testing.T) {
