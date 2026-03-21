@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -26,9 +27,15 @@ import (
 type DatabaseType string
 
 const (
-	Mysql      DatabaseType = "MYSQL"
+	// Mysql identifies a MySQL/MariaDB backend. The string value is "MYSQL".
+	Mysql DatabaseType = "MYSQL"
+
+	// Postgresql identifies a PostgreSQL backend. The string value is "POSTGRES"
+	// (not "POSTGRESQL") for compatibility with existing configurations and OTel attributes.
 	Postgresql DatabaseType = "POSTGRES"
-	MSSQL      DatabaseType = "MSSQL"
+
+	// MSSQL identifies a Microsoft SQL Server backend. The string value is "MSSQL".
+	MSSQL DatabaseType = "MSSQL"
 
 	// defaultTimeout is applied when Timeout is zero to avoid immediate connection failure.
 	defaultTimeout = 30 * time.Second
@@ -38,7 +45,7 @@ const (
 type ConnectionConfig struct {
 	DbType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL" mapstructure:"dbType"`
 	Host         string        `yaml:"host" validate:"required,min=1" mapstructure:"host"`
-	Port         int           `yaml:"port" mapstructure:"port"`
+	Port         int           `yaml:"port" mapstructure:"port" validate:"required,min=1,max=65535"`
 	Username     string        `yaml:"username" validate:"required,min=1" mapstructure:"username"`
 	Password     string        `yaml:"password" mapstructure:"password"`
 	DbName       string        `yaml:"dbName" validate:"required,min=1" mapstructure:"dbName"`
@@ -109,6 +116,16 @@ func (c *ConnectionConfig) Validate() error {
 	}
 	if c.DbName == "" {
 		return fmt.Errorf("dbName is required")
+	}
+	validPostgresSSL := map[string]bool{
+		"disable": true, "require": true, "verify-ca": true,
+		"verify-full": true, "prefer": true, "allow": true,
+	}
+	if c.DbType == Postgresql && c.SSLMode != "" && !validPostgresSSL[c.SSLMode] {
+		return fmt.Errorf("invalid SSLMode %q for PostgreSQL", c.SSLMode)
+	}
+	if c.MaxIdleConns > c.MaxOpenConns {
+		return fmt.Errorf("MaxIdleConns (%d) cannot exceed MaxOpenConns (%d)", c.MaxIdleConns, c.MaxOpenConns)
 	}
 	return nil
 }
@@ -192,7 +209,9 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 		sqlDB.SetConnMaxIdleTime(c.ConnMaxIdleTime)
 	}
 
-	if err := sqlDB.Ping(); err != nil {
+	pingCtx, cancel := context.WithTimeout(context.Background(), c.effectiveTimeout())
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
 		return nil, fmt.Errorf("failed to ping database at %s:%d/%s: %w", c.Host, c.Port, c.DbName, err)
 	}
 
@@ -220,6 +239,7 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 
 		// Install the uptrace otelgorm plugin
 		if err := db.Use(otelgorm.NewPlugin(opts...)); err != nil {
+			sqlDB.Close()
 			return nil, fmt.Errorf("failed to install otelgorm plugin: %w", err)
 		}
 
@@ -234,9 +254,11 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	return db, nil
 }
 
-// SQLDB is a convenience wrapper that creates a new GORM pool via Pool() and
-// returns the underlying *sql.DB. Each call creates a new connection pool;
-// prefer Pool() when you need to reuse the connection.
+// SQLDB creates a new connection pool internally. The caller is responsible for closing
+// the returned *sql.DB. Prefer Pool() when you need the GORM wrapper.
+//
+// Each call to SQLDB() opens a new connection pool; close the returned *sql.DB when done
+// to avoid leaking connections.
 func (c *ConnectionConfig) SQLDB() (*sql.DB, error) {
 	gormDB, err := c.Pool()
 	if err != nil {
@@ -255,27 +277,38 @@ func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 	meter := c.OTelConfig.GetMeter("db.pool")
 
 	// Create metrics instruments
-	// Note: errors are intentionally ignored as they only occur with nil meter (checked by GetMeter)
-	idleConns, _ := meter.Int64ObservableGauge( //nolint:errcheck
+	idleConns, err := meter.Int64ObservableGauge(
 		"db.client.connections.idle",
 		metric.WithDescription("Number of idle database connections"),
 		metric.WithUnit("{connection}"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "db.collectPoolMetrics: failed to create idle gauge: %v\n", err)
+		return
+	}
 
-	activeConns, _ := meter.Int64ObservableGauge( //nolint:errcheck
+	activeConns, err := meter.Int64ObservableGauge(
 		"db.client.connections.active",
 		metric.WithDescription("Number of active database connections"),
 		metric.WithUnit("{connection}"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "db.collectPoolMetrics: failed to create active gauge: %v\n", err)
+		return
+	}
 
-	totalConns, _ := meter.Int64ObservableGauge( //nolint:errcheck
+	totalConns, err := meter.Int64ObservableGauge(
 		"db.client.connections.max",
 		metric.WithDescription("Maximum number of open database connections"),
 		metric.WithUnit("{connection}"),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "db.collectPoolMetrics: failed to create max gauge: %v\n", err)
+		return
+	}
 
 	// Register callback to collect metrics
-	_, err := meter.RegisterCallback(
+	_, err = meter.RegisterCallback(
 		func(ctx context.Context, observer metric.Observer) error {
 			stats := sqlDB.Stats()
 

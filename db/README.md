@@ -42,7 +42,7 @@ func main() {
         Host:         "localhost",
         Port:         5432,
         Username:     "admin",
-        Password:     "secret",
+        Password:     "${DB_PASSWORD}",
         DbName:       "myapp",
         Timeout:      5 * time.Second,
         MaxIdleConns: 5,
@@ -79,7 +79,7 @@ config := db.ConnectionConfig{
     Host:         "localhost",
     Port:         5432,
     Username:     "admin",
-    Password:     "secret",
+    Password:     "${DB_PASSWORD}",
     DbName:       "myapp",
     Timeout:      5 * time.Second,
     MaxIdleConns: 5,
@@ -107,7 +107,7 @@ config := db.ConnectionConfig{
 }
 ```
 
-**DSN Format:** `user=admin password=secret host=localhost port=5432 dbname=myapp sslmode=disable connect_timeout=5`
+**DSN Format:** `user=admin password=*** host=localhost port=5432 dbname=myapp sslmode=disable connect_timeout=5`
 
 ### MySQL
 
@@ -120,7 +120,7 @@ config := db.ConnectionConfig{
 }
 ```
 
-**DSN Format:** `admin:secret@tcp(localhost:3306)/myapp?parseTime=true&timeout=5s`
+**DSN Format:** `admin:***@tcp(localhost:3306)/myapp?parseTime=true&timeout=5s`
 
 ### SQL Server (MSSQL)
 
@@ -133,7 +133,7 @@ config := db.ConnectionConfig{
 }
 ```
 
-**DSN Format:** `sqlserver://admin:secret@localhost:1433?database=myapp&connectTimeout=5s&encrypt=disable`
+**DSN Format:** `sqlserver://admin:***@localhost:1433?database=myapp&connectTimeout=5s&encrypt=disable`
 
 ## Configuration
 
@@ -359,7 +359,7 @@ database:
   host: localhost
   port: 5432
   username: admin
-  password: secret
+  password: ${DB_PASSWORD}
   dbName: myapp
   timeout: 5s
   maxIdleConns: 5
