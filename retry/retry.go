@@ -13,13 +13,18 @@ import (
 	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
 
+// instrumentationName is the OpenTelemetry instrumentation scope for this package.
+const instrumentationName = "github.com/jasoet/pkg/v2/retry"
+
 // Operation is a function that may fail and should be retried.
 // Return nil to indicate success, or an error to trigger a retry.
 type Operation func(ctx context.Context) error
 
 // Config holds retry configuration with exponential backoff.
 type Config struct {
-	// MaxRetries is the maximum number of retry attempts (0 means unlimited).
+	// MaxRetries is the maximum number of retries after the initial attempt
+	// (0 means unlimited retries). With MaxRetries = N the operation is called
+	// at most N+1 times: 1 initial attempt plus up to N retries.
 	// Default: 5
 	MaxRetries uint64
 
@@ -31,12 +36,12 @@ type Config struct {
 	// Default: 60s
 	MaxInterval time.Duration
 
-	// Multiplier is the exponential backoff multiplier.
+	// Multiplier is the exponential backoff multiplier. Must be > 1.
 	// Default: 2.0 (each retry waits 2x longer)
 	Multiplier float64
 
 	// RandomizationFactor adds jitter to backoff intervals to prevent thundering herd.
-	// 0.0 means no randomization, 0.5 means +/-50% jitter.
+	// Must be in [0, 1). 0.0 means no randomization, 0.5 means +/-50% jitter.
 	// Default: 0.5
 	RandomizationFactor float64
 
@@ -45,7 +50,7 @@ type Config struct {
 	OperationName string
 
 	// OTelConfig enables OpenTelemetry tracing and logging.
-	// Optional: if nil, no OTel instrumentation
+	// Optional: if nil, no OTel instrumentation.
 	OTelConfig *pkgotel.Config
 }
 
@@ -73,7 +78,7 @@ func (c Config) WithName(name string) Config {
 	return c
 }
 
-// WithMaxRetries sets the maximum number of retry attempts.
+// WithMaxRetries sets the maximum number of retries after the initial attempt.
 func (c Config) WithMaxRetries(maxRetries uint64) Config {
 	c.MaxRetries = maxRetries
 	return c
@@ -91,17 +96,144 @@ func (c Config) WithMaxInterval(interval time.Duration) Config {
 	return c
 }
 
-// WithMultiplier sets the exponential backoff multiplier.
+// WithMultiplier sets the exponential backoff multiplier. Panics if multiplier <= 1.
 func (c Config) WithMultiplier(multiplier float64) Config {
+	if multiplier <= 1 {
+		panic("retry: Multiplier must be > 1")
+	}
 	c.Multiplier = multiplier
 	return c
 }
 
 // WithRandomizationFactor sets the jitter factor for backoff intervals.
 // A value of 0.5 means intervals will vary by +/-50%. Set to 0.0 to disable jitter.
+// Panics if factor is not in [0, 1).
 func (c Config) WithRandomizationFactor(factor float64) Config {
+	if factor < 0 || factor >= 1 {
+		panic("retry: RandomizationFactor must be in [0, 1)")
+	}
 	c.RandomizationFactor = factor
 	return c
+}
+
+// doRetry is the shared implementation for Do and DoWithNotify.
+// When notifyFunc is non-nil, backoff.RetryNotify is used; otherwise backoff.Retry.
+// The span (if non-nil) is ended via defer in the caller before this function returns.
+func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc func(error, time.Duration)) error {
+	// Setup OTel tracing if enabled.
+	var span trace.Span
+	if cfg.OTelConfig != nil && cfg.OTelConfig.IsTracingEnabled() {
+		tracer := cfg.OTelConfig.GetTracer(instrumentationName)
+		ctx, span = tracer.Start(ctx, cfg.OperationName,
+			trace.WithAttributes(
+				attribute.Int64("retry.max_retries", int64(cfg.MaxRetries)),
+				attribute.String("retry.initial_interval", cfg.InitialInterval.String()),
+				attribute.String("retry.max_interval", cfg.MaxInterval.String()),
+				attribute.Float64("retry.multiplier", cfg.Multiplier),
+			),
+		)
+		// Span is ended via defer so it is always closed before this function returns.
+		defer span.End()
+	}
+
+	// Setup OTel logging independently of tracing.
+	var logger *pkgotel.LogHelper
+	if cfg.OTelConfig != nil {
+		logger = pkgotel.NewLogHelper(ctx, cfg.OTelConfig, instrumentationName, cfg.OperationName)
+	}
+
+	// Create backoff strategy.
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.InitialInterval = cfg.InitialInterval
+	expBackoff.MaxInterval = cfg.MaxInterval
+	expBackoff.Multiplier = cfg.Multiplier
+	expBackoff.RandomizationFactor = cfg.RandomizationFactor
+	expBackoff.MaxElapsedTime = 0 // No time limit, only MaxRetries
+
+	// Wrap with max retries.
+	var strategy backoff.BackOff = expBackoff
+	if cfg.MaxRetries > 0 {
+		strategy = backoff.WithMaxRetries(expBackoff, cfg.MaxRetries)
+	}
+
+	// Wrap with context (uses span-enriched ctx when OTel is enabled).
+	strategy = backoff.WithContext(strategy, ctx)
+
+	attempt := uint64(0)
+	var lastErr error
+
+	retryFunc := func() error {
+		attempt++
+
+		if logger != nil {
+			logger.Debug("Executing operation",
+				pkgotel.F("attempt", attempt),
+				pkgotel.F("max_retries", cfg.MaxRetries),
+			)
+		}
+
+		err := operation(ctx)
+		if err != nil {
+			lastErr = err
+			if logger != nil {
+				logger.Warn("Operation failed",
+					pkgotel.F("attempt", attempt),
+					pkgotel.F("max_retries", cfg.MaxRetries),
+					pkgotel.F("error", err.Error()),
+				)
+			}
+		}
+		return err
+	}
+
+	var err error
+	if notifyFunc != nil {
+		err = backoff.RetryNotify(retryFunc, strategy, notifyFunc)
+	} else {
+		err = backoff.Retry(retryFunc, strategy)
+	}
+
+	if err == nil {
+		if span != nil {
+			span.SetStatus(codes.Ok, "Operation succeeded")
+			span.SetAttributes(attribute.Int64("retry.attempts", int64(attempt)))
+		}
+		if logger != nil && attempt > 1 {
+			logger.Info("Operation succeeded after retry",
+				pkgotel.F("attempts", attempt),
+			)
+		}
+		return nil
+	}
+
+	// Handle context cancellation.
+	if ctx.Err() != nil {
+		if span != nil {
+			span.SetStatus(codes.Error, "Operation canceled")
+			span.RecordError(ctx.Err())
+		}
+		if logger != nil {
+			logger.Error(ctx.Err(), "Operation canceled",
+				pkgotel.F("attempts", attempt),
+			)
+		}
+		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
+	}
+
+	// Failed after retries.
+	if span != nil {
+		span.SetStatus(codes.Error, "Operation failed after all retries")
+		span.RecordError(lastErr)
+		span.SetAttributes(attribute.Int64("retry.attempts", int64(attempt)))
+	}
+	if logger != nil {
+		logger.Error(lastErr, "Operation failed after all retries",
+			pkgotel.F("attempts", attempt),
+			pkgotel.F("max_retries", cfg.MaxRetries),
+		)
+	}
+	return fmt.Errorf("%s failed after %d attempts (1 initial + %d retries): %w",
+		cfg.OperationName, attempt, attempt-1, lastErr)
 }
 
 // Do executes the operation with retry logic using exponential backoff.
@@ -118,114 +250,7 @@ func (c Config) WithRandomizationFactor(factor float64) Config {
 //		return db.Ping()
 //	})
 func Do(ctx context.Context, cfg Config, operation Operation) error {
-	// Setup OTel if configured (must happen before backoff.WithContext so both
-	// the strategy and operation use the same span-enriched context).
-	var span trace.Span
-	var logger *pkgotel.LogHelper
-	if cfg.OTelConfig != nil && cfg.OTelConfig.IsTracingEnabled() {
-		tracer := cfg.OTelConfig.GetTracer("github.com/jasoet/pkg/v2/retry")
-		ctx, span = tracer.Start(ctx, cfg.OperationName,
-			trace.WithAttributes(
-				attribute.Int64("retry.max_retries", int64(cfg.MaxRetries)),
-				attribute.String("retry.initial_interval", cfg.InitialInterval.String()),
-				attribute.String("retry.max_interval", cfg.MaxInterval.String()),
-				attribute.Float64("retry.multiplier", cfg.Multiplier),
-			),
-		)
-		defer span.End()
-
-		logger = pkgotel.NewLogHelper(ctx, cfg.OTelConfig, "github.com/jasoet/pkg/v2/retry", cfg.OperationName)
-	}
-
-	// Create backoff strategy
-	expBackoff := backoff.NewExponentialBackOff()
-	expBackoff.InitialInterval = cfg.InitialInterval
-	expBackoff.MaxInterval = cfg.MaxInterval
-	expBackoff.Multiplier = cfg.Multiplier
-	expBackoff.RandomizationFactor = cfg.RandomizationFactor
-	expBackoff.MaxElapsedTime = 0 // No time limit, only MaxRetries
-
-	// Wrap with max retries
-	var strategy backoff.BackOff = expBackoff
-	if cfg.MaxRetries > 0 {
-		strategy = backoff.WithMaxRetries(expBackoff, cfg.MaxRetries)
-	}
-
-	// Wrap with context (uses span-enriched ctx when OTel is enabled)
-	strategy = backoff.WithContext(strategy, ctx)
-
-	attempt := uint64(0)
-	var lastErr error
-
-	retryFunc := func() error {
-		attempt++
-
-		// Log attempt if OTel is configured
-		if logger != nil {
-			logger.Debug("Executing operation",
-				pkgotel.F("attempt", attempt),
-				pkgotel.F("max_retries", cfg.MaxRetries),
-			)
-		}
-
-		// Execute operation with the (potentially span-enriched) context
-		err := operation(ctx)
-		if err != nil {
-			lastErr = err
-			if logger != nil {
-				logger.Warn("Operation failed",
-					pkgotel.F("attempt", attempt),
-					pkgotel.F("max_retries", cfg.MaxRetries),
-					pkgotel.F("error", err.Error()),
-				)
-			}
-		}
-		return err
-	}
-
-	err := backoff.Retry(retryFunc, strategy)
-
-	if err == nil {
-		// Success
-		if span != nil {
-			span.SetStatus(codes.Ok, "Operation succeeded")
-			span.SetAttributes(attribute.Int64("retry.attempts", int64(attempt)))
-		}
-		if logger != nil && attempt > 1 {
-			logger.Info("Operation succeeded after retry",
-				pkgotel.F("attempts", attempt),
-			)
-		}
-		return nil
-	}
-
-	// Handle context cancellation
-	if ctx.Err() != nil {
-		if span != nil {
-			span.SetStatus(codes.Error, "Operation canceled")
-			span.RecordError(ctx.Err())
-		}
-		if logger != nil {
-			logger.Error(ctx.Err(), "Operation canceled",
-				pkgotel.F("attempts", attempt),
-			)
-		}
-		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
-	}
-
-	// Failed after retries
-	if span != nil {
-		span.SetStatus(codes.Error, "Operation failed after all retries")
-		span.RecordError(lastErr)
-		span.SetAttributes(attribute.Int64("retry.attempts", int64(attempt)))
-	}
-	if logger != nil {
-		logger.Error(lastErr, "Operation failed after all retries",
-			pkgotel.F("attempts", attempt),
-			pkgotel.F("max_retries", cfg.MaxRetries),
-		)
-	}
-	return fmt.Errorf("%s failed after %d attempts: %w", cfg.OperationName, attempt, lastErr)
+	return doRetry(ctx, cfg, operation, nil)
 }
 
 // DoWithNotify is like Do but calls notifyFunc on each retry with the error and backoff duration.
@@ -242,108 +267,7 @@ func DoWithNotify(
 	operation Operation,
 	notifyFunc func(error, time.Duration),
 ) error {
-	// Setup OTel if configured
-	var span trace.Span
-	var logger *pkgotel.LogHelper
-	if cfg.OTelConfig != nil && cfg.OTelConfig.IsTracingEnabled() {
-		tracer := cfg.OTelConfig.GetTracer("github.com/jasoet/pkg/v2/retry")
-		ctx, span = tracer.Start(ctx, cfg.OperationName,
-			trace.WithAttributes(
-				attribute.Int64("retry.max_retries", int64(cfg.MaxRetries)),
-				attribute.String("retry.initial_interval", cfg.InitialInterval.String()),
-				attribute.String("retry.max_interval", cfg.MaxInterval.String()),
-				attribute.Float64("retry.multiplier", cfg.Multiplier),
-			),
-		)
-		defer span.End()
-
-		logger = pkgotel.NewLogHelper(ctx, cfg.OTelConfig, "github.com/jasoet/pkg/v2/retry", cfg.OperationName)
-	}
-
-	// Create backoff strategy
-	expBackoff := backoff.NewExponentialBackOff()
-	expBackoff.InitialInterval = cfg.InitialInterval
-	expBackoff.MaxInterval = cfg.MaxInterval
-	expBackoff.Multiplier = cfg.Multiplier
-	expBackoff.RandomizationFactor = cfg.RandomizationFactor
-	expBackoff.MaxElapsedTime = 0
-
-	var strategy backoff.BackOff = expBackoff
-	if cfg.MaxRetries > 0 {
-		strategy = backoff.WithMaxRetries(expBackoff, cfg.MaxRetries)
-	}
-	strategy = backoff.WithContext(strategy, ctx)
-
-	attempt := uint64(0)
-	var lastErr error
-
-	err := backoff.RetryNotify(
-		func() error {
-			attempt++
-			if logger != nil {
-				logger.Debug("Executing operation",
-					pkgotel.F("attempt", attempt),
-					pkgotel.F("max_retries", cfg.MaxRetries),
-				)
-			}
-
-			err := operation(ctx)
-			if err != nil {
-				lastErr = err
-				if logger != nil {
-					logger.Warn("Operation failed",
-						pkgotel.F("attempt", attempt),
-						pkgotel.F("max_retries", cfg.MaxRetries),
-						pkgotel.F("error", err.Error()),
-					)
-				}
-			}
-			return err
-		},
-		strategy,
-		func(err error, duration time.Duration) {
-			notifyFunc(err, duration)
-		},
-	)
-
-	if err == nil {
-		if span != nil {
-			span.SetStatus(codes.Ok, "Operation succeeded")
-			span.SetAttributes(attribute.Int64("retry.attempts", int64(attempt)))
-		}
-		if logger != nil && attempt > 1 {
-			logger.Info("Operation succeeded after retry",
-				pkgotel.F("attempts", attempt),
-			)
-		}
-		return nil
-	}
-
-	if ctx.Err() != nil {
-		if span != nil {
-			span.SetStatus(codes.Error, "Operation canceled")
-			span.RecordError(ctx.Err())
-		}
-		if logger != nil {
-			logger.Error(ctx.Err(), "Operation canceled",
-				pkgotel.F("attempts", attempt),
-			)
-		}
-		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
-	}
-
-	if span != nil {
-		span.SetStatus(codes.Error, "Operation failed after all retries")
-		span.RecordError(lastErr)
-		span.SetAttributes(attribute.Int64("retry.attempts", int64(attempt)))
-	}
-	if logger != nil {
-		logger.Error(lastErr, "Operation failed after all retries",
-			pkgotel.F("attempts", attempt),
-			pkgotel.F("max_retries", cfg.MaxRetries),
-		)
-	}
-	return fmt.Errorf("%s failed after %d attempts: %w", cfg.OperationName, attempt, lastErr)
+	return doRetry(ctx, cfg, operation, notifyFunc)
 }
 
 // Permanent wraps an error to indicate it should not be retried.

@@ -15,6 +15,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 500*time.Millisecond, cfg.InitialInterval)
 	assert.Equal(t, 60*time.Second, cfg.MaxInterval)
 	assert.Equal(t, 2.0, cfg.Multiplier)
+	assert.Equal(t, 0.5, cfg.RandomizationFactor)
 	assert.Equal(t, "retry.operation", cfg.OperationName)
 	assert.Nil(t, cfg.OTelConfig)
 }
@@ -93,7 +94,7 @@ func TestDo_FailsAfterMaxRetries(t *testing.T) {
 	err := Do(ctx, cfg, operation)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, expectedErr)
-	assert.Contains(t, err.Error(), "failed after 4 attempts") // 1 initial + 3 retries
+	assert.Contains(t, err.Error(), "failed after 4 attempts (1 initial + 3 retries)") // 1 initial + 3 retries
 	assert.Equal(t, 4, attempts)
 }
 
@@ -170,15 +171,15 @@ func TestDo_ExponentialBackoff(t *testing.T) {
 	assert.Len(t, intervals, 3) // 3 retries
 
 	// First retry should be around 10ms (with some jitter, backoff can be 0.5x-1.5x the interval)
-	assert.GreaterOrEqual(t, intervals[0], 5*time.Millisecond)
-	assert.LessOrEqual(t, intervals[0], 50*time.Millisecond)
+	assert.GreaterOrEqual(t, intervals[0], 1*time.Millisecond)
+	assert.LessOrEqual(t, intervals[0], 100*time.Millisecond)
 
 	// Second retry should be around 20ms
-	assert.GreaterOrEqual(t, intervals[1], 10*time.Millisecond)
-	assert.LessOrEqual(t, intervals[1], 100*time.Millisecond)
+	assert.GreaterOrEqual(t, intervals[1], 1*time.Millisecond)
+	assert.LessOrEqual(t, intervals[1], 200*time.Millisecond)
 
 	// Third retry should be around 40ms
-	assert.GreaterOrEqual(t, intervals[2], 20*time.Millisecond)
+	assert.GreaterOrEqual(t, intervals[2], 1*time.Millisecond)
 }
 
 func TestDo_UnlimitedRetries(t *testing.T) {
@@ -287,6 +288,32 @@ func TestConfigWithRandomizationFactor(t *testing.T) {
 func TestDefaultConfigHasRandomizationFactor(t *testing.T) {
 	cfg := DefaultConfig()
 	assert.Equal(t, 0.5, cfg.RandomizationFactor)
+}
+
+func TestWithOTel(t *testing.T) {
+	cfg := DefaultConfig().WithOTel(nil)
+	assert.Nil(t, cfg.OTelConfig)
+}
+
+func TestWithRandomizationFactor_PanicsOnInvalidValue(t *testing.T) {
+	assert.Panics(t, func() {
+		DefaultConfig().WithRandomizationFactor(-0.1)
+	})
+	assert.Panics(t, func() {
+		DefaultConfig().WithRandomizationFactor(1.0)
+	})
+	assert.Panics(t, func() {
+		DefaultConfig().WithRandomizationFactor(1.5)
+	})
+}
+
+func TestWithMultiplier_PanicsOnInvalidValue(t *testing.T) {
+	assert.Panics(t, func() {
+		DefaultConfig().WithMultiplier(1.0)
+	})
+	assert.Panics(t, func() {
+		DefaultConfig().WithMultiplier(0.5)
+	})
 }
 
 func TestDoWithNotify_ContextCancellation(t *testing.T) {

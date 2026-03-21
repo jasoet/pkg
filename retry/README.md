@@ -11,7 +11,6 @@ Production-ready retry mechanism with exponential backoff using `cenkalti/backof
 - **OpenTelemetry Integration**: Automatic tracing and logging
 - **Permanent Errors**: Stop retrying for non-transient errors
 - **Flexible Configuration**: Fluent API with sensible defaults
-- **Type-Safe**: Uses generics for type-safe operation definitions
 
 ## Installation
 
