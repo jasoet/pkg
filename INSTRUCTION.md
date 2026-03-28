@@ -27,6 +27,7 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 - **Superpowers**: Ensure superpowers skills are installed. Use TDD for implementation, systematic-debugging for bugs.
 - **Commits**: Use Conventional Commits. Format: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`.
 - **Branching**: New branch for each feature/fix (`feat/...`, `fix/...`). PR with squash merge. Use `gh` for PR status and CI checks.
+- **Nix**: All dev tools provided via `flake.nix`. Use `task <name>` which wraps commands with `nix develop -c`. Prerequisites: Nix (with flakes), go-task (global).
 - **Containers**: Dual Docker/Podman support. This is a shared library — consumers use either runtime.
 - **Patterns**: Functional options for configuration. OTelConfig always injected via `With*()` options, never serialized (`yaml:"-" mapstructure:"-"`). Use `otel.Layers.Start*()` for instrumentation.
 - **Self-maintaining docs**: Update `INSTRUCTION.md`, `README.md`, and `AI_PATTERN.md` when making significant changes.
@@ -44,6 +45,8 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 | `<module>/*_integration_test.go` | Integration tests (`//go:build integration`) |
 | `docs/plans/` | Design docs and implementation plans |
 | `.claude/` | Claude Code hooks and settings |
+| `flake.nix` | Nix flake — dev tool declarations |
+| `.envrc` | direnv auto-activation (optional) |
 | `Taskfile.yml` | All project commands |
 | `INSTRUCTION.md` | AI dev context (this file) |
 | `AI_PATTERN.md` | AI library consumer patterns index |
@@ -63,7 +66,8 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 | `task vendor` | go mod tidy + vendor |
 | `task check` | test + lint |
 | `task clean` | Remove build artifacts |
-| `task tools` | Install dev tools |
+| `task nix:check` | Verify Nix environment and tool availability |
+| `task nix:update` | Update flake inputs (bump tool versions) |
 | `task docker:check` | Verify Docker/Podman availability |
 | `task k8s:check` | Verify kubectl and cluster |
 | `task argo:check` | Verify Argo Workflows |
