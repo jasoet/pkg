@@ -221,3 +221,6 @@ temporal.db
 !.claude/settings.json
 !.claude/hooks/
 .claude/settings.local.json
+
+# Nix / direnv
+.direnv/
