@@ -174,6 +174,24 @@ open output/coverage-all.html
 
 ## Development
 
+### Development Setup
+
+**Prerequisites:**
+
+- **Nix** (with flakes enabled): install via [Determinate Nix Installer](https://install.determinate.systems/nix)
+- **go-task** (global): `nix profile install nixpkgs#go-task`
+- **gh** (optional): for PR management
+
+**Quick start:**
+
+```bash
+task nix:check    # verify environment
+task test          # run tests
+task lint          # run linter
+```
+
+All `task` commands execute through `nix develop -c` automatically, so you do not need to manually enter a Nix shell.
+
 ### Development Commands
 
 ```bash
@@ -537,7 +555,8 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 2. **Setup Development Environment**
    ```bash
-   task docker:check
+   task nix:check     # verify Nix tools
+   task docker:check  # verify Docker/Podman
    task test
    ```
 

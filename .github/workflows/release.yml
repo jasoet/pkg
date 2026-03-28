@@ -22,11 +22,8 @@ jobs:
           go-version: '1.26'
           check-latest: true
 
-      - name: Install Task
-        run: sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
-
       - name: Run tests
-        run: task ci:test
+        run: go test -race -count=1 ./... -tags=!examples
 
   release:
     name: Release
@@ -48,9 +45,6 @@ jobs:
           go-version: '1.26'
           check-latest: true
 
-      - name: Install Task
-        run: sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -65,10 +59,14 @@ jobs:
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: task release
+        run: bunx semantic-release
 
       - name: Warm Go module proxy
         if: success()
         run: |
           sleep 5
-          task release:proxy-warmup
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LATEST_TAG" ]; then
+            echo "Warming Go proxy for github.com/jasoet/pkg/v2@${LATEST_TAG}"
+            GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m "github.com/jasoet/pkg/v2@${LATEST_TAG}" || true
+          fi

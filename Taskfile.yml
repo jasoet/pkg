@@ -1,6 +1,7 @@
 version: '3'
 
 vars:
+  N: "nix develop -c"
   PODMAN_SOCKET:
     sh: |
       if command -v podman &> /dev/null; then
@@ -39,16 +40,16 @@ tasks:
     desc: Run go mod vendor
     silent: true
     cmds:
-      - go mod tidy
-      - go mod vendor
+      - '{{.N}} go mod tidy'
+      - '{{.N}} go mod vendor'
 
   test:
     desc: Run unit tests with coverage
     silent: true
     cmds:
       - mkdir -p output
-      - go test -race -count=1 -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples
-      - go tool cover -html=output/coverage.out -o output/coverage.html
+      - '{{.N}} go test -race -count=1 -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples'
+      - '{{.N}} go tool cover -html=output/coverage.out -o output/coverage.html'
       - 'echo "✓ Coverage: output/coverage.html"'
 
   test:integration:
@@ -60,8 +61,8 @@ tasks:
       TESTCONTAINERS_RYUK_DISABLED: '{{if .CONTAINER_HOST}}true{{end}}'
     cmds:
       - mkdir -p output
-      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration -timeout=15m
-      - go tool cover -html=output/coverage-integration.out -o output/coverage-integration.html
+      - '{{.N}} bash -c "go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-integration.out -covermode=atomic -tags=integration -timeout=15m"'
+      - '{{.N}} go tool cover -html=output/coverage-integration.out -o output/coverage-integration.html'
       - 'echo "✓ Integration coverage: output/coverage-integration.html"'
 
   test:argo:
@@ -70,10 +71,10 @@ tasks:
     cmds:
       - task: argo:check
       - mkdir -p output
-      - go test -race -count=1 -coverprofile=output/coverage-argo.out -covermode=atomic -tags=argo -timeout=15m ./argo/...
-      - go tool cover -html=output/coverage-argo.out -o output/coverage-argo.html
+      - '{{.N}} go test -race -count=1 -coverprofile=output/coverage-argo.out -covermode=atomic -tags=argo -timeout=15m ./argo/...'
+      - '{{.N}} go tool cover -html=output/coverage-argo.out -o output/coverage-argo.html'
       - 'echo "✓ Argo coverage: output/coverage-argo.html"'
-      - go tool cover -func=output/coverage-argo.out | grep total
+      - '{{.N}} bash -c "go tool cover -func=output/coverage-argo.out | grep total"'
 
   test:complete:
     desc: Run ALL tests (unit + integration + argo) with single comprehensive coverage report
@@ -86,11 +87,11 @@ tasks:
       - task: argo:check
       - mkdir -p output
       - echo "🧪 Running all tests (unit + integration + argo)..."
-      - go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-complete.out -covermode=atomic -tags=integration,argo -timeout=20m -v
-      - go tool cover -html=output/coverage-complete.out -o output/coverage-complete.html
+      - '{{.N}} bash -c "go list ./... | grep -v examples | xargs go test -race -count=1 -coverprofile=output/coverage-complete.out -covermode=atomic -tags=integration,argo -timeout=20m -v"'
+      - '{{.N}} go tool cover -html=output/coverage-complete.out -o output/coverage-complete.html'
       - 'echo ""'
       - 'echo "✅ Complete test coverage report:"'
-      - go tool cover -func=output/coverage-complete.out | grep total
+      - '{{.N}} bash -c "go tool cover -func=output/coverage-complete.out | grep total"'
       - 'echo "📄 HTML Report: output/coverage-complete.html"'
       - 'echo "📄 Coverage Data: output/coverage-complete.out"'
 
@@ -136,7 +137,7 @@ tasks:
     desc: Run golangci-lint
     silent: true
     cmds:
-      - golangci-lint run ./...
+      - '{{.N}} golangci-lint run ./...'
 
   check:
     desc: Run all checks (test + lint)
@@ -194,31 +195,51 @@ tasks:
         fi
 
   # Utilities
-  tools:
-    desc: Install development tools
+  nix:check:
+    desc: Verify Nix environment and tool availability
     silent: true
     cmds:
-      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - go install github.com/securego/gosec/v2/cmd/gosec@latest
-      - go install mvdan.cc/gofumpt@latest
-      - echo "✓ Tools installed"
+      - |
+        if ! command -v nix &> /dev/null; then
+          echo "❌ Nix not installed"
+          echo "   Install: curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install"
+          exit 1
+        fi
+        echo "✅ Nix $(nix --version)"
+        echo "Checking devShell tools..."
+        {{.N}} go version
+        {{.N}} golangci-lint --version
+        {{.N}} gofumpt --version
+        {{.N}} gosec --version
+        {{.N}} podman --version
+        {{.N}} docker --version
+        {{.N}} bun --version
+        {{.N}} jq --version
+        echo "✅ All tools available"
+
+  nix:update:
+    desc: Update flake inputs (bump tool versions)
+    silent: true
+    cmds:
+      - nix flake update
+      - echo "✅ Flake inputs updated. Run 'task nix:check' to verify."
 
   fmt:
     desc: Format all Go files with gofumpt
     cmds:
-      - gofumpt -l -w .
+      - '{{.N}} gofumpt -l -w .'
 
   ci:test:
     desc: Run unit tests for CI (no coverage HTML)
     silent: true
     cmds:
-      - go test -race -count=1 ./... -tags=!examples
+      - '{{.N}} go test -race -count=1 ./... -tags=!examples'
 
   ci:lint:
     desc: Run golangci-lint for CI
     silent: true
     cmds:
-      - golangci-lint run ./...
+      - '{{.N}} golangci-lint run ./...'
 
   ci:check:
     desc: Run all CI checks (test + lint)
@@ -231,7 +252,7 @@ tasks:
     desc: Run semantic-release (CI only)
     silent: true
     cmds:
-      - bunx semantic-release
+      - '{{.N}} bunx semantic-release'
 
   release:proxy-warmup:
     desc: Warm Go module proxy with latest tag
@@ -241,7 +262,7 @@ tasks:
         LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
         if [ -n "$LATEST_TAG" ]; then
           echo "Warming Go proxy for github.com/jasoet/pkg/v2@${LATEST_TAG}"
-          GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m "github.com/jasoet/pkg/v2@${LATEST_TAG}" || true
+          {{.N}} bash -c "GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m \"github.com/jasoet/pkg/v2@${LATEST_TAG}\"" || true
         fi
 
   clean:
