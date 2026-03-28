@@ -134,7 +134,7 @@ func (e *Executor) FollowLogs(ctx context.Context, w io.Writer, opts ...LogOptio
 	if err != nil {
 		return fmt.Errorf("failed to get logs: %w", err)
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 
 	// Copy logs to writer (handles Docker's multiplexed stream format)
 	_, err = stdcopy.StdCopy(w, w, logs)

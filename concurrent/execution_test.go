@@ -150,7 +150,7 @@ func TestExecuteConcurrently(t *testing.T) {
 		assert.Equal(t, 3.0, results["slow"])
 
 		// Verify that the execution time is closer to the slowest function than the sum of all functions
-		assert.Less(t, elapsed, 500*time.Millisecond)            // Should be less than the sum (150ms), with generous margin for CI load
+		assert.Less(t, elapsed, 500*time.Millisecond)           // Should be less than the sum (150ms), with generous margin for CI load
 		assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond) // Should be at least as long as the slowest function
 	})
 }

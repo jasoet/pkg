@@ -7,11 +7,11 @@ import (
 	"strings"
 	"sync"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
 	"github.com/docker/docker/pkg/stdcopy"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -349,7 +349,7 @@ func (e *Executor) pullImage(ctx context.Context) error {
 	if err == nil {
 		return nil // image exists
 	}
-	if !errdefs.IsNotFound(err) {
+	if !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("failed to inspect image %s: %w", e.config.image, err)
 	}
 	// Image not found, proceed to pull
@@ -359,7 +359,7 @@ func (e *Executor) pullImage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Consume output to ensure pull completes
 	_, err = io.Copy(io.Discard, reader)
@@ -461,7 +461,7 @@ func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("failed to get logs: %w", err)
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 
 	// Read all logs
 	var buf strings.Builder
@@ -513,7 +513,7 @@ func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan Lo
 			errCh <- fmt.Errorf("failed to get logs: %w", err)
 			return
 		}
-		defer logs.Close()
+		defer func() { _ = logs.Close() }()
 
 		// Demux Docker multiplexed stream.
 		// Each frame has an 8-byte header: [stream_type, 0, 0, 0, size_be32...]

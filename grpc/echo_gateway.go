@@ -62,16 +62,16 @@ func SetupGatewayForSeparate(ctx context.Context, gatewayMux *runtime.ServeMux, 
 	_ = opts // opts available for callers that extend this function
 
 	// Wait for gRPC server to be ready with retries
-	return waitForGRPCServer(grpcEndpoint, 10)
+	return waitForGRPCServer(ctx, grpcEndpoint, 10)
 }
 
 // waitForGRPCServer probes the TCP endpoint until it accepts connections or retries are exhausted.
-func waitForGRPCServer(endpoint string, maxRetries int) error {
+func waitForGRPCServer(ctx context.Context, endpoint string, maxRetries int) error {
 	var err error
 	for i := 0; i < maxRetries; i++ {
-		conn, dialErr := net.DialTimeout("tcp", endpoint, 1*time.Second)
+		conn, dialErr := (&net.Dialer{Timeout: 1 * time.Second}).DialContext(ctx, "tcp", endpoint)
 		if dialErr == nil {
-			conn.Close()
+			_ = conn.Close()
 			log.Printf("gRPC server at %s is ready for gateway registration", endpoint)
 			return nil
 		}
@@ -103,12 +103,10 @@ func CreateGatewayMux() *runtime.ServeMux {
 	)
 }
 
-// GatewayHealthMiddleware adds health monitoring for gateway routes
+// GatewayHealthMiddleware adds headers to identify gateway requests.
 func GatewayHealthMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Add headers to identify gateway requests
-			c.Response().Header().Set("X-Gateway-Version", "grpc-gateway/v2")
 			c.Response().Header().Set("X-Server-Type", "grpc-gateway")
 
 			return next(c)

@@ -15,7 +15,8 @@ import (
 
 func TestInitialize(t *testing.T) {
 	t.Run("sets debug level when debug is true", func(t *testing.T) {
-		// Reset the global logger for testing
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		// Call Initialize with debug=true
@@ -28,7 +29,8 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("sets info level when debug is false", func(t *testing.T) {
-		// Reset the global logger for testing
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		// Call Initialize with debug=false
@@ -41,7 +43,8 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("uses console output by default", func(t *testing.T) {
-		// Reset the global logger for testing
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		// Initialize should work without error
@@ -58,6 +61,8 @@ func TestInitializeWithFile(t *testing.T) {
 	tempDir := t.TempDir()
 
 	t.Run("console only output", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		closer, err := InitializeWithFile("console-service", true, OutputConsole, nil)
@@ -69,6 +74,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("file only output", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "file-only.log")
@@ -94,6 +101,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("both console and file output", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "both.log")
@@ -119,6 +128,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("file output with append mode", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "append.log")
@@ -152,6 +163,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("returns error when OutputFile specified without fileConfig", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		closer, err := InitializeWithFile("error-service", false, OutputFile, nil)
@@ -161,6 +174,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("returns error when OutputFile specified with empty path", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		closer, err := InitializeWithFile("error-service", false, OutputFile, &FileConfig{Path: ""})
@@ -170,6 +185,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("returns error when no output destination specified", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		closer, err := InitializeWithFile("error-service", false, 0, nil)
@@ -179,6 +196,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("returns error when file cannot be opened", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		invalidPath := "/invalid/nonexistent/directory/file.log"
@@ -190,6 +209,8 @@ func TestInitializeWithFile(t *testing.T) {
 	})
 
 	t.Run("creates file with correct permissions", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "permissions.log")
@@ -205,12 +226,14 @@ func TestInitializeWithFile(t *testing.T) {
 		info, err := os.Stat(logFile)
 		require.NoError(t, err)
 
-		// Verify permissions are 0644
+		// Verify permissions are 0600 (owner read/write only)
 		mode := info.Mode().Perm()
-		assert.Equal(t, os.FileMode(0o644), mode)
+		assert.Equal(t, os.FileMode(0o600), mode)
 	})
 
 	t.Run("multiple log levels to file", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "levels.log")
@@ -239,7 +262,8 @@ func TestInitializeWithFile(t *testing.T) {
 
 func TestContextLogger(t *testing.T) {
 	t.Run("creates logger with component field", func(t *testing.T) {
-		// Reset the global logger for testing
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
 		// Create a context
@@ -257,7 +281,8 @@ func TestContextLogger(t *testing.T) {
 	})
 
 	t.Run("inherits level from global logger", func(t *testing.T) {
-		// Set global logger with specific level
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
 
 		ctx := context.Background()
@@ -268,7 +293,8 @@ func TestContextLogger(t *testing.T) {
 	})
 
 	t.Run("works with context values", func(t *testing.T) {
-		// Reset the global logger
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
 		// Create a context with values
@@ -284,6 +310,8 @@ func TestContextLogger(t *testing.T) {
 	})
 
 	t.Run("works with file output", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		tempDir := t.TempDir()
 		logFile := filepath.Join(tempDir, "context.log")
 
@@ -313,6 +341,8 @@ func TestIntegration(t *testing.T) {
 	tempDir := t.TempDir()
 
 	t.Run("complete workflow with file logging", func(t *testing.T) {
+		original := zlog.Logger
+		t.Cleanup(func() { zlog.Logger = original })
 		zlog.Logger = zerolog.New(os.Stderr)
 
 		logFile := filepath.Join(tempDir, "integration.log")

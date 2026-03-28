@@ -44,7 +44,7 @@ func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.W
 
 	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/argo", "argo.SubmitWorkflow")
 	logger.Info("Submitting workflow",
-		otel.F("workflow_name", wf.GenerateName),
+		otel.F("workflow_generate_name", wf.GenerateName),
 		otel.F("namespace", wf.Namespace))
 
 	wfClient := client.NewWorkflowServiceClient()
@@ -54,7 +54,7 @@ func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.W
 	})
 	if err != nil {
 		logger.Error(err, "Failed to submit workflow",
-			otel.F("workflow_name", wf.GenerateName))
+			otel.F("workflow_generate_name", wf.GenerateName))
 		return nil, fmt.Errorf("failed to submit workflow: %w", err)
 	}
 

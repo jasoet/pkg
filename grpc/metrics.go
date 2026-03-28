@@ -317,7 +317,7 @@ func (rw *responseWriter) Flush() {
 }
 
 // EchoMetricsMiddleware returns Echo middleware that records HTTP metrics
-func (m *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
+func (mm *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			start := time.Now()
@@ -331,11 +331,11 @@ func (m *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
 
 			// Record request size if available
 			if req.ContentLength > 0 {
-				m.httpRequestSize.WithLabelValues(req.Method, path).Observe(float64(req.ContentLength))
+				mm.httpRequestSize.WithLabelValues(req.Method, path).Observe(float64(req.ContentLength))
 			}
 
 			// Increment active requests
-			m.httpActiveRequests.Inc()
+			mm.httpActiveRequests.Inc()
 
 			// Process the request
 			err := next(c)
@@ -344,16 +344,16 @@ func (m *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
 			duration := time.Since(start).Seconds()
 
 			// Decrement active requests
-			m.httpActiveRequests.Dec()
+			mm.httpActiveRequests.Dec()
 
 			// Get response details
 			res := c.Response()
 			status := strconv.Itoa(res.Status)
 
 			// Record all metrics with correct label sets
-			m.httpRequestsTotal.WithLabelValues(req.Method, path, status).Inc()             // 3 labels: method, path, status_code
-			m.httpRequestDuration.WithLabelValues(req.Method, path).Observe(duration)       // 2 labels: method, path
-			m.httpResponseSize.WithLabelValues(req.Method, path).Observe(float64(res.Size)) // 2 labels: method, path
+			mm.httpRequestsTotal.WithLabelValues(req.Method, path, status).Inc()             // 3 labels: method, path, status_code
+			mm.httpRequestDuration.WithLabelValues(req.Method, path).Observe(duration)       // 2 labels: method, path
+			mm.httpResponseSize.WithLabelValues(req.Method, path).Observe(float64(res.Size)) // 2 labels: method, path
 
 			return err
 		}
@@ -362,16 +362,16 @@ func (m *MetricsManager) EchoMetricsMiddleware() echo.MiddlewareFunc {
 
 // RegisterEchoMetrics registers the Prometheus metrics endpoint with Echo
 // using the MetricsManager's custom registry (not the global default).
-func (m *MetricsManager) RegisterEchoMetrics(e *echo.Echo, path string) {
-	e.GET(path, echo.WrapHandler(m.CreateMetricsHandler()))
+func (mm *MetricsManager) RegisterEchoMetrics(e *echo.Echo, path string) {
+	e.GET(path, echo.WrapHandler(mm.CreateMetricsHandler()))
 }
 
 // EchoUptimeMiddleware can be used to track server uptime via Echo
-func (m *MetricsManager) EchoUptimeMiddleware() echo.MiddlewareFunc {
+func (mm *MetricsManager) EchoUptimeMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// Update uptime metric on each request
-			m.UpdateUptime()
+			mm.UpdateUptime()
 			return next(c)
 		}
 	}

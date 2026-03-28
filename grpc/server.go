@@ -16,6 +16,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	otellog "go.opentelemetry.io/otel/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/time/rate"
@@ -63,6 +64,20 @@ func New(opts ...Option) (*Server, error) {
 	return server, nil
 }
 
+// logInfo emits an info-level message using the OTel logger when OTelConfig is
+// set, otherwise falls back to the standard log package.
+func (s *Server) logInfo(msg string) {
+	if s.config.otelConfig != nil && s.config.otelConfig.IsLoggingEnabled() {
+		logger := s.config.otelConfig.GetLogger("grpc.server")
+		var rec otellog.Record
+		rec.SetSeverity(otellog.SeverityInfo)
+		rec.SetBody(otellog.StringValue(msg))
+		logger.Emit(context.Background(), rec)
+		return
+	}
+	log.Printf("%s", msg)
+}
+
 // setupGRPCServer configures the gRPC server with options
 func (s *Server) setupGRPCServer() {
 	var opts []grpc.ServerOption
@@ -78,15 +93,20 @@ func (s *Server) setupGRPCServer() {
 
 	// Add OpenTelemetry interceptors if configured
 	if s.config.otelConfig != nil {
-		// Chain interceptors: logging -> tracing -> metrics -> handler
-		interceptors := []grpc.UnaryServerInterceptor{
+		// Chain unary interceptors: logging -> tracing -> metrics -> handler
+		unaryInterceptors := []grpc.UnaryServerInterceptor{
 			createGRPCLoggingInterceptor(s.config.otelConfig),
 			createGRPCTracingInterceptor(s.config.otelConfig),
 			createGRPCMetricsInterceptor(s.config.otelConfig),
 		}
+		opts = append(opts, grpc.ChainUnaryInterceptor(unaryInterceptors...))
 
-		// Create chain interceptor
-		opts = append(opts, grpc.ChainUnaryInterceptor(interceptors...))
+		// Chain stream interceptors: logging -> metrics -> handler
+		streamInterceptors := []grpc.StreamServerInterceptor{
+			createGRPCStreamLoggingInterceptor(s.config.otelConfig),
+			createGRPCStreamMetricsInterceptor(s.config.otelConfig),
+		}
+		opts = append(opts, grpc.ChainStreamInterceptor(streamInterceptors...))
 	}
 
 	// Create gRPC server
@@ -131,7 +151,7 @@ func (s *Server) setupEchoServer() error {
 	} else {
 		// Fallback to traditional logging and metrics (backwards compatibility)
 		if s.config.enableLogging {
-			e.Use(middleware.Logger())
+			e.Use(middleware.RequestLogger())
 		}
 		if s.config.enableMetrics {
 			e.Use(s.metricsManager.EchoMetricsMiddleware())
@@ -148,7 +168,11 @@ func (s *Server) setupEchoServer() error {
 
 	// Add optional CORS middleware
 	if s.config.enableCORS {
-		e.Use(middleware.CORS())
+		if s.config.corsConfig != nil {
+			e.Use(middleware.CORSWithConfig(*s.config.corsConfig))
+		} else {
+			e.Use(middleware.CORS())
+		}
 	}
 
 	// Add optional rate limiting middleware
@@ -161,14 +185,17 @@ func (s *Server) setupEchoServer() error {
 		e.Use(mw)
 	}
 
-	// Setup gateway integration if service registrar is provided
+	// Setup gateway integration if service registrar is provided.
+	// NOTE: Gateway routes are registered here, before echoConfigurer, so that
+	// user-supplied routes from echoConfigurer always take precedence over the
+	// auto-generated gateway catch-all routes.
 	if s.config.serviceRegistrar != nil {
 		if err := s.setupGatewayIntegration(e); err != nil {
 			return fmt.Errorf("failed to setup gateway integration: %w", err)
 		}
 	}
 
-	// Apply custom Echo configuration
+	// Apply custom Echo configuration (routes registered here override gateway routes).
 	if s.config.echoConfigurer != nil {
 		s.config.echoConfigurer(e)
 	}
@@ -226,16 +253,21 @@ func (s *Server) Start() error {
 // startSeparateMode starts gRPC and HTTP servers on separate ports
 func (s *Server) startSeparateMode() error {
 	// Start gRPC server
-	grpcListener, err := net.Listen("tcp", s.config.getGRPCAddress())
+	grpcListener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", s.config.getGRPCAddress())
 	if err != nil {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", s.config.grpcPort, err)
 	}
 
-	// Start gRPC server in goroutine
+	// grpc.Server.Serve closes the listener when it exits. The deferred Close
+	// here is a safety net so that the file descriptor is released even if
+	// Serve never runs (e.g. on an early return in future code paths).
+	defer grpcListener.Close() //nolint:errcheck
+
+	// Start gRPC server in goroutine; it now owns the listener.
 	go func() {
-		log.Printf("gRPC server starting on port %s", s.config.grpcPort)
+		s.logInfo(fmt.Sprintf("gRPC server starting on port %s", s.config.grpcPort))
 		if s.config.enableReflection {
-			log.Printf("gRPC reflection enabled")
+			s.logInfo("gRPC reflection enabled")
 		}
 		if err := s.grpcServer.Serve(grpcListener); err != nil {
 			log.Printf("gRPC server error: %v", err)
@@ -243,15 +275,15 @@ func (s *Server) startSeparateMode() error {
 	}()
 
 	// Start Echo HTTP server
-	log.Printf("Echo HTTP server starting on port %s", s.config.httpPort)
+	s.logInfo(fmt.Sprintf("Echo HTTP server starting on port %s", s.config.httpPort))
 	if s.config.enableHealthCheck {
-		log.Printf("Health checks available at http://localhost:%s%s", s.config.httpPort, s.config.healthPath)
+		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.httpPort, s.config.healthPath))
 	}
 	if s.config.enableMetrics {
-		log.Printf("Metrics available at http://localhost:%s%s", s.config.httpPort, s.config.metricsPath)
+		s.logInfo(fmt.Sprintf("Metrics available at http://localhost:%s%s", s.config.httpPort, s.config.metricsPath))
 	}
 	if s.config.serviceRegistrar != nil {
-		log.Printf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath)
+		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath))
 	}
 
 	return s.echo.Start(s.config.getHTTPAddress())
@@ -278,19 +310,19 @@ func (s *Server) startH2CMode() error {
 		IdleTimeout:       s.config.idleTimeout,
 	}
 
-	log.Printf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.grpcPort)
-	log.Printf("gRPC endpoints available on port %s", s.config.grpcPort)
+	s.logInfo(fmt.Sprintf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.grpcPort))
+	s.logInfo(fmt.Sprintf("gRPC endpoints available on port %s", s.config.grpcPort))
 	if s.config.enableReflection {
-		log.Printf("gRPC reflection enabled")
+		s.logInfo("gRPC reflection enabled")
 	}
 	if s.config.enableHealthCheck {
-		log.Printf("Health checks available at http://localhost:%s%s", s.config.grpcPort, s.config.healthPath)
+		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.grpcPort, s.config.healthPath))
 	}
 	if s.config.enableMetrics {
-		log.Printf("Metrics available at http://localhost:%s%s", s.config.grpcPort, s.config.metricsPath)
+		s.logInfo(fmt.Sprintf("Metrics available at http://localhost:%s%s", s.config.grpcPort, s.config.metricsPath))
 	}
 	if s.config.serviceRegistrar != nil {
-		log.Printf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath)
+		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath))
 	}
 
 	return s.httpServer.ListenAndServe()

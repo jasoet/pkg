@@ -2,9 +2,11 @@ package grpc
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"google.golang.org/grpc"
 
 	"github.com/jasoet/pkg/v2/otel"
@@ -57,10 +59,11 @@ type config struct {
 	gatewayBasePath string // Base path for gRPC gateway routes (default: "/api/v1")
 
 	// Echo-specific Features
-	enableCORS      bool                  // Enable CORS middleware
-	enableRateLimit bool                  // Enable rate limiting middleware
-	rateLimit       float64               // Requests per second for rate limiting
-	middleware      []echo.MiddlewareFunc // Custom Echo middleware
+	enableCORS      bool                   // Enable CORS middleware
+	corsConfig      *middleware.CORSConfig // Optional custom CORS configuration (nil = default)
+	enableRateLimit bool                   // Enable rate limiting middleware
+	rateLimit       float64                // Requests per second for rate limiting
+	middleware      []echo.MiddlewareFunc  // Custom Echo middleware
 
 	// OpenTelemetry Configuration (optional - nil disables telemetry)
 	otelConfig *otel.Config // OpenTelemetry configuration for traces, metrics, and logs
@@ -100,7 +103,6 @@ func newConfig(opts ...Option) (*config, error) {
 		enableRateLimit: false, // Disabled by default, enable as needed
 		rateLimit:       100.0, // 100 requests per second default
 		middleware:      []echo.MiddlewareFunc{},
-
 	}
 
 	// Apply all options
@@ -116,14 +118,34 @@ func newConfig(opts ...Option) (*config, error) {
 	return cfg, nil
 }
 
+// validatePort checks that a port string is a valid number in the range 0-65535.
+// Port 0 is accepted as it instructs the OS to assign an available port (useful
+// in tests and dynamic allocation). Negative values and values above 65535 are
+// rejected.
+func validatePort(name, port string) error {
+	if port == "" {
+		return fmt.Errorf("%s cannot be empty", name)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		return fmt.Errorf("%s %q is not a valid number: %w", name, port, err)
+	}
+	if n < 0 || n > 65535 {
+		return fmt.Errorf("%s %d is out of range [0, 65535]", name, n)
+	}
+	return nil
+}
+
 // validate ensures the configuration is valid
 func (c *config) validate() error {
-	if c.grpcPort == "" {
-		return fmt.Errorf("gRPC port cannot be empty")
+	if err := validatePort("gRPC port", c.grpcPort); err != nil {
+		return err
 	}
 
-	if c.mode == SeparateMode && c.httpPort == "" {
-		return fmt.Errorf("HTTP port cannot be empty when using SeparateMode")
+	if c.mode == SeparateMode {
+		if err := validatePort("HTTP port", c.httpPort); err != nil {
+			return err
+		}
 	}
 
 	if c.mode != H2CMode && c.mode != SeparateMode {
@@ -328,10 +350,19 @@ func WithoutReflection() Option {
 	}
 }
 
-// WithCORS enables CORS middleware
+// WithCORS enables CORS middleware with default (wildcard) configuration
 func WithCORS() Option {
 	return func(c *config) {
 		c.enableCORS = true
+	}
+}
+
+// WithCORSConfig enables CORS middleware with a custom configuration,
+// replacing the default wildcard policy.
+func WithCORSConfig(corsConfig middleware.CORSConfig) Option {
+	return func(c *config) {
+		c.enableCORS = true
+		c.corsConfig = &corsConfig
 	}
 }
 

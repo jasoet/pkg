@@ -238,8 +238,8 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 // AddExitHandler adds an exit handler from a WorkflowSource. Exit handlers run
 // after the main workflow completes (regardless of success or failure).
 //
-// Steps whose name contains "destroy" or "cleanup" are automatically prioritized
-// and inserted at the beginning of the exit handler list, ensuring resource
+// Note: Steps with names containing "destroy" or "cleanup" are automatically
+// prioritized (prepended) in the exit handler sequence, ensuring resource
 // cleanup runs before other exit steps.
 func (b *WorkflowBuilder) AddExitHandler(source WorkflowSource) *WorkflowBuilder {
 	ctx := context.Background()

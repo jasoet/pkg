@@ -1,98 +1,11 @@
 # golangci-lint configuration for github.com/jasoet/pkg/v2
 # Go utility library with focus on reliability, security, and performance
 
+version: "2"
+
 run:
   timeout: 5m
   tests: true
-
-output:
-  formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-
-linters-settings:
-  # Security-focused settings
-  gosec:
-    severity: "medium"
-    confidence: "medium"
-    excludes:
-      - G501  # Allow MD5 for non-security purposes (e.g., checksums)
-    includes:
-      - G101  # Look for hardcoded credentials
-      - G102  # Bind to all interfaces
-      - G103  # Audit the use of unsafe block
-      - G104  # Audit errors not checked
-      - G106  # Audit the use of ssh.InsecureIgnoreHostKey
-      - G107  # Url provided to HTTP request as taint input
-      - G108  # Profiling endpoint automatically exposed
-      - G109  # Potential Integer overflow made by strconv.Atoi result conversion
-      - G110  # Potential DoS vulnerability via decompression bomb
-
-  # Code quality settings
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment  # Struct field alignment relaxed for readability
-      - shadow         # Enable predeclared linter separately
-
-  gocyclo:
-    min-complexity: 20  # Allow higher complexity for generics and builder patterns
-
-  gofmt:
-    simplify: true
-
-  goimports:
-    local-prefixes: github.com/jasoet/pkg
-
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-    ignore-tests: true
-
-  misspell:
-    locale: US
-    ignore-words:
-      - keypair
-      - keypairs
-
-  lll:
-    line-length: 190  # Accommodate complex generic function signatures with validation
-
-  unused:
-    check-exported: false  # Public API may have unused exported functions
-
-  staticcheck:
-    checks: ["all"]
-
-  errcheck:
-    check-type-assertions: false  # Generic type assertions are safe by design
-    check-blank: true
-    exclude-functions:
-      - io/ioutil.ReadFile
-      - io.Copy(*bytes.Buffer)
-      - io.Copy(os.Stdout)
-
-  # Performance settings
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-
-  # Style settings
-  revive:
-    rules:
-      - name: var-naming
-        severity: warning
-        disabled: false
-        arguments:
-          - ["ID", "URL", "HTTP", "JSON", "API", "SQL", "DB", "OTel", "GRPC", "SSH", "DSN"] # Common acronyms
-      - name: exported
-        severity: warning
-        disabled: false
-        arguments:
-          - "checkPrivateReceivers"
-          - "sayRepetitiveInsteadOfStutters"
 
 linters:
   enable:
@@ -101,9 +14,7 @@ linters:
     - errcheck
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
     - predeclared
 
     # Security
@@ -114,8 +25,6 @@ linters:
     - unconvert
 
     # Style and maintainability
-    - gofmt
-    - goimports
     - misspell
     - lll
     - goconst
@@ -130,71 +39,117 @@ linters:
 
     # Additional useful linters
     - asciicheck
-    - gofumpt
     - whitespace
 
-  disable:
-    # Disabled linters with reasons
-    - dupl         # Similar patterns are legitimate across packages
-    - funlen       # Builder/config functions can be long
-    - gocognit     # Cognitive complexity relaxed for builder patterns
-    - nestif       # Deep nesting acceptable for validation logic
-    - cyclop       # Duplicate of gocyclo
-    - exhaustive   # Not all enum cases need handling
-    - forbidigo    # fmt.Print needed in examples and logging
-    - forcetypeassert # Type assertions sometimes necessary with generics
-    - godot        # Comment formatting relaxed
-    - godox        # Allow TODOs in development
-    - gomoddirectives # Module directives are project-specific
-    - gomodguard   # Module restrictions not needed
-    - importas     # Import aliasing flexibility needed
-    - maintidx     # Maintainability index relaxed for utility code
-    - nlreturn     # Newline returns formatting is subjective
-    - paralleltest # Some tests need sequential execution
-    - testpackage  # Tests in same package for access to internals
-    - wrapcheck    # Error wrapping patterns vary by package
-    - wsl          # Whitespace linting too opinionated
+  settings:
+    gosec:
+      severity: "medium"
+      confidence: "medium"
+      excludes:
+        - G501
+      includes:
+        - G101
+        - G102
+        - G103
+        - G104
+        - G106
+        - G107
+        - G108
+        - G109
+        - G110
 
-issues:
-  exclude-dirs:
-    - vendor
-    - examples  # Examples may have API mismatches during development
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
 
-  exclude-files:
-    - ".*\\.pb\\.go$"  # Exclude generated protobuf files
+    gocyclo:
+      min-complexity: 25
 
-  exclude-rules:
-    # Exclude some linters from running on tests files
-    - path: _test\.go
-      linters:
-        - gosec        # Security checks relaxed in tests
-        - goconst      # Test constants can be repeated
-        - lll          # Test lines can be longer
-        - dupl         # Test code duplication is acceptable
-        - errcheck     # Test code can ignore errors intentionally
-        - gocyclo      # Test functions can have high complexity
-        - unconvert    # Type conversions may be explicit for clarity
-        - govet        # unusedwrite acceptable in tests
-        - staticcheck  # Nil dereference acceptable after nil check in tests
-        - gosimple     # Explicit fmt.Sprintf acceptable in table tests
+    goconst:
+      min-len: 3
+      min-occurrences: 3
 
-    # Exclude predeclared warnings for min function (compatibility with pre-Go 1.21)
-    - text: "function min has same name as predeclared identifier"
-      linters:
-        - predeclared
+    misspell:
+      locale: US
 
+    lll:
+      line-length: 190
 
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  new: false
+    staticcheck:
+      checks: ["all"]
+
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - io/ioutil.ReadFile
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    revive:
+      rules:
+        - name: var-naming
+          severity: warning
+          disabled: false
+          arguments:
+            - ["ID", "URL", "HTTP", "JSON", "API", "SQL", "DB", "OTel", "GRPC", "SSH", "DSN"]
+        - name: exported
+          severity: warning
+          disabled: false
+          arguments:
+            - "checkPrivateReceivers"
+            - "sayRepetitiveInsteadOfStutters"
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+    paths:
+      - vendor
+      - examples
+      - ".*\\.pb\\.go$"
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - goconst
+          - lll
+          - dupl
+          - errcheck
+          - gocyclo
+          - unconvert
+          - govet
+          - staticcheck
+          - noctx
+      - text: "function min has same name as predeclared identifier"
+        linters:
+          - predeclared
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gofumpt
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/jasoet/pkg
 
 severity:
-  default-severity: error
-  case-sensitive: false
+  default: error
   rules:
     - linters:
         - revive
       severity: warning
     - linters:
         - gosec
-      severity: error  # Security issues are always errors
+      severity: error

@@ -38,12 +38,12 @@ import (
 
 func main() {
     config := db.ConnectionConfig{
-        DbType:       db.Postgresql,
+        DBType:       db.Postgresql,
         Host:         "localhost",
         Port:         5432,
         Username:     "admin",
         Password:     "${DB_PASSWORD}",
-        DbName:       "myapp",
+        DBName:       "myapp",
         Timeout:      5 * time.Second,
         MaxIdleConns: 5,
         MaxOpenConns: 10,
@@ -75,12 +75,12 @@ otelConfig := otel.NewConfig("my-service").
 
 // Configure database with OTel
 config := db.ConnectionConfig{
-    DbType:       db.Postgresql,
+    DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
     Username:     "admin",
     Password:     "${DB_PASSWORD}",
-    DbName:       "myapp",
+    DBName:       "myapp",
     Timeout:      5 * time.Second,
     MaxIdleConns: 5,
     MaxOpenConns: 10,
@@ -100,7 +100,7 @@ pool.Create(&user) // Creates span "db.INSERT"
 
 ```go
 config := db.ConnectionConfig{
-    DbType: db.Postgresql,
+    DBType: db.Postgresql,
     Host:   "localhost",
     Port:   5432,
     // ...
@@ -113,7 +113,7 @@ config := db.ConnectionConfig{
 
 ```go
 config := db.ConnectionConfig{
-    DbType: db.Mysql,
+    DBType: db.Mysql,
     Host:   "localhost",
     Port:   3306,
     // ...
@@ -126,7 +126,7 @@ config := db.ConnectionConfig{
 
 ```go
 config := db.ConnectionConfig{
-    DbType: db.MSSQL,
+    DBType: db.MSSQL,
     Host:   "localhost",
     Port:   1433,
     // ...
@@ -480,11 +480,11 @@ pool.Find(&users)  // New root span
 import "github.com/go-playground/validator/v10"
 
 config := db.ConnectionConfig{
-    DbType:       db.Postgresql,
+    DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
     Username:     "admin",
-    DbName:       "myapp",
+    DBName:       "myapp",
     Timeout:      5 * time.Second,
     MaxIdleConns: 5,
     MaxOpenConns: 10,
@@ -530,12 +530,12 @@ func TestWithTestcontainer(t *testing.T) {
     defer container.Terminate(ctx)
 
     config := db.ConnectionConfig{
-        DbType:   db.Postgresql,
+        DBType:   db.Postgresql,
         Host:     container.Host(ctx),
         Port:     container.MappedPort(ctx, "5432").Int(),
         Username: "test",
         Password: "test",
-        DbName:   "testdb",
+        DBName:   "testdb",
         OTelConfig: otel.NewConfig("test").
             WithTracerProvider(noopt.NewTracerProvider()).
             WithMeterProvider(noopm.NewMeterProvider()),

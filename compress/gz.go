@@ -18,7 +18,7 @@ import (
 func Gz(source io.Reader, writer io.Writer) error {
 	gzWriter := gzip.NewWriter(writer)
 	if _, err := io.Copy(gzWriter, source); err != nil {
-		gzWriter.Close()
+		_ = gzWriter.Close()
 		return err
 	}
 	return gzWriter.Close()
@@ -44,13 +44,13 @@ func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error) {
 	if errReader != nil {
 		return 0, errReader
 	}
-	defer zipReader.Close()
+	defer func() { _ = zipReader.Close() }()
 
 	destinationFile, errCreate := os.Create(dst)
 	if errCreate != nil {
 		return 0, errCreate
 	}
-	defer destinationFile.Close()
+	defer func() { _ = destinationFile.Close() }()
 
 	// Limit decompression to prevent zip bombs
 	limitedReader := io.LimitReader(zipReader, cfg.maxFileSize)

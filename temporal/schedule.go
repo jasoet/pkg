@@ -80,7 +80,7 @@ func (sm *ScheduleManager) Close() {
 	}
 
 	if sm.metricsCloser != nil {
-		sm.metricsCloser.Close()
+		_ = sm.metricsCloser.Close()
 	}
 
 	logger.Debug("Schedule Manager closed")

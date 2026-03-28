@@ -17,24 +17,24 @@ import (
 
 func TestDatabaseConfigValidation(t *testing.T) {
 	validConfig := &ConnectionConfig{
-		DbType:       Mysql,
+		DBType:       Mysql,
 		Host:         "localhost",
 		Port:         3306,
 		Username:     "root",
 		Password:     "",
-		DbName:       "mydb",
+		DBName:       "mydb",
 		Timeout:      3 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
 	}
 
 	invalidConfig := &ConnectionConfig{
-		DbType:       "invalid_db_type",
+		DBType:       "invalid_db_type",
 		Host:         "",
 		Port:         -1,
 		Username:     "",
 		Password:     "",
-		DbName:       "",
+		DBName:       "",
 		MaxIdleConns: 0,
 		MaxOpenConns: 0,
 	}
@@ -78,12 +78,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "MySQL connection",
 			config: ConnectionConfig{
-				DbType:   Mysql,
+				DBType:   Mysql,
 				Host:     "localhost",
 				Port:     3306,
 				Username: "root",
 				Password: "password",
-				DbName:   "test",
+				DBName:   "test",
 				Timeout:  3 * time.Second,
 			},
 			wantDsn: "root:password@tcp(localhost:3306)/test?parseTime=true&timeout=3s",
@@ -91,12 +91,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "Postgres connection",
 			config: ConnectionConfig{
-				DbType:   Postgresql,
+				DBType:   Postgresql,
 				Host:     "localhost",
 				Port:     5432,
 				Username: "postgres",
 				Password: "password",
-				DbName:   "test",
+				DBName:   "test",
 				Timeout:  3 * time.Second,
 			},
 			wantDsn: "user=postgres password=password host=localhost port=5432 dbname=test sslmode=require connect_timeout=3",
@@ -104,12 +104,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "Different port",
 			config: ConnectionConfig{
-				DbType:   Mysql,
+				DBType:   Mysql,
 				Host:     "localhost",
 				Port:     8080,
 				Username: "root",
 				Password: "password",
-				DbName:   "test",
+				DBName:   "test",
 				Timeout:  5 * time.Second,
 			},
 			wantDsn: "root:password@tcp(localhost:8080)/test?parseTime=true&timeout=5s",
@@ -117,12 +117,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "All configurations are empty",
 			config: ConnectionConfig{
-				DbType:   "",
+				DBType:   "",
 				Host:     "",
 				Port:     0,
 				Username: "",
 				Password: "",
-				DbName:   "",
+				DBName:   "",
 				Timeout:  0 * time.Second,
 			},
 			wantDsn: "", // Unknown DbType returns empty DSN
@@ -130,12 +130,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "MSSQL connection",
 			config: ConnectionConfig{
-				DbType:   MSSQL,
+				DBType:   MSSQL,
 				Host:     "localhost",
 				Port:     1433,
 				Username: "sa",
 				Password: "password",
-				DbName:   "test",
+				DBName:   "test",
 				Timeout:  5 * time.Second,
 			},
 			wantDsn: "sqlserver://sa:password@localhost:1433?database=test&connectTimeout=5s&encrypt=require",
@@ -143,12 +143,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "Postgres with custom SSLMode",
 			config: ConnectionConfig{
-				DbType:   Postgresql,
+				DBType:   Postgresql,
 				Host:     "localhost",
 				Port:     5432,
 				Username: "postgres",
 				Password: "password",
-				DbName:   "test",
+				DBName:   "test",
 				Timeout:  3 * time.Second,
 				SSLMode:  "require",
 			},
@@ -157,12 +157,12 @@ func TestConnectionConfig_dsn(t *testing.T) {
 		{
 			name: "Zero timeout uses default 30s",
 			config: ConnectionConfig{
-				DbType:   Mysql,
+				DBType:   Mysql,
 				Host:     "localhost",
 				Port:     3306,
 				Username: "root",
 				Password: "password",
-				DbName:   "test",
+				DBName:   "test",
 				Timeout:  0,
 			},
 			wantDsn: "root:password@tcp(localhost:3306)/test?parseTime=true&timeout=30s",
@@ -209,12 +209,12 @@ func TestEffectiveGormLogLevel(t *testing.T) {
 
 func TestConnectionConfig_collectPoolMetrics_NilOTelConfig(t *testing.T) {
 	config := &ConnectionConfig{
-		DbType:     Postgresql,
+		DBType:     Postgresql,
 		Host:       "localhost",
 		Port:       5432,
 		Username:   "test",
 		Password:   "test",
-		DbName:     "test",
+		DBName:     "test",
 		OTelConfig: nil, // No OTel config
 	}
 
@@ -234,12 +234,12 @@ func TestConnectionConfig_collectPoolMetrics_MetricsDisabled(t *testing.T) {
 		WithTracerProvider(noopt.NewTracerProvider())
 
 	config := &ConnectionConfig{
-		DbType:     Postgresql,
+		DBType:     Postgresql,
 		Host:       "localhost",
 		Port:       5432,
 		Username:   "test",
 		Password:   "test",
-		DbName:     "test",
+		DBName:     "test",
 		OTelConfig: otelConfig,
 	}
 
@@ -259,12 +259,12 @@ func TestConnectionConfig_collectPoolMetrics_WithValidConfig(t *testing.T) {
 		WithMeterProvider(noopm.NewMeterProvider())
 
 	config := &ConnectionConfig{
-		DbType:     Postgresql,
+		DBType:     Postgresql,
 		Host:       "localhost",
 		Port:       5432,
 		Username:   "test",
 		Password:   "test",
-		DbName:     "test",
+		DBName:     "test",
 		OTelConfig: otelConfig,
 	}
 
@@ -283,12 +283,12 @@ func TestConnectionConfig_collectPoolMetrics_WithValidConfig(t *testing.T) {
 
 func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
 	config := &ConnectionConfig{
-		DbType:       "invalid-db-type",
+		DBType:       "invalid-db-type",
 		Host:         "localhost",
 		Port:         5432,
 		Username:     "test",
 		Password:     "test",
-		DbName:       "test",
+		DBName:       "test",
 		Timeout:      5 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -301,12 +301,12 @@ func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
 
 func TestConnectionConfig_Pool_ConnectionFailure(t *testing.T) {
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         "invalid-host-that-does-not-exist.local",
 		Port:         5432,
 		Username:     "test",
 		Password:     "test",
-		DbName:       "test",
+		DBName:       "test",
 		Timeout:      1 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -319,12 +319,12 @@ func TestConnectionConfig_Pool_ConnectionFailure(t *testing.T) {
 
 func TestConnectionConfig_Pool_EmptyDSN(t *testing.T) {
 	config := &ConnectionConfig{
-		DbType:       "",
+		DBType:       "",
 		Host:         "",
 		Port:         0,
 		Username:     "",
 		Password:     "",
-		DbName:       "",
+		DBName:       "",
 		Timeout:      5 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -337,7 +337,7 @@ func TestConnectionConfig_Pool_EmptyDSN(t *testing.T) {
 func TestRedactedDsn_MasksPassword(t *testing.T) {
 	cfg := ConnectionConfig{
 		Host: "localhost", Port: 5432, Username: "admin",
-		Password: "supersecret", DbName: "testdb", DbType: Postgresql,
+		Password: "supersecret", DBName: "testdb", DBType: Postgresql,
 	}
 	redacted := cfg.RedactedDsn()
 	assert.Contains(t, redacted, "***")
@@ -351,12 +351,12 @@ func TestEffectiveSSLMode_DefaultsToRequire(t *testing.T) {
 
 func TestConnectionConfig_SQLDB_ConnectionFailure(t *testing.T) {
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         "invalid-host.local",
 		Port:         5432,
 		Username:     "test",
 		Password:     "test",
-		DbName:       "test",
+		DBName:       "test",
 		Timeout:      1 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,

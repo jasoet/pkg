@@ -127,6 +127,8 @@ func (i *otelInstrumentation) recordError(ctx context.Context, errorType string,
 }
 
 // incrementCounter increments a named counter metric.
+// The string-switch dispatch is intentional: it keeps counter selection explicit and avoids
+// the complexity of a registry map while the set of counters remains small and fixed.
 func (i *otelInstrumentation) incrementCounter(ctx context.Context, counterName string, value int64, attrs ...attribute.KeyValue) {
 	if !i.enabled {
 		return

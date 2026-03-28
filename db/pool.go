@@ -43,12 +43,12 @@ const (
 
 // ConnectionConfig holds the connection parameters for a database pool.
 type ConnectionConfig struct {
-	DbType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL" mapstructure:"dbType"`
+	DBType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL" mapstructure:"dbType"`
 	Host         string        `yaml:"host" validate:"required,min=1" mapstructure:"host"`
 	Port         int           `yaml:"port" mapstructure:"port" validate:"required,min=1,max=65535"`
 	Username     string        `yaml:"username" validate:"required,min=1" mapstructure:"username"`
 	Password     string        `yaml:"password" mapstructure:"password"`
-	DbName       string        `yaml:"dbName" validate:"required,min=1" mapstructure:"dbName"`
+	DBName       string        `yaml:"dbName" validate:"required,min=1" mapstructure:"dbName"`
 	Timeout      time.Duration `yaml:"timeout" mapstructure:"timeout"`
 	MaxIdleConns int           `yaml:"maxIdleConns" mapstructure:"maxIdleConns" validate:"min=1"`
 	MaxOpenConns int           `yaml:"maxOpenConns" mapstructure:"maxOpenConns" validate:"min=2"`
@@ -102,8 +102,8 @@ func (c *ConnectionConfig) effectiveGormLogLevel() logger.LogLevel {
 // Validate checks that the ConnectionConfig has all required fields set and
 // values are within acceptable ranges. It is called automatically by Pool().
 func (c *ConnectionConfig) Validate() error {
-	if c.DbType != Mysql && c.DbType != Postgresql && c.DbType != MSSQL {
-		return fmt.Errorf("unsupported database type: %q", c.DbType)
+	if c.DBType != Mysql && c.DBType != Postgresql && c.DBType != MSSQL {
+		return fmt.Errorf("unsupported database type: %q", c.DBType)
 	}
 	if c.Host == "" {
 		return fmt.Errorf("host is required")
@@ -114,14 +114,14 @@ func (c *ConnectionConfig) Validate() error {
 	if c.Username == "" {
 		return fmt.Errorf("username is required")
 	}
-	if c.DbName == "" {
+	if c.DBName == "" {
 		return fmt.Errorf("dbName is required")
 	}
 	validPostgresSSL := map[string]bool{
 		"disable": true, "require": true, "verify-ca": true,
 		"verify-full": true, "prefer": true, "allow": true,
 	}
-	if c.DbType == Postgresql && c.SSLMode != "" && !validPostgresSSL[c.SSLMode] {
+	if c.DBType == Postgresql && c.SSLMode != "" && !validPostgresSSL[c.SSLMode] {
 		return fmt.Errorf("invalid SSLMode %q for PostgreSQL", c.SSLMode)
 	}
 	if c.MaxIdleConns > c.MaxOpenConns {
@@ -137,18 +137,18 @@ func (c *ConnectionConfig) dsn() string {
 	timeout := c.effectiveTimeout()
 	sslMode := c.effectiveSSLMode()
 
-	switch c.DbType {
+	switch c.DBType {
 	case Mysql:
 		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
 		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&timeout=%s",
-			c.Username, c.Password, c.Host, c.Port, c.DbName, timeoutStr)
+			c.Username, c.Password, c.Host, c.Port, c.DBName, timeoutStr)
 	case Postgresql:
 		return fmt.Sprintf("user=%s password=%s host=%s port=%d dbname=%s sslmode=%s connect_timeout=%d",
-			c.Username, c.Password, c.Host, c.Port, c.DbName, sslMode, int(timeout.Seconds()))
+			c.Username, c.Password, c.Host, c.Port, c.DBName, sslMode, int(timeout.Seconds()))
 	case MSSQL:
 		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
 		return fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connectTimeout=%s&encrypt=%s",
-			c.Username, c.Password, c.Host, c.Port, c.DbName, timeoutStr, sslMode)
+			c.Username, c.Password, c.Host, c.Port, c.DBName, timeoutStr, sslMode)
 	default:
 		return ""
 	}
@@ -176,7 +176,7 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	dsn := c.dsn()
 
 	var dialector gorm.Dialector
-	switch c.DbType {
+	switch c.DBType {
 	case Mysql:
 		dialector = mysql.Open(dsn)
 	case Postgresql:
@@ -184,14 +184,14 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	case MSSQL:
 		dialector = sqlserver.Open(dsn)
 	default:
-		return nil, fmt.Errorf("unsupported database type: %s", c.DbType)
+		return nil, fmt.Errorf("unsupported database type: %s", c.DBType)
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: logger.Default.LogMode(c.effectiveGormLogLevel()),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database connection to %s:%d/%s: %w", c.Host, c.Port, c.DbName, err)
+		return nil, fmt.Errorf("failed to open database connection to %s:%d/%s: %w", c.Host, c.Port, c.DBName, err)
 	}
 
 	sqlDB, err := db.DB()
@@ -212,16 +212,16 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 	pingCtx, cancel := context.WithTimeout(context.Background(), c.effectiveTimeout())
 	defer cancel()
 	if err := sqlDB.PingContext(pingCtx); err != nil {
-		return nil, fmt.Errorf("failed to ping database at %s:%d/%s: %w", c.Host, c.Port, c.DbName, err)
+		return nil, fmt.Errorf("failed to ping database at %s:%d/%s: %w", c.Host, c.Port, c.DBName, err)
 	}
 
 	// Install OpenTelemetry instrumentation if configured
 	if c.OTelConfig != nil && c.OTelConfig.IsTracingEnabled() {
 		// Configure otelgorm plugin options
 		opts := []otelgorm.Option{
-			otelgorm.WithDBName(c.DbName),
+			otelgorm.WithDBName(c.DBName),
 			otelgorm.WithAttributes(
-				semconv.DBSystemKey.String(string(c.DbType)),
+				semconv.DBSystemKey.String(string(c.DBType)),
 				semconv.ServerAddressKey.String(c.Host),
 				semconv.ServerPortKey.Int(c.Port),
 			),
@@ -239,7 +239,7 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 
 		// Install the uptrace otelgorm plugin
 		if err := db.Use(otelgorm.NewPlugin(opts...)); err != nil {
-			sqlDB.Close()
+			_ = sqlDB.Close()
 			return nil, fmt.Errorf("failed to install otelgorm plugin: %w", err)
 		}
 
@@ -313,8 +313,8 @@ func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 			stats := sqlDB.Stats()
 
 			attrs := []attribute.KeyValue{
-				attribute.String("db.system", string(c.DbType)),
-				attribute.String("db.name", c.DbName),
+				attribute.String("db.system", string(c.DBType)),
+				attribute.String("db.name", c.DBName),
 				attribute.String("server.address", c.Host),
 				attribute.Int("server.port", c.Port),
 			}

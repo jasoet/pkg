@@ -26,7 +26,7 @@ func Tar(sourceDirectory string, writer io.Writer) error {
 	}
 
 	tarWriter := tar.NewWriter(writer)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	return filepath.Walk(sourceDirectory, func(file string, fileInfo os.FileInfo, err error) error {
 		if err != nil {
@@ -56,7 +56,7 @@ func Tar(sourceDirectory string, writer io.Writer) error {
 		if err != nil {
 			return err
 		}
-		defer openFile.Close()
+		defer func() { _ = openFile.Close() }()
 
 		_, err = io.Copy(tarWriter, openFile)
 		return err
@@ -73,7 +73,7 @@ func TarGz(sourceDirectory string, writer io.Writer) error {
 
 	gzWriter := gzip.NewWriter(writer)
 	if err := Tar(sourceDirectory, gzWriter); err != nil {
-		gzWriter.Close()
+		_ = gzWriter.Close()
 		return err
 	}
 	return gzWriter.Close()
@@ -110,7 +110,7 @@ func UnTarGz(src io.Reader, destinationDir string, opts ...ExtractOption) (int64
 	if err != nil {
 		return 0, err
 	}
-	defer zipReader.Close()
+	defer func() { _ = zipReader.Close() }()
 
 	return UnTar(zipReader, destinationDir, opts...)
 }
@@ -153,7 +153,7 @@ func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header, ma
 	if err != nil {
 		return 0, err
 	}
-	defer fileToWrite.Close()
+	defer func() { _ = fileToWrite.Close() }()
 
 	// Limit decompression to prevent zip bombs
 	limitedReader := io.LimitReader(tarReader, maxFileSize)

@@ -41,13 +41,15 @@ import "github.com/jasoet/pkg/v2/logging"
 
 func main() {
     // All logs go to file (no console output)
-    if err := logging.InitializeWithFile("my-service", false,
+    closer, err := logging.InitializeWithFile("my-service", false,
         logging.OutputFile,
         &logging.FileConfig{
             Path: "/var/log/myapp/app.log",
-        }); err != nil {
+        })
+    if err != nil {
         log.Fatal().Err(err).Msg("failed to initialize logging")
     }
+    defer closer.Close()
 
     log.Info().Msg("This goes to file only")
 }
@@ -60,13 +62,15 @@ import "github.com/jasoet/pkg/v2/logging"
 
 func main() {
     // Logs appear in both console and file
-    if err := logging.InitializeWithFile("my-service", true,
+    closer, err := logging.InitializeWithFile("my-service", true,
         logging.OutputConsole | logging.OutputFile, // Bitwise OR
         &logging.FileConfig{
             Path: "/var/log/myapp/app.log",
-        }); err != nil {
+        })
+    if err != nil {
         log.Fatal().Err(err).Msg("failed to initialize logging")
     }
+    defer closer.Close()
 
     log.Info().Msg("Visible in console AND file")
 }
@@ -96,11 +100,12 @@ if err := logging.Initialize("my-service", true); err != nil {
 ### InitializeWithFile
 
 ```go
-func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) error
+func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) (io.Closer, error)
 ```
 
-Sets up logging with flexible output destinations. Returns an error if the configuration
-is invalid or the log file cannot be opened.
+Sets up logging with flexible output destinations. Returns an `io.Closer` (non-nil when file
+output is enabled) that must be closed by the caller (typically via `defer`), and an error if
+the configuration is invalid or the log file cannot be opened.
 
 **Parameters:**
 - `serviceName`: Service name added to all logs
@@ -115,17 +120,21 @@ is invalid or the log file cannot be opened.
 **Examples:**
 ```go
 // Console only
-err := logging.InitializeWithFile("service", true, logging.OutputConsole, nil)
+_, err := logging.InitializeWithFile("service", true, logging.OutputConsole, nil)
 
 // File only
-err := logging.InitializeWithFile("service", false,
+closer, err := logging.InitializeWithFile("service", false,
     logging.OutputFile,
     &logging.FileConfig{Path: "app.log"})
+if err != nil { log.Fatal(err) }
+defer closer.Close()
 
 // Both
-err := logging.InitializeWithFile("service", true,
+closer, err := logging.InitializeWithFile("service", true,
     logging.OutputConsole | logging.OutputFile,
     &logging.FileConfig{Path: "app.log"})
+if err != nil { log.Fatal(err) }
+defer closer.Close()
 ```
 
 ### ContextLogger
@@ -213,15 +222,16 @@ import (
 func main() {
     env := os.Getenv("ENV")
     
+    var closer io.Closer
     var err error
     if env == "production" {
         // Production: file only, info level
-        err = logging.InitializeWithFile("my-service", false,
+        closer, err = logging.InitializeWithFile("my-service", false,
             logging.OutputFile,
             &logging.FileConfig{Path: "/var/log/myapp/app.log"})
     } else if env == "staging" {
         // Staging: both console and file, debug level
-        err = logging.InitializeWithFile("my-service", true,
+        closer, err = logging.InitializeWithFile("my-service", true,
             logging.OutputConsole | logging.OutputFile,
             &logging.FileConfig{Path: "/var/log/myapp/app.log"})
     } else {
@@ -230,6 +240,9 @@ func main() {
     }
     if err != nil {
         log.Fatal().Err(err).Msg("failed to initialize logging")
+    }
+    if closer != nil {
+        defer closer.Close()
     }
 }
 ```
@@ -342,11 +355,13 @@ log.Panic().Msg("Unrecoverable error")
 ```go
 func main() {
     // Initialize logging first
-    if err := logging.InitializeWithFile("my-service", true,
+    closer, err := logging.InitializeWithFile("my-service", true,
         logging.OutputConsole | logging.OutputFile,
-        &logging.FileConfig{Path: "app.log"}); err != nil {
+        &logging.FileConfig{Path: "app.log"})
+    if err != nil {
         log.Fatal().Err(err).Msg("failed to initialize logging")
     }
+    defer closer.Close()
 
     // Then start your application
     startServer()
@@ -422,11 +437,13 @@ if err := logging.Initialize("my-service", true); err != nil {
 To add file logging:
 
 ```go
-if err := logging.InitializeWithFile("my-service", true,
+closer, err := logging.InitializeWithFile("my-service", true,
     logging.OutputConsole | logging.OutputFile,
-    &logging.FileConfig{Path: "app.log"}); err != nil {
+    &logging.FileConfig{Path: "app.log"})
+if err != nil {
     log.Fatal().Err(err).Msg("failed to initialize logging")
 }
+defer closer.Close()
 ```
 
 ## Testing
@@ -438,10 +455,11 @@ func TestMyFunction(t *testing.T) {
     tempDir := t.TempDir()
     logFile := filepath.Join(tempDir, "test.log")
 
-    err := logging.InitializeWithFile("test-service", true,
+    closer, err := logging.InitializeWithFile("test-service", true,
         logging.OutputFile,
         &logging.FileConfig{Path: logFile})
     require.NoError(t, err)
+    defer closer.Close()
 
     // Run your test
     MyFunction()
@@ -479,7 +497,7 @@ See [`otel/README.md`](../otel/README.md) for details.
 1. Check file path exists and is writable
 2. Verify OutputFile flag is set
 3. Check FileConfig.Path is not empty
-4. Verify file permissions (should be 0644)
+4. Verify file permissions (should be 0600)
 
 ### File grows indefinitely
 

@@ -58,12 +58,12 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 		WithLoggerProvider(noopl.NewLoggerProvider())
 
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -230,12 +230,12 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 		WithLoggerProvider(noopl.NewLoggerProvider())
 
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -302,12 +302,12 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 	// Test with nil OTel config (disabled)
 	t.Run("Nil OTel config", func(t *testing.T) {
 		config := &ConnectionConfig{
-			DbType:       Postgresql,
+			DBType:       Postgresql,
 			Host:         host,
 			Port:         port.Int(),
 			Username:     "testuser",
 			Password:     "testpass",
-			DbName:       "testdb",
+			DBName:       "testdb",
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -333,12 +333,12 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 		// TracerProvider is nil
 
 		config := &ConnectionConfig{
-			DbType:       Postgresql,
+			DBType:       Postgresql,
 			Host:         host,
 			Port:         port.Int(),
 			Username:     "testuser",
 			Password:     "testpass",
-			DbName:       "testdb",
+			DBName:       "testdb",
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -474,12 +474,12 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 		WithLoggerProvider(noopl.NewLoggerProvider())
 
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -501,12 +501,12 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 func TestPoolInvalidConfig(t *testing.T) {
 	t.Run("Empty DSN", func(t *testing.T) {
 		config := &ConnectionConfig{
-			DbType:       "",
+			DBType:       "",
 			Host:         "",
 			Port:         0,
 			Username:     "",
 			Password:     "",
-			DbName:       "",
+			DBName:       "",
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -520,12 +520,12 @@ func TestPoolInvalidConfig(t *testing.T) {
 
 	t.Run("Unsupported database type", func(t *testing.T) {
 		config := &ConnectionConfig{
-			DbType:       DatabaseType("UNSUPPORTED"),
+			DBType:       DatabaseType("UNSUPPORTED"),
 			Host:         "localhost",
 			Port:         5432,
 			Username:     "test",
 			Password:     "test",
-			DbName:       "testdb",
+			DBName:       "testdb",
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -543,12 +543,12 @@ func TestPoolInvalidConfig(t *testing.T) {
 
 	t.Run("Invalid connection parameters", func(t *testing.T) {
 		config := &ConnectionConfig{
-			DbType:       Postgresql,
+			DBType:       Postgresql,
 			Host:         "invalid-host-that-does-not-exist-12345",
 			Port:         9999,
 			Username:     "test",
 			Password:     "test",
-			DbName:       "testdb",
+			DBName:       "testdb",
 			Timeout:      1 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -564,12 +564,12 @@ func TestPoolInvalidConfig(t *testing.T) {
 func TestSQLDBErrorHandling(t *testing.T) {
 	t.Run("SQLDB with invalid connection", func(t *testing.T) {
 		config := &ConnectionConfig{
-			DbType:       Postgresql,
+			DBType:       Postgresql,
 			Host:         "invalid-host-12345",
 			Port:         9999,
 			Username:     "test",
 			Password:     "test",
-			DbName:       "testdb",
+			DBName:       "testdb",
 			Timeout:      1 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -616,12 +616,12 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 		WithLoggerProvider(noopl.NewLoggerProvider())
 
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,

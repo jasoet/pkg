@@ -69,7 +69,7 @@ func (wm *WorkerManager) Close() {
 	}
 
 	if wm.metricsCloser != nil {
-		wm.metricsCloser.Close()
+		_ = wm.metricsCloser.Close()
 	}
 
 	logger.Debug("Worker Manager closed")
@@ -101,7 +101,7 @@ func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Start")
 
 	// Try to get the worker index from the registered list for logging purposes.
-	var workerIndex int = -1
+	workerIndex := -1
 	wm.mu.RLock()
 	for i, registeredWorker := range wm.workers {
 		if registeredWorker == w {

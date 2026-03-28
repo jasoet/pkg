@@ -101,7 +101,7 @@ func TestWaitForGRPCServer(t *testing.T) {
 		// Wait a bit for server to start
 		time.Sleep(100 * time.Millisecond)
 
-		err = waitForGRPCServer(lis.Addr().String(), 10)
+		err = waitForGRPCServer(context.Background(), lis.Addr().String(), 10)
 		assert.NoError(t, err)
 	})
 }
@@ -140,9 +140,9 @@ func TestGatewayHealthMiddleware(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	// Verify headers were added
+	// Verify headers were added (X-Gateway-Version was removed per M9)
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "grpc-gateway/v2", rec.Header().Get("X-Gateway-Version"))
+	assert.Empty(t, rec.Header().Get("X-Gateway-Version"))
 	assert.Equal(t, "grpc-gateway", rec.Header().Get("X-Server-Type"))
 }
 

@@ -54,12 +54,12 @@ func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
 
 	// Create connection config
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -256,12 +256,12 @@ func TestPostgresMigrationsWithGorm(t *testing.T) {
 
 	// Create connection config
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -348,12 +348,12 @@ func TestPostgresMigrationsWithGormError(t *testing.T) {
 		}
 
 		config := &ConnectionConfig{
-			DbType:       Postgresql,
+			DBType:       Postgresql,
 			Host:         host,
 			Port:         port.Int(),
 			Username:     "testuser",
 			Password:     "testpass",
-			DbName:       "testdb",
+			DBName:       "testdb",
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,

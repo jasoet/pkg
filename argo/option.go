@@ -146,6 +146,10 @@ func WithArgoServerOpts(opts ServerOpts) Option {
 // WithConfig applies a complete Config to the client.
 // This is useful when you have a pre-built configuration from a config file.
 //
+// Note: WithConfig performs a shallow copy of the provided config. Pointer fields
+// (e.g., OTelConfig) are shared between the original and the applied config;
+// mutations to them after WithConfig is called will affect both.
+//
 // Example:
 //
 //	config := &argo.Config{

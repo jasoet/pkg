@@ -109,7 +109,9 @@ func TestIntegration_GetWorkflowStatus(t *testing.T) {
 		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
 	}()
 
-	// Wait a moment for workflow to initialize
+	// Wait a moment for workflow to initialize.
+	// Note: time.Sleep is used here because there is no watch/event API available in this test context;
+	// the workflow controller may not have processed the resource yet.
 	time.Sleep(2 * time.Second)
 
 	// Get workflow status
@@ -192,14 +194,17 @@ func TestIntegration_DeleteWorkflow(t *testing.T) {
 	created, err := SubmitWorkflow(ctx, client, wf, cfg)
 	require.NoError(t, err)
 
-	// Wait a moment for workflow to be fully created
+	// Wait a moment for workflow to be fully created.
+	// Note: time.Sleep is used here because there is no watch/event API available in this test context;
+	// the workflow controller may not have persisted the resource yet.
 	time.Sleep(2 * time.Second)
 
 	// Delete workflow
 	err = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
 	require.NoError(t, err, "should delete workflow")
 
-	// Verify deletion - getting the workflow should fail
+	// Verify deletion - getting the workflow should fail.
+	// Note: time.Sleep allows the API server cache to propagate the deletion.
 	time.Sleep(1 * time.Second)
 	status, err := GetWorkflowStatus(ctx, client, "argo", created.Name, cfg)
 	if err == nil && status != nil {

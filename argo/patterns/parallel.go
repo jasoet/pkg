@@ -2,12 +2,19 @@ package patterns
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 
 	"github.com/jasoet/pkg/v2/argo/builder"
 	"github.com/jasoet/pkg/v2/argo/builder/template"
 )
+
+// shellQuote wraps a string in single quotes and escapes any embedded single quotes,
+// preventing shell injection when user-provided values are interpolated into shell commands.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
 
 // FanOutFanIn creates a workflow that executes multiple tasks in parallel,
 // then aggregates results in a final step.
@@ -31,7 +38,7 @@ func FanOutFanIn(name, namespace, image string, tasks []string, opts ...builder.
 	for _, taskName := range tasks {
 		task := template.NewContainer(taskName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("echo 'Processing %s...' && sleep 2 && echo 'Result: %s-output'", taskName, taskName)))
+			template.WithArgs(fmt.Sprintf("echo 'Processing %s...' && echo 'Result: %s-output'", shellQuote(taskName), shellQuote(taskName))))
 
 		steps, err := task.Steps()
 		if err != nil {
@@ -107,7 +114,7 @@ func ParallelDataProcessing(name, namespace, image string, dataItems []string, p
 		taskName := fmt.Sprintf("process-%d", i)
 		task := template.NewContainer(taskName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("%s %s", processingCommand, dataItem)),
+			template.WithArgs(fmt.Sprintf("%s %s", shellQuote(processingCommand), shellQuote(dataItem))),
 			template.WithEnv("DATA_ITEM", dataItem),
 			template.WithEnv("ITEM_INDEX", fmt.Sprintf("%d", i)))
 
@@ -167,7 +174,7 @@ func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd
 		mapTaskName := fmt.Sprintf("map-%d", i)
 		mapTask := template.NewContainer(mapTaskName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("echo 'Mapping %s' && %s %s", input, mapCmd, input)),
+			template.WithArgs(fmt.Sprintf("echo 'Mapping %s' && %s %s", shellQuote(input), shellQuote(mapCmd), shellQuote(input))),
 			template.WithEnv("INPUT", input))
 
 		steps, err := mapTask.Steps()
@@ -190,7 +197,7 @@ func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd
 	// Reduce phase: Aggregate results
 	reduce := template.NewContainer("reduce", image,
 		template.WithCommand("sh", "-c"),
-		template.WithArgs(fmt.Sprintf("echo 'Reducing results...' && %s", reduceCmd)))
+		template.WithArgs(fmt.Sprintf("echo 'Reducing results...' && %s", shellQuote(reduceCmd))))
 
 	reduceSteps, err := reduce.Steps()
 	if err != nil {
@@ -245,7 +252,7 @@ func ParallelTestSuite(name, namespace, image string, testSuites map[string]stri
 	for suiteName, testCmd := range testSuites {
 		testTask := template.NewContainer("test-"+suiteName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("echo 'Running %s tests...' && %s", suiteName, testCmd)),
+			template.WithArgs(fmt.Sprintf("echo 'Running %s tests...' && %s", shellQuote(suiteName), shellQuote(testCmd))),
 			template.WithWorkingDir("/workspace"))
 
 		steps, err := testTask.Steps()

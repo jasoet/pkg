@@ -190,12 +190,12 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	localEndpoint := fmt.Sprintf("localhost:%d", t.config.LocalPort)
 	remoteEndpoint := fmt.Sprintf("%s:%d", t.config.RemoteHost, t.config.RemotePort)
 
-	listener, err := net.Listen("tcp", localEndpoint)
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", localEndpoint)
 	if err != nil {
 		t.mu.Lock()
 		t.client = nil
 		t.mu.Unlock()
-		client.Close()
+		_ = client.Close()
 		return fmt.Errorf("local listen error: %w", err)
 	}
 
@@ -254,14 +254,14 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	t.mu.Unlock()
 
 	if client == nil {
-		localConn.Close()
+		_ = localConn.Close()
 		return
 	}
 
 	remoteConn, err := client.Dial("tcp", remoteAddr)
 	if err != nil {
 		logger.Error(err, "SSH tunnel dial error", otel.F("remoteAddr", remoteAddr))
-		localConn.Close()
+		_ = localConn.Close()
 		return
 	}
 
@@ -283,8 +283,8 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	}()
 
 	wg.Wait()
-	localConn.Close()
-	remoteConn.Close()
+	_ = localConn.Close()
+	_ = remoteConn.Close()
 }
 
 // Close terminates the SSH connection and stops the tunnel

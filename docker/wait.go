@@ -66,7 +66,7 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, con
 	if err != nil {
 		return fmt.Errorf("failed to get container logs: %w", err)
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 
 	// Use bufio.Scanner to read complete lines, avoiding chunk-boundary false negatives
 	// where a pattern could be split across two Read calls.
@@ -145,9 +145,9 @@ func (w *waitForPort) WaitUntilReady(ctx context.Context, cli *client.Client, co
 					host := "localhost"
 					hostPort := bindings[0].HostPort
 
-					conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", host, hostPort), 1*time.Second)
+					conn, err := (&net.Dialer{Timeout: 1 * time.Second}).DialContext(ctx, "tcp", fmt.Sprintf("%s:%s", host, hostPort))
 					if err == nil {
-						conn.Close()
+						_ = conn.Close()
 						return nil // Port is ready
 					}
 				}
@@ -233,7 +233,7 @@ func (w *waitForHTTP) WaitUntilReady(ctx context.Context, cli *client.Client, co
 					}
 					resp, err := httpClient.Do(req)
 					if err == nil {
-						resp.Body.Close()
+						_ = resp.Body.Close()
 						if resp.StatusCode == w.expectedStatus {
 							return nil // Endpoint is ready
 						}

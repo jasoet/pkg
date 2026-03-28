@@ -1,8 +1,6 @@
 package argo
 
 import (
-	"context"
-
 	"github.com/jasoet/pkg/v2/otel"
 )
 
@@ -41,6 +39,7 @@ type ServerOpts struct {
 
 	// AuthToken is the bearer token for authentication (optional).
 	// Excluded from serialization to prevent accidental credential exposure.
+	// Use environment variables or secret managers to provide tokens.
 	AuthToken string `yaml:"-" mapstructure:"-"`
 
 	// InsecureSkipVerify disables TLS certificate verification (not recommended for production)
@@ -56,40 +55,27 @@ type ServerOpts struct {
 // - Default kubeconfig location (~/.kube/config)
 // - Current context from kubeconfig
 func DefaultConfig() *Config {
-	config := &Config{
+	return &Config{
 		InCluster: false,
 		ArgoServerOpts: ServerOpts{
 			InsecureSkipVerify: false,
 			HTTP1:              false,
 		},
 	}
-
-	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.DefaultConfig")
-	logger.Debug("Created default Argo configuration",
-		otel.F("inCluster", config.InCluster),
-		otel.F("kubeConfigPath", config.KubeConfigPath),
-	)
-
-	return config
 }
 
 // InClusterConfig returns a Config for in-cluster usage.
 // This is useful when the client runs inside a Kubernetes pod.
 func InClusterConfig() *Config {
-	config := &Config{
+	return &Config{
 		InCluster: true,
 	}
-
-	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.InClusterConfig")
-	logger.Debug("Created in-cluster Argo configuration")
-
-	return config
 }
 
 // ServerConfig returns a Config for connecting via Argo Server.
 // This is an alternative to direct Kubernetes API access.
 func ServerConfig(serverURL string, authToken string) *Config {
-	config := &Config{
+	return &Config{
 		InCluster: false,
 		ArgoServerOpts: ServerOpts{
 			URL:                serverURL,
@@ -98,9 +84,4 @@ func ServerConfig(serverURL string, authToken string) *Config {
 			HTTP1:              false,
 		},
 	}
-
-	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.ServerConfig")
-	logger.Debug("Created Argo Server configuration", otel.F("serverURL", serverURL))
-
-	return config
 }

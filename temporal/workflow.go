@@ -124,7 +124,7 @@ func (wm *WorkflowManager) Close() {
 	}
 
 	if wm.metricsCloser != nil {
-		wm.metricsCloser.Close()
+		_ = wm.metricsCloser.Close()
 	}
 
 	logger.Debug("Workflow Manager closed")

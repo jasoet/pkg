@@ -247,13 +247,12 @@ if __name__ == "__main__":
 }
 
 func TestScriptWithRetryStrategy(t *testing.T) {
-	script := NewScript("retry", "bash",
-		WithScriptContent("exit 1"))
-
 	retryLimit := intstr.FromInt(3)
-	script.retryStrategy = &v1alpha1.RetryStrategy{
-		Limit: &retryLimit,
-	}
+	script := NewScript("retry", "bash",
+		WithScriptContent("exit 1")).
+		WithRetry(&v1alpha1.RetryStrategy{
+			Limit: &retryLimit,
+		})
 
 	templates, err := script.Templates()
 	require.NoError(t, err)

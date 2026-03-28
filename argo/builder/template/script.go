@@ -204,6 +204,18 @@ func (s *Script) When(condition string) *Script {
 	return s
 }
 
+// WithRetry sets the retry strategy for the script step.
+// The retry strategy overrides any default retry strategy set on the WorkflowBuilder.
+//
+// Example:
+//
+//	retryLimit := intstr.FromInt(3)
+//	script.WithRetry(&v1alpha1.RetryStrategy{Limit: &retryLimit})
+func (s *Script) WithRetry(strategy *v1alpha1.RetryStrategy) *Script {
+	s.retryStrategy = strategy
+	return s
+}
+
 // Steps implements WorkflowSource interface.
 func (s *Script) Steps() ([]v1alpha1.WorkflowStep, error) {
 	ctx := context.Background()
@@ -240,6 +252,12 @@ func (s *Script) Templates() ([]v1alpha1.Template, error) {
 		otel.F("name", s.templateName),
 		otel.F("image", s.image))
 
+	// Use s.source if set (e.g. from artifact/configmap reference), otherwise fall back to inline scriptContent.
+	source := s.scriptContent
+	if s.source != "" {
+		source = s.source
+	}
+
 	script := &v1alpha1.ScriptTemplate{
 		Container: corev1.Container{
 			Name:         s.name,
@@ -249,7 +267,7 @@ func (s *Script) Templates() ([]v1alpha1.Template, error) {
 			VolumeMounts: s.volumeMounts,
 			WorkingDir:   s.workingDir,
 		},
-		Source: s.scriptContent,
+		Source: source,
 	}
 
 	// Set resource requirements if specified
@@ -259,7 +277,7 @@ func (s *Script) Templates() ([]v1alpha1.Template, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid resource requirements for script %q: %w", s.name, err)
 		}
-		script.Container.Resources = resources
+		script.Resources = resources
 	}
 
 	template := v1alpha1.Template{

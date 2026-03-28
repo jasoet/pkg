@@ -173,7 +173,7 @@ func (s *httpServer) start() error {
 	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v2/server", "httpServer.start")
 
 	// Use a real listener to detect bind errors immediately instead of a racy timer.
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", s.config.Port))
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", fmt.Sprintf(":%v", s.config.Port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", s.config.Port, err)
 	}

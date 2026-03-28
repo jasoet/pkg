@@ -99,12 +99,12 @@ func basicConnectionExample(ctx context.Context) {
 
 	// PostgreSQL connection configuration
 	config := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         getEnvOrDefault("DB_HOST", "localhost"),
 		Port:         getIntEnvOrDefault("DB_PORT", 5439),
 		Username:     getEnvOrDefault("DB_USER", "jasoet"),
 		Password:     getEnvOrDefault("DB_PASSWORD", "localhost"),
-		DbName:       getEnvOrDefault("DB_NAME", "pkg_db"),
+		DBName:       getEnvOrDefault("DB_NAME", "pkg_db"),
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 25,
@@ -113,13 +113,13 @@ func basicConnectionExample(ctx context.Context) {
 	logger.Info().
 		Str("host", config.Host).
 		Int("port", config.Port).
-		Str("database", config.DbName).
+		Str("database", config.DBName).
 		Msg("Connecting to PostgreSQL database")
 
 	fmt.Printf("Database Configuration:\n")
-	fmt.Printf("- Type: %s\n", config.DbType)
+	fmt.Printf("- Type: %s\n", config.DBType)
 	fmt.Printf("- Host: %s:%d\n", config.Host, config.Port)
-	fmt.Printf("- Database: %s\n", config.DbName)
+	fmt.Printf("- Database: %s\n", config.DBName)
 	fmt.Printf("- DSN: %s\n", maskPassword(config.Dsn()))
 
 	// Connect to database
@@ -161,34 +161,34 @@ func connectionPoolExample(ctx context.Context) {
 	// Different configuration for different environments
 	configs := map[string]*db.ConnectionConfig{
 		"development": {
-			DbType:       db.Postgresql,
+			DBType:       db.Postgresql,
 			Host:         "localhost",
 			Port:         5439,
 			Username:     "jasoet",
 			Password:     "localhost",
-			DbName:       "pkg_db",
+			DBName:       "pkg_db",
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,  // Small for development
 			MaxOpenConns: 25, // Moderate for development
 		},
 		"production": {
-			DbType:       db.Postgresql,
+			DBType:       db.Postgresql,
 			Host:         "prod-db.example.com",
 			Port:         5432,
 			Username:     "app_user",
 			Password:     "secure_password",
-			DbName:       "production_db",
+			DBName:       "production_db",
 			Timeout:      30 * time.Second,
 			MaxIdleConns: 10,  // More idle connections
 			MaxOpenConns: 100, // Higher concurrency
 		},
 		"analytics": {
-			DbType:       db.Mysql,
+			DBType:       db.Mysql,
 			Host:         "analytics.example.com",
 			Port:         3306,
 			Username:     "analytics",
 			Password:     "analytics_pass",
-			DbName:       "analytics_db",
+			DBName:       "analytics_db",
 			Timeout:      60 * time.Second,
 			MaxIdleConns: 3,  // Fewer idle connections
 			MaxOpenConns: 50, // Medium concurrency
@@ -197,7 +197,7 @@ func connectionPoolExample(ctx context.Context) {
 
 	for env, config := range configs {
 		fmt.Printf("\n%s Configuration:\n", env)
-		fmt.Printf("- Database Type: %s\n", config.DbType)
+		fmt.Printf("- Database Type: %s\n", config.DBType)
 		fmt.Printf("- Max Idle Connections: %d\n", config.MaxIdleConns)
 		fmt.Printf("- Max Open Connections: %d\n", config.MaxOpenConns)
 		fmt.Printf("- Timeout: %v\n", config.Timeout)
@@ -262,12 +262,12 @@ func migrationExample(ctx context.Context) {
 	fmt.Println("Migration Example (conceptual - requires actual migration files)")
 
 	config := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         getEnvOrDefault("DB_HOST", "localhost"),
 		Port:         getIntEnvOrDefault("DB_PORT", 5439),
 		Username:     getEnvOrDefault("DB_USER", "jasoet"),
 		Password:     getEnvOrDefault("DB_PASSWORD", "localhost"),
-		DbName:       getEnvOrDefault("DB_NAME", "pkg_db"),
+		DBName:       getEnvOrDefault("DB_NAME", "pkg_db"),
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 25,
@@ -316,32 +316,32 @@ func multipleConnectionsExample(ctx context.Context) {
 	// Define multiple database configurations
 	databases := map[string]*db.ConnectionConfig{
 		"primary": {
-			DbType:       db.Postgresql,
+			DBType:       db.Postgresql,
 			Host:         getEnvOrDefault("PRIMARY_DB_HOST", "localhost"),
 			Port:         getIntEnvOrDefault("PRIMARY_DB_PORT", 5439),
 			Username:     getEnvOrDefault("PRIMARY_DB_USER", "jasoet"),
 			Password:     getEnvOrDefault("PRIMARY_DB_PASSWORD", "localhost"),
-			DbName:       getEnvOrDefault("PRIMARY_DB_NAME", "pkg_db"),
+			DBName:       getEnvOrDefault("PRIMARY_DB_NAME", "pkg_db"),
 			MaxIdleConns: 5,
 			MaxOpenConns: 25,
 		},
 		"analytics": {
-			DbType:       db.Mysql,
+			DBType:       db.Mysql,
 			Host:         getEnvOrDefault("ANALYTICS_DB_HOST", "analytics.example.com"),
 			Port:         getIntEnvOrDefault("ANALYTICS_DB_PORT", 3306),
 			Username:     getEnvOrDefault("ANALYTICS_DB_USER", "analytics"),
 			Password:     getEnvOrDefault("ANALYTICS_DB_PASSWORD", "password"),
-			DbName:       getEnvOrDefault("ANALYTICS_DB_NAME", "analytics"),
+			DBName:       getEnvOrDefault("ANALYTICS_DB_NAME", "analytics"),
 			MaxIdleConns: 3,
 			MaxOpenConns: 15,
 		},
 		"cache": {
-			DbType:       db.MSSQL,
+			DBType:       db.MSSQL,
 			Host:         getEnvOrDefault("CACHE_DB_HOST", "cache.example.com"),
 			Port:         getIntEnvOrDefault("CACHE_DB_PORT", 1433),
 			Username:     getEnvOrDefault("CACHE_DB_USER", "cache_user"),
 			Password:     getEnvOrDefault("CACHE_DB_PASSWORD", "password"),
-			DbName:       getEnvOrDefault("CACHE_DB_NAME", "cache_db"),
+			DBName:       getEnvOrDefault("CACHE_DB_NAME", "cache_db"),
 			MaxIdleConns: 2,
 			MaxOpenConns: 10,
 		},
@@ -407,12 +407,12 @@ func gormOperationsExample(ctx context.Context) {
 	logger := logging.ContextLogger(ctx, "gorm-operations")
 
 	config := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         getEnvOrDefault("DB_HOST", "localhost"),
 		Port:         getIntEnvOrDefault("DB_PORT", 5439),
 		Username:     getEnvOrDefault("DB_USER", "jasoet"),
 		Password:     getEnvOrDefault("DB_PASSWORD", "localhost"),
-		DbName:       getEnvOrDefault("DB_NAME", "pkg_db"),
+		DBName:       getEnvOrDefault("DB_NAME", "pkg_db"),
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 25,
@@ -514,12 +514,12 @@ func rawSQLExample(ctx context.Context) {
 	logger := logging.ContextLogger(ctx, "raw-sql")
 
 	config := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         getEnvOrDefault("DB_HOST", "localhost"),
 		Port:         getIntEnvOrDefault("DB_PORT", 5439),
 		Username:     getEnvOrDefault("DB_USER", "jasoet"),
 		Password:     getEnvOrDefault("DB_PASSWORD", "localhost"),
-		DbName:       getEnvOrDefault("DB_NAME", "pkg_db"),
+		DBName:       getEnvOrDefault("DB_NAME", "pkg_db"),
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 25,
@@ -639,12 +639,12 @@ func transactionExample(ctx context.Context) {
 	logger := logging.ContextLogger(ctx, "transactions")
 
 	config := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         getEnvOrDefault("DB_HOST", "localhost"),
 		Port:         getIntEnvOrDefault("DB_PORT", 5439),
 		Username:     getEnvOrDefault("DB_USER", "jasoet"),
 		Password:     getEnvOrDefault("DB_PASSWORD", "localhost"),
-		DbName:       getEnvOrDefault("DB_NAME", "pkg_db"),
+		DBName:       getEnvOrDefault("DB_NAME", "pkg_db"),
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 25,
@@ -782,12 +782,12 @@ func healthCheckExample(ctx context.Context) {
 	logger := logging.ContextLogger(ctx, "health-check")
 
 	config := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         getEnvOrDefault("DB_HOST", "localhost"),
 		Port:         getIntEnvOrDefault("DB_PORT", 5439),
 		Username:     getEnvOrDefault("DB_USER", "jasoet"),
 		Password:     getEnvOrDefault("DB_PASSWORD", "localhost"),
-		DbName:       getEnvOrDefault("DB_NAME", "pkg_db"),
+		DBName:       getEnvOrDefault("DB_NAME", "pkg_db"),
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 25,

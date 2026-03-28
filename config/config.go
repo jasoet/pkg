@@ -10,9 +10,9 @@ import (
 
 // LoadString loads configuration from a string with optional environment variable support.
 // Parameters:
-// - configString: The configuration string in YAML format
-// - envPrefix: Optional environment variable prefix (default: "ENV"). Only the first value
-//   is used; any additional values are ignored.
+//   - configString: The configuration string in YAML format
+//   - envPrefix: Optional environment variable prefix (default: "ENV"). Only the first value
+//     is used; any additional values are ignored.
 func LoadString[T any](configString string, envPrefix ...string) (*T, error) {
 	// For backward compatibility
 	return LoadStringWithConfig[T](configString, nil, envPrefix...)
@@ -21,10 +21,10 @@ func LoadString[T any](configString string, envPrefix ...string) (*T, error) {
 // LoadStringWithConfig loads configuration from a string with optional environment variable support
 // and allows custom configuration of viper.
 // Parameters:
-// - configString: The configuration string in YAML format
-// - configFn: Optional function to customize viper configuration before unmarshaling
-// - envPrefix: Optional environment variable prefix (default: "ENV"). Only the first value
-//   is used; any additional values are ignored.
+//   - configString: The configuration string in YAML format
+//   - configFn: Optional function to customize viper configuration before unmarshaling
+//   - envPrefix: Optional environment variable prefix (default: "ENV"). Only the first value
+//     is used; any additional values are ignored.
 func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper), envPrefix ...string) (*T, error) {
 	viperConfig := viper.New()
 
@@ -60,13 +60,13 @@ func LoadStringWithConfig[T any](configString string, configFn func(*viper.Viper
 // NestedEnvVars processes environment variables with a specific prefix and sets them in the viper configuration.
 // This function is useful for handling nested configuration structures from environment variables.
 // Parameters:
-// - prefix: The prefix for environment variables to process (e.g. "MY_APP_")
-// - keyDepth: The zero-based index into the full underscore-split key (including prefix tokens)
-//   at which the entity name token is located. For example, given the env var MY_APP_USER_NAME,
-//   the split parts are ["MY", "APP", "USER", "NAME"]. With keyDepth=2, "USER" (index 2) is
-//   treated as the entity name and "NAME" becomes the field name.
-// - configPath: The base path in the configuration where values should be set
-// - viperConfig: The viper configuration instance to modify
+//   - prefix: The prefix for environment variables to process (e.g. "MY_APP_")
+//   - keyDepth: The zero-based index into the full underscore-split key (including prefix tokens)
+//     at which the entity name token is located. For example, given the env var MY_APP_USER_NAME,
+//     the split parts are ["MY", "APP", "USER", "NAME"]. With keyDepth=2, "USER" (index 2) is
+//     treated as the entity name and "NAME" becomes the field name.
+//   - configPath: The base path in the configuration where values should be set
+//   - viperConfig: The viper configuration instance to modify
 //
 // NOTE: This function is NOT goroutine-safe when called with a shared *viper.Viper instance.
 // Concurrent calls sharing the same viperConfig must be protected by an external mutex.

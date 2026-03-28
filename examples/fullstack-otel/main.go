@@ -184,12 +184,12 @@ func main() {
 	// Database configuration using PostgreSQL from docker-compose
 	// Use SQLite in-memory if PostgreSQL is not available
 	dbConfig := &db.ConnectionConfig{
-		DbType:       db.Postgresql,
+		DBType:       db.Postgresql,
 		Host:         "localhost",
 		Port:         5432,
 		Username:     "user",
 		Password:     "password",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      30 * time.Second,
 		MaxIdleConns: 2,
 		MaxOpenConns: 5,

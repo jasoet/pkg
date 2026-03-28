@@ -23,11 +23,11 @@ func RunPostgresMigrationsWithGorm(ctx context.Context, db *gorm.DB, migrationFs
 	logger := logging.ContextLogger(ctx, "db.migrations")
 	logger.Debug().Msg("Starting PostgreSQL migrations UP with GORM")
 
-	sqlDb, err := db.DB()
+	sqlDB, err := db.DB()
 	if err != nil {
 		return fmt.Errorf("failed to get SQL DB from GORM: %w", err)
 	}
-	return RunPostgresMigrations(ctx, sqlDb, migrationFs, migrationsPath)
+	return RunPostgresMigrations(ctx, sqlDB, migrationFs, migrationsPath)
 }
 
 // RunPostgresMigrationsDownWithGorm rolls back migrations using a GORM connection.
@@ -37,11 +37,11 @@ func RunPostgresMigrationsDownWithGorm(ctx context.Context, db *gorm.DB, migrati
 	logger := logging.ContextLogger(ctx, "db.migrations")
 	logger.Debug().Msg("Starting PostgreSQL migrations DOWN with GORM")
 
-	sqlDb, err := db.DB()
+	sqlDB, err := db.DB()
 	if err != nil {
 		return fmt.Errorf("failed to get SQL DB from GORM: %w", err)
 	}
-	return RunPostgresMigrationsDown(ctx, sqlDb, migrationFs, migrationsPath)
+	return RunPostgresMigrationsDown(ctx, sqlDB, migrationFs, migrationsPath)
 }
 
 func setupMigration(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) (*migrate.Migrate, zerolog.Logger, error) {

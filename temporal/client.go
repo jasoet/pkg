@@ -11,10 +11,10 @@ import (
 	"github.com/uber-go/tally/v4"
 	"github.com/uber-go/tally/v4/prometheus"
 	"go.temporal.io/sdk/client"
+	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
 	sdktally "go.temporal.io/sdk/contrib/tally"
 
 	"github.com/jasoet/pkg/v2/otel"
-	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
 )
 
 func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, io.Closer, error) {
@@ -73,7 +73,7 @@ func NewClientWithMetrics(config *Config, metricsEnabled bool) (client.Client, i
 	if err != nil {
 		logger.Error(err, "Failed to connect to Temporal server")
 		if metricsCloser != nil {
-			metricsCloser.Close()
+			_ = metricsCloser.Close()
 		}
 		return nil, nil, err
 	}

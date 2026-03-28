@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/metric"
@@ -17,6 +18,31 @@ import (
 
 	pkgotel "github.com/jasoet/pkg/v2/otel"
 )
+
+// metadataCarrier adapts gRPC metadata to the OTel TextMapCarrier interface,
+// enabling W3C Trace Context (traceparent/tracestate) extraction.
+type metadataCarrier metadata.MD
+
+func (mc metadataCarrier) Get(key string) string {
+	vals := metadata.MD(mc).Get(key)
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
+}
+
+func (mc metadataCarrier) Set(key, val string) {
+	metadata.MD(mc).Set(key, val)
+}
+
+func (mc metadataCarrier) Keys() []string {
+	md := metadata.MD(mc)
+	keys := make([]string, 0, len(md))
+	for k := range md {
+		keys = append(keys, k)
+	}
+	return keys
+}
 
 // ============================================================================
 // gRPC Metrics (OpenTelemetry)
@@ -99,12 +125,9 @@ func createGRPCTracingInterceptor(cfg *pkgotel.Config) grpc.UnaryServerIntercept
 	tracer := cfg.GetTracer("grpc.server")
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		// Extract trace context from gRPC metadata
-		md, ok := metadata.FromIncomingContext(ctx)
-		if ok {
-			// Extract trace headers if present (traceparent, tracestate)
-			// This is typically handled by otel gRPC instrumentation
-			_ = md // For future enhancement
+		// Extract W3C Trace Context (traceparent/tracestate) from gRPC metadata
+		if md, ok := metadata.FromIncomingContext(ctx); ok {
+			ctx = otel.GetTextMapPropagator().Extract(ctx, metadataCarrier(md))
 		}
 
 		// Start span
@@ -211,6 +234,113 @@ func createGRPCLoggingInterceptor(cfg *pkgotel.Config) grpc.UnaryServerIntercept
 		logger.Emit(ctx, logRecord)
 
 		return resp, err
+	}
+}
+
+// ============================================================================
+// gRPC Stream Interceptors (OpenTelemetry)
+// ============================================================================
+
+// createGRPCStreamLoggingInterceptor creates a gRPC stream interceptor for structured logging
+func createGRPCStreamLoggingInterceptor(cfg *pkgotel.Config) grpc.StreamServerInterceptor {
+	if cfg == nil || !cfg.IsLoggingEnabled() {
+		return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			return handler(srv, ss)
+		}
+	}
+
+	logger := cfg.GetLogger("grpc.server")
+
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		start := time.Now()
+
+		err := handler(srv, ss)
+
+		duration := time.Since(start)
+		severity := otellog.SeverityInfo
+		if err != nil {
+			severity = otellog.SeverityError
+		}
+
+		st, _ := status.FromError(err)
+
+		attrs := []otellog.KeyValue{
+			otellog.String("rpc.system", "grpc"),
+			otellog.String("rpc.method", info.FullMethod),
+			otellog.String("rpc.service", extractServiceName(info.FullMethod)),
+			otellog.Int("rpc.grpc.status_code", int(st.Code())),
+			otellog.Int64("rpc.duration_ms", duration.Milliseconds()),
+			otellog.Bool("rpc.is_client_stream", info.IsClientStream),
+			otellog.Bool("rpc.is_server_stream", info.IsServerStream),
+		}
+
+		if err != nil {
+			attrs = append(attrs, otellog.String("error", err.Error()))
+		}
+
+		var logRecord otellog.Record
+		logRecord.SetTimestamp(start)
+		logRecord.SetSeverity(severity)
+		logRecord.SetBody(otellog.StringValue(fmt.Sprintf("gRPC stream %s", info.FullMethod)))
+		logRecord.AddAttributes(attrs...)
+
+		logger.Emit(ss.Context(), logRecord)
+
+		return err
+	}
+}
+
+// createGRPCStreamMetricsInterceptor creates a gRPC stream interceptor for metrics
+func createGRPCStreamMetricsInterceptor(cfg *pkgotel.Config) grpc.StreamServerInterceptor {
+	if cfg == nil || !cfg.IsMetricsEnabled() {
+		return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			return handler(srv, ss)
+		}
+	}
+
+	meter := cfg.GetMeter("grpc.server")
+
+	streamCounter, _ := meter.Int64Counter( //nolint:errcheck
+		"rpc.server.stream.count",
+		metric.WithDescription("Total number of gRPC streams"),
+		metric.WithUnit("{stream}"),
+	)
+
+	streamDuration, _ := meter.Float64Histogram( //nolint:errcheck
+		"rpc.server.stream.duration",
+		metric.WithDescription("gRPC stream duration"),
+		metric.WithUnit("ms"),
+	)
+
+	activeStreams, _ := meter.Int64UpDownCounter( //nolint:errcheck
+		"rpc.server.active_streams",
+		metric.WithDescription("Number of active gRPC streams"),
+		metric.WithUnit("{stream}"),
+	)
+
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		start := time.Now()
+		ctx := ss.Context()
+
+		activeStreams.Add(ctx, 1)
+		defer activeStreams.Add(ctx, -1)
+
+		err := handler(srv, ss)
+
+		duration := time.Since(start).Milliseconds()
+		st, _ := status.FromError(err)
+		statusCode := int(st.Code())
+
+		attrs := []attribute.KeyValue{
+			semconv.RPCMethodKey.String(info.FullMethod),
+			semconv.RPCSystemKey.String("grpc"),
+			attribute.Int("rpc.grpc.status_code", statusCode),
+		}
+
+		streamCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
+		streamDuration.Record(ctx, float64(duration), metric.WithAttributes(attrs...))
+
+		return err
 	}
 }
 

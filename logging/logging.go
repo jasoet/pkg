@@ -60,8 +60,17 @@ type FileConfig struct {
 //	if err != nil { log.Fatal(err) }
 //	defer closer.Close()
 func InitializeWithFile(serviceName string, debug bool, output OutputDestination, fileConfig *FileConfig) (io.Closer, error) {
+	if serviceName == "" {
+		serviceName = "unknown"
+	}
+
 	initMu.Lock()
 	defer initMu.Unlock()
+
+	// Reject any bits beyond the known OutputConsole and OutputFile flags.
+	if output&^(OutputConsole|OutputFile) != 0 {
+		return nil, fmt.Errorf("unknown output destination bits: %d", output)
+	}
 
 	level := zerolog.InfoLevel
 	if debug {
@@ -89,7 +98,7 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 		}
 
 		var err error
-		file, err = os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		file, err = os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open log file %s: %w", fileConfig.Path, err)
 		}
@@ -110,14 +119,21 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 		writer = zerolog.MultiLevelWriter(writers...)
 	}
 
-	zlog.Logger = zerolog.New(writer).
+	// PID is included for process identification in non-containerized environments
+	// where multiple instances of the same service may run on the same host.
+	ctx := zerolog.New(writer).
 		With().
 		Timestamp().
 		Str("service", serviceName).
-		Int("pid", os.Getpid()).
-		Caller().
-		Logger().
-		Level(level)
+		Int("pid", os.Getpid())
+
+	if debug {
+		// Caller adds source file and line number; only enabled in debug mode to
+		// reduce per-log overhead and avoid source path exposure in production.
+		ctx = ctx.Caller()
+	}
+
+	zlog.Logger = ctx.Logger().Level(level)
 
 	return file, nil
 }
@@ -130,8 +146,12 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 // This is a convenience wrapper around InitializeWithFile for console-only output.
 // For file output or multiple outputs, use InitializeWithFile directly.
 //
+// PID is included in every log entry for process identification in non-containerized
+// environments where multiple instances of the same service may run on the same host.
+//
 // Parameters:
-//   - serviceName: Name of the service, added as a field to all log entries
+//   - serviceName: Name of the service, added as a field to all log entries.
+//     Defaults to "unknown" when empty.
 //   - debug: If true, sets log level to Debug, otherwise Info
 //
 // Returns an error if the logger cannot be initialized.
@@ -144,6 +164,12 @@ func Initialize(serviceName string, debug bool) error {
 // The context is associated with the logger for use by zerolog hooks that
 // read from context (e.g., trace correlation), but context.WithValue entries
 // are not automatically extracted into log fields.
+//
+// Note: ContextLogger creates a new logger instance on every call. Callers in hot
+// paths should cache the returned logger rather than calling this per-request.
+//
+// Note: Console color output is controlled by zerolog.ConsoleWriter.NoColor; callers
+// can configure TTY detection via the Output option on zerolog.ConsoleWriter directly.
 //
 // Parameters:
 //   - ctx: Context associated with the logger (for hooks and cancellation, not value extraction)
@@ -158,7 +184,9 @@ func ContextLogger(ctx context.Context, component string) zerolog.Logger {
 		Logger()
 }
 
-// LogLevel represents the logging level
+// LogLevel defines log level strings used by the otel package for cross-package configuration.
+// Trace and Fatal levels are intentionally excluded: Trace is not supported by zerolog natively,
+// and Fatal triggers os.Exit which is unsuitable for library use.
 type LogLevel string
 
 const (

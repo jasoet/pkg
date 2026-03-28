@@ -66,7 +66,7 @@ func ExecuteConcurrently[T any](ctx context.Context, funcs map[string]Func[T]) (
 	}
 
 	// The closer goroutine waits for all workers to complete before closing the channel.
-	// It terminates when all worker goroutines exit (which happens when context is cancelled).
+	// It terminates when all worker goroutines exit (which happens when context is canceled).
 	go func() {
 		wg.Wait()
 		close(resultCh)

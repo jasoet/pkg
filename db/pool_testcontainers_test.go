@@ -45,12 +45,12 @@ func setupPostgresContainer(t *testing.T) (*postgres.PostgresContainer, *Connect
 	require.NoError(t, err, "Failed to get port")
 
 	config := &ConnectionConfig{
-		DbType:       Postgresql,
+		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -85,12 +85,12 @@ func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig
 	require.NoError(t, err, "Failed to get port")
 
 	config := &ConnectionConfig{
-		DbType:       Mysql,
+		DBType:       Mysql,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "testuser",
 		Password:     "testpass",
-		DbName:       "testdb",
+		DBName:       "testdb",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -131,12 +131,12 @@ func setupMSSQLContainer(t *testing.T) (*mssql.MSSQLServerContainer, *Connection
 	require.NoError(t, err, "Failed to get port")
 
 	config := &ConnectionConfig{
-		DbType:       MSSQL,
+		DBType:       MSSQL,
 		Host:         host,
 		Port:         port.Int(),
 		Username:     "sa",
 		Password:     "StrongPass123!",
-		DbName:       "master",
+		DBName:       "master",
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
