@@ -27,8 +27,8 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 - **Superpowers**: Ensure superpowers skills are installed. Use TDD for implementation, systematic-debugging for bugs.
 - **Commits**: Use Conventional Commits. Format: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`.
 - **Branching**: New branch for each feature/fix (`feat/...`, `fix/...`). PR with squash merge. Use `gh` for PR status and CI checks.
-- **Nix**: All dev tools provided via `flake.nix`. Use `task <name>` which wraps commands with `nix develop -c`. Prerequisites: Nix (with flakes), go-task (global).
-- **Containers**: Dual Docker/Podman support. This is a shared library — consumers use either runtime.
+- **Nix**: All dev tools provided via `flake.nix`. Use `task <name>` which wraps commands with `nix develop -c` (via `{{.N}}` Taskfile variable). Prerequisites: Nix (with flakes), go-task (global via Homebrew). direnv/`.envrc` is optional convenience — tasks work without it.
+- **Containers**: Dual Docker/Podman support. Container CLIs (`podman`, `docker-client`, `podman-compose`) are in the flake for version consistency; daemons are system-level. This is a shared library — consumers use either runtime.
 - **Patterns**: Functional options for configuration. OTelConfig always injected via `With*()` options, never serialized (`yaml:"-" mapstructure:"-"`). Use `otel.Layers.Start*()` for instrumentation.
 - **Self-maintaining docs**: Update `INSTRUCTION.md`, `README.md`, and `AI_PATTERN.md` when making significant changes.
 - **AI_PATTERN.md**: For AI working on projects that USE this library. Keep it as an index pointing to module READMEs and examples.
