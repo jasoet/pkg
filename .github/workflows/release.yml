@@ -2,33 +2,26 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, local, macOS, ARM64]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          check-latest: true
-
-      - name: Run tests
-        run: go test -race -count=1 ./... -tags=!examples
+      - name: Test
+        run: nix develop --command go test -race -count=1 ./... -tags=!examples
 
   release:
     name: Release
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, local, macOS, ARM64]
     permissions:
       contents: write
       issues: write
@@ -39,27 +32,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          check-latest: true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Install semantic-release
-        run: bun install -g semantic-release @semantic-release/github conventional-changelog-conventionalcommits
+        run: nix develop --command bun install -g semantic-release @semantic-release/github conventional-changelog-conventionalcommits
 
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bunx semantic-release
+        run: nix develop --command bunx semantic-release
 
       - name: Warm Go module proxy
         if: success()
@@ -68,5 +47,5 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$LATEST_TAG" ]; then
             echo "Warming Go proxy for github.com/jasoet/pkg/v2@${LATEST_TAG}"
-            GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m "github.com/jasoet/pkg/v2@${LATEST_TAG}" || true
+            GOPROXY=https://proxy.golang.org GO111MODULE=on nix develop --command go list -m "github.com/jasoet/pkg/v2@${LATEST_TAG}" || true
           fi
