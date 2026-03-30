@@ -224,3 +224,9 @@ temporal.db
 
 # Nix / direnv
 .direnv/
+
+# Git worktrees
+.worktrees/
+
+# Node.js (semantic-release)
+node_modules/
