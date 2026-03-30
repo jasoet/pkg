@@ -10,6 +10,12 @@ Comprehensive guide for AI agents and developers scaffolding new Go projects tha
 
 ## 1. Recommended Directory Layout
 
+Two variants are provided: **module-based** (recommended for projects with 3+ domains) and **flat** (suitable for small projects with 1-2 domains). Both share the same outer structure (`cmd/`, `migrations/`, `test/`, `docs/`, `http/`, `docker/`).
+
+### Module-Based Layout (Recommended)
+
+Each domain concept is a self-contained package under `internal/`. All layers for a domain (handler, service, repository, DTOs, errors, interfaces) live together, making it easy to navigate and maintain as the project grows.
+
 ```
 myapp/
 ├── cmd/
@@ -20,15 +26,29 @@ myapp/
 ├── internal/
 │   ├── config/
 │   │   └── config.go            # AppConfig struct + loader
-│   ├── model/
-│   │   └── user.go              # GORM models
-│   ├── repository/
-│   │   └── user_repo.go         # Data access layer
-│   ├── service/
-│   │   └── user_service.go      # Business logic
-│   ├── handler/
-│   │   ├── user_handler.go      # HTTP handlers with swagger annotations
-│   │   └── dto.go               # Request/Response DTOs (exported for swag)
+│   ├── shared/
+│   │   ├── model/               # All GORM models (centralized — single source of truth)
+│   │   │   ├── user.go
+│   │   │   ├── vessel.go
+│   │   │   └── incident.go
+│   │   ├── client/              # External API clients (weather, AIS, etc.)
+│   │   │   ├── weather_client.go
+│   │   │   └── ais_client.go
+│   │   └── dto/                 # Cross-module DTOs (only when needed)
+│   ├── user/                    # User module
+│   │   ├── handler.go           # HTTP handlers
+│   │   ├── service.go           # Business logic
+│   │   ├── repository.go        # Database access
+│   │   ├── dto.go               # Module-local request/response DTOs
+│   │   ├── errors.go            # Domain-specific errors
+│   │   └── interfaces.go        # Consumer-defined interfaces
+│   ├── vessel/                  # Vessel module (same structure)
+│   │   ├── handler.go
+│   │   ├── service.go
+│   │   ├── repository.go
+│   │   ├── dto.go
+│   │   ├── errors.go
+│   │   └── interfaces.go
 │   ├── temporal/
 │   │   ├── workflows.go         # Workflow definitions
 │   │   └── activities.go        # Activity implementations
@@ -62,10 +82,10 @@ myapp/
 | `cmd/server/` | API server entry point — config load, wiring, server start |
 | `cmd/worker/` | Temporal worker entry point — registers workflows/activities |
 | `internal/config/` | `AppConfig` struct with YAML + env var support |
-| `internal/model/` | GORM model structs with table name methods |
-| `internal/repository/` | Database access, one repo per aggregate |
-| `internal/service/` | Business logic, orchestrates repositories |
-| `internal/handler/` | Echo HTTP handlers + DTOs + swagger annotations |
+| `internal/shared/model/` | All GORM model structs (centralized to avoid circular imports) |
+| `internal/shared/client/` | External API clients (may be used by multiple modules) |
+| `internal/shared/dto/` | Cross-module DTOs (only when referenced by 2+ modules) |
+| `internal/<module>/` | Domain module — handler, service, repository, DTOs, errors, interfaces |
 | `internal/temporal/` | Workflow definitions and activity implementations |
 | `internal/testutil/` | Shared test helpers (testcontainer setup, fixtures) |
 | `migrations/` | SQL migration files with `embed.FS` |
@@ -73,6 +93,81 @@ myapp/
 | `docs/` | Generated Swagger/OpenAPI files (committed) |
 | `http/` | `.http` files for manual API testing |
 | `docker/` | Docker Compose files for dev infrastructure |
+
+#### Module Rules
+
+1. **One module per domain concept** — each module maps to a business domain (user, vessel, incident, communication).
+2. **Each module is a Go package** — the package name matches the directory name (e.g., `package user`).
+3. **Modules import `shared/model`** — all GORM model structs live in `shared/model/` so relationships between entities are visible in one place and circular imports are avoided.
+4. **Modules import `shared/client`** — external API clients live in `shared/client/` since they may be used by multiple modules.
+5. **DTOs are module-local** — each module defines its own request/response DTOs in `dto.go`. If a DTO is needed by multiple modules, move it to `shared/dto/`.
+6. **Errors are module-local** — each module defines its own domain errors in `errors.go`.
+7. **Interfaces are consumer-defined** — each module defines the interfaces it depends on in `interfaces.go` (see [Section 4a](#4a-consumer-defined-interfaces)).
+8. **Cross-module communication** — if a service needs data from another module, it depends on that module's repository or service interface, declared in the consuming module's `interfaces.go`.
+
+#### What Goes in `shared/`
+
+| Directory | Contains | Why Shared |
+|-----------|----------|------------|
+| `shared/model/` | All GORM model structs | Foreign key relationships span modules; centralizing avoids circular imports and makes the data model visible at a glance |
+| `shared/client/` | External API clients (weather, AIS, etc.) | Multiple modules may need the same external API |
+| `shared/dto/` | Cross-module DTOs (only when needed) | DTOs referenced by more than one module |
+
+#### When to Create a New Module
+
+Create a new module when you have a distinct business domain that will have its own API endpoints, business logic, and data access. If a piece of functionality is just a helper used by many modules, it belongs in `shared/`.
+
+#### Module File Structure
+
+Each file within a module has a specific purpose:
+
+| File | Purpose |
+|------|---------|
+| `handler.go` | HTTP handlers — request parsing, response formatting, error-to-status-code mapping |
+| `service.go` | Business logic, orchestration, transactions |
+| `repository.go` | Database access — one query per method |
+| `dto.go` | Request/response structs for the HTTP layer |
+| `errors.go` | Domain-specific error variables |
+| `interfaces.go` | Consumer-defined interfaces for dependencies (repositories, clients, other services) |
+
+If a module grows large enough that any single file becomes unwieldy, split by sub-concern within the module (e.g., `vessel_tracking_service.go`, `vessel_registry_service.go`).
+
+### Flat Layout (Simple Variant)
+
+For small projects with 1-2 domains, a flat layout groups files by layer instead of by domain:
+
+```
+myapp/
+├── cmd/
+│   └── server/
+│       └── main.go
+├── internal/
+│   ├── config/
+│   │   └── config.go
+│   ├── model/
+│   │   └── user.go              # GORM models
+│   ├── repository/
+│   │   └── user_repo.go         # Data access layer
+│   ├── service/
+│   │   └── user_service.go      # Business logic
+│   ├── handler/
+│   │   ├── user_handler.go      # HTTP handlers with swagger annotations
+│   │   └── dto.go               # Request/Response DTOs (exported for swag)
+│   └── testutil/
+│       └── db.go
+├── migrations/
+│   └── ...
+└── ...
+```
+
+| Directory | Purpose |
+|-----------|---------|
+| `internal/model/` | GORM model structs with table name methods |
+| `internal/repository/` | Database access, one repo per aggregate |
+| `internal/service/` | Business logic, orchestrates repositories |
+| `internal/handler/` | Echo HTTP handlers + DTOs + swagger annotations |
+
+**When to switch from flat to module-based:** When you find yourself prefixing files by domain (e.g., `user_repo.go`, `vessel_repo.go`, `incident_repo.go` all in `repository/`), it's time to migrate to module-based layout.
 
 ---
 
@@ -231,6 +326,134 @@ func (s *UserService) Create(ctx context.Context, req CreateUserRequest) (*User,
 
 ---
 
+## 4a. Consumer-Defined Interfaces
+
+Interfaces are defined in the **consumer module**, not the provider — this is idiomatic Go (accept interfaces, return structs). Each module's interfaces live in its `interfaces.go` file.
+
+### Within a Module
+
+Services define the repository interfaces they depend on. Handlers define the service interfaces they depend on.
+
+```go
+// internal/user/interfaces.go
+package user
+
+import (
+    "context"
+    "myapp/internal/shared/model"
+)
+
+// Repository interface — consumed by the service
+type UserRepository interface {
+    FindAll(ctx context.Context) ([]model.User, error)
+    FindByID(ctx context.Context, id string) (*model.User, error)
+    FindByUsername(ctx context.Context, username string) (*model.User, error)
+    Create(ctx context.Context, user *model.User) error
+    Delete(ctx context.Context, id string) error
+}
+
+// Service interface — consumed by the handler
+type ServiceInterface interface {
+    ListUsers(ctx context.Context) ([]model.User, error)
+    GetUser(ctx context.Context, id string) (*model.User, error)
+    CreateUser(ctx context.Context, username, password string) (*model.User, error)
+    DeleteUser(ctx context.Context, id string) error
+}
+```
+
+The service depends on the interface, not the concrete type:
+
+```go
+// internal/user/service.go
+type Service struct {
+    repo UserRepository
+}
+
+func NewService(repo UserRepository) *Service {
+    return &Service{repo: repo}
+}
+```
+
+### Cross-Module Dependencies
+
+When a module needs data from another module, define the interface in the **consuming** module's `interfaces.go`:
+
+```go
+// internal/dashboard/interfaces.go
+package dashboard
+
+type VesselRepository interface {
+    CountByStatus(ctx context.Context) (map[string]int, error)
+}
+
+type IncidentRepository interface {
+    FindRecent(ctx context.Context, since time.Duration) ([]model.Incident, error)
+}
+
+type WeatherClient interface {
+    GetCurrent(ctx context.Context, lat, lon float64) (*WeatherData, error)
+}
+```
+
+### Why Consumer-Defined?
+
+- Repositories and clients stay simple structs — no interface boilerplate in their packages.
+- Each consumer defines only the methods it actually uses (Interface Segregation Principle).
+- Mocking becomes straightforward — mock only what the consumer calls.
+- Adding a new repository method doesn't force updating interfaces elsewhere unless a consumer needs it.
+
+---
+
+## 4b. Module-Local Errors
+
+Each module defines its own domain-specific errors in `errors.go`. These errors are used by services and repositories within the module, and mapped to HTTP status codes by handlers.
+
+```go
+// internal/user/errors.go
+package user
+
+import "errors"
+
+var (
+    ErrUserNotFound   = errors.New("user not found")
+    ErrUsernameExists = errors.New("username already exists")
+    ErrInvalidInput   = errors.New("invalid input")
+)
+```
+
+```go
+// internal/vessel/errors.go
+package vessel
+
+import "errors"
+
+var (
+    ErrVesselNotFound = errors.New("vessel not found")
+    ErrDuplicateIMO   = errors.New("duplicate IMO number")
+)
+```
+
+**Handler error mapping pattern:**
+
+```go
+func (h *Handler) Get(c echo.Context) error {
+    user, err := h.svc.GetUser(c.Request().Context(), c.Param("id"))
+    if err != nil {
+        switch {
+        case errors.Is(err, ErrUserNotFound):
+            return c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+        default:
+            return c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
+        }
+    }
+    return c.JSON(http.StatusOK, toUserResponse(user))
+}
+```
+
+Services should never return HTTP-specific errors — keep the domain clean.
+
+---
+
 ## 5. Database Setup
 
 ### Connection Pool
@@ -272,6 +495,309 @@ err := db.RunPostgresMigrationsWithGorm(ctx, pool, migrations.FS, ".")
 000002_add_sessions.up.sql
 000002_add_sessions.down.sql
 ```
+
+---
+
+## 5a. Database Access Patterns
+
+All database access follows the layered architecture. The key principle: **a repository method maps to exactly one database hit**.
+
+### Layer Responsibilities
+
+| Layer | Responsibility | Owns Transactions? | Depends On |
+|-------|---------------|-------------------|------------|
+| **Handler** | HTTP request/response, input validation, status codes | No | Service |
+| **Service** | Business logic, orchestration, data transformation | Yes | Repository, Client, `*gorm.DB` (for transactions) |
+| **Repository** | Single database operation per method | No | `*gorm.DB` |
+| **Client** | Single external API wrapper | No | `rest.Client` |
+
+### Repository Rules
+
+1. **One database hit per method** — no multi-step queries, no loops with queries inside.
+2. **Always use `r.db.WithContext(lc.Context())`** — never skip context. This ensures OTel tracing and timeout propagation.
+3. **Always wrap in `otel.Layers.StartRepository`** with a `db.operation` attribute (`select`, `insert`, `update`, `delete`, `upsert`).
+4. **Always use `lc.Error()` / `lc.Success()`** — never return raw errors without recording them.
+5. **Always use parameterized queries** (`?` placeholders) — never string concatenation or `fmt.Sprintf` for SQL values.
+6. **Define domain-specific errors** in the module's `errors.go` file.
+7. **If a GORM chain exceeds 3-4 method calls or requires subqueries**, switch to raw SQL for clarity.
+
+### When to Use GORM vs Raw SQL
+
+| Use Case | Approach | Example |
+|----------|---------|---------|
+| Simple CRUD (insert, update, delete, find by ID/field) | GORM methods (`.Create()`, `.Save()`, `.First()`, `.Find()`, `.Delete()`) | `r.db.WithContext(ctx).Create(&user)` |
+| Filtering with dynamic conditions | GORM query builder (`.Where()`, `.Order()`, `.Limit()`) | `r.db.Where("status = ?", s).Find(&list)` |
+| Queries with joins, CTEs, window functions, aggregations | Raw SQL via `db.Raw().Scan()` | See raw SQL pattern below |
+| Bulk inserts, upserts, or batch updates | Raw SQL via `db.Exec()` | `r.db.Exec("INSERT INTO ... ON CONFLICT ...")` |
+
+### Pattern: GORM Query (Simple CRUD)
+
+```go
+func (r *Repository) FindByID(ctx context.Context, id string) (*model.Vessel, error) {
+    lc := otel.Layers.StartRepository(ctx, "vessel", "FindByID",
+        otel.F("db.operation", "select"),
+        otel.F("vessel.id", id))
+    defer lc.End()
+
+    var vessel model.Vessel
+    if err := r.db.WithContext(lc.Context()).First(&vessel, "id = ?", id).Error; err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, lc.Error(ErrVesselNotFound, "vessel not found")
+        }
+        return nil, lc.Error(err, "query failed")
+    }
+    lc.Success("vessel found")
+    return &vessel, nil
+}
+```
+
+### Pattern: Raw SQL Query (Complex Single Query)
+
+Use `db.Raw().Scan()` for complex queries. It is still **one database hit**.
+
+```go
+func (r *Repository) FindNearby(ctx context.Context, lat, lon, radiusKm float64) ([]model.Vessel, error) {
+    lc := otel.Layers.StartRepository(ctx, "vessel", "FindNearby",
+        otel.F("db.operation", "select"),
+        otel.F("query.lat", lat),
+        otel.F("query.lon", lon))
+    defer lc.End()
+
+    var vessels []model.Vessel
+    err := r.db.WithContext(lc.Context()).Raw(`
+        SELECT v.*
+        FROM vessels v
+        WHERE ST_DWithin(v.position, ST_MakePoint(?, ?)::geography, ?)
+        ORDER BY v.name
+    `, lon, lat, radiusKm*1000).Scan(&vessels).Error
+
+    if err != nil {
+        return nil, lc.Error(err, "query failed")
+    }
+    lc.Success("nearby vessels found", otel.F("result.count", len(vessels)))
+    return vessels, nil
+}
+```
+
+### Pattern: Result Structs for Complex Queries
+
+When a raw SQL query returns a shape that doesn't match an existing model, define a result struct in the same `repository.go` file. Use `gorm:"column:..."` tags to map columns. These structs do **not** go in `shared/model/` — they are query-specific.
+
+```go
+type ActivitySummary struct {
+    VesselID   string    `gorm:"column:vessel_id"`
+    VesselName string    `gorm:"column:vessel_name"`
+    TripCount  int       `gorm:"column:trip_count"`
+    LastSeen   time.Time `gorm:"column:last_seen"`
+}
+
+func (r *Repository) GetActivitySummary(ctx context.Context, since time.Time) ([]ActivitySummary, error) {
+    lc := otel.Layers.StartRepository(ctx, "vessel", "GetActivitySummary",
+        otel.F("db.operation", "select"))
+    defer lc.End()
+
+    var summaries []ActivitySummary
+    err := r.db.WithContext(lc.Context()).Raw(`
+        SELECT v.id AS vessel_id, v.name AS vessel_name,
+               COUNT(t.id) AS trip_count, MAX(t.ended_at) AS last_seen
+        FROM vessels v
+        LEFT JOIN trips t ON t.vessel_id = v.id AND t.started_at >= ?
+        GROUP BY v.id, v.name
+        ORDER BY trip_count DESC
+    `, since).Scan(&summaries).Error
+
+    if err != nil {
+        return nil, lc.Error(err, "query failed")
+    }
+    lc.Success("summary loaded", otel.F("result.count", len(summaries)))
+    return summaries, nil
+}
+```
+
+### Repository File Structure
+
+Within a `repository.go` file, follow this order:
+
+```
+1. Repository struct   type Repository struct { db *gorm.DB }
+2. Constructor         func NewRepository(db *gorm.DB) *Repository
+3. Result structs      type XxxSummary struct { ... }   (if any)
+4. Read methods        FindAll, FindByID, FindByXxx, search/filter methods
+5. Write methods       Create, Update, Delete, bulk operations
+```
+
+### What Does NOT Belong in the Repository
+
+- Transactions (belongs in the service layer)
+- Multi-query orchestration or loops with queries (belongs in the service layer)
+- Business logic or validation (belongs in the service layer)
+- HTTP request/response handling (belongs in the handler layer)
+- Direct `fmt.Println` or raw `zerolog` logging (use `lc.Logger`)
+- Calling other repositories (coordinate from the service layer)
+
+---
+
+## 5b. Client Layer
+
+External API wrappers live in `internal/shared/client/`. Each client wraps a single third-party API and provides typed Go methods. Clients are in `shared/` because multiple modules may depend on the same external API.
+
+### Client Pattern
+
+Use `jasoet/pkg/v2/rest` for HTTP calls with automatic OTel instrumentation and retry support:
+
+```go
+// internal/shared/client/weather_client.go
+package client
+
+type WeatherData struct {
+    Temperature float64 `json:"temperature"`
+    WindSpeed   float64 `json:"wind_speed"`
+    Condition   string  `json:"condition"`
+}
+
+type WeatherClient struct {
+    client  *rest.Client
+    baseURL string
+    apiKey  string
+}
+
+func NewWeatherClient(otelCfg *otel.Config, baseURL, apiKey string) *WeatherClient {
+    return &WeatherClient{
+        client:  rest.NewClient(rest.WithOTelConfig(otelCfg)),
+        baseURL: baseURL,
+        apiKey:  apiKey,
+    }
+}
+
+func (c *WeatherClient) GetCurrent(ctx context.Context, lat, lon float64) (*WeatherData, error) {
+    lc := otel.Layers.StartRepository(ctx, "weather", "GetCurrent",
+        otel.F("api.service", "weather"),
+        otel.F("query.lat", lat),
+        otel.F("query.lon", lon))
+    defer lc.End()
+
+    var data WeatherData
+    url := fmt.Sprintf("%s/current?lat=%f&lon=%f", c.baseURL, lat, lon)
+
+    resp, err := c.client.R().
+        SetContext(lc.Context()).
+        SetHeader("X-API-Key", c.apiKey).
+        SetResult(&data).
+        Get(url)
+
+    if err != nil {
+        return nil, lc.Error(err, "weather API request failed")
+    }
+    if resp.IsError() {
+        return nil, lc.Error(fmt.Errorf("weather API returned %d", resp.StatusCode()), "unexpected status")
+    }
+
+    lc.Success("weather data fetched")
+    return &data, nil
+}
+```
+
+### Client Rules
+
+- **One client per external service** — don't combine multiple APIs in one client.
+- **Use `rest.NewClient()` with `rest.WithOTelConfig()`** — never raw `net/http` or plain resty.
+- **Use `otel.Layers.StartRepository`** for span creation (clients are data-access boundaries, same as repositories).
+- **Handle API-specific errors** — translate HTTP errors into meaningful Go errors.
+- **Never expose HTTP details** to the caller — return typed Go structs, not raw responses.
+- **Store API keys/credentials in config** — inject via constructor, never hardcode.
+- **Prefer header-based authentication** (`Authorization`, `X-API-Key`) over query-string API keys. Query params appear in server logs and browser history.
+
+---
+
+## 5c. Service Orchestration & Transactions
+
+### Multi-Query Orchestration
+
+When a service needs data from multiple sources, it coordinates the calls:
+
+```go
+func (s *Service) GetOverview(ctx context.Context) (*Overview, error) {
+    lc := otel.Layers.StartService(ctx, "dashboard", "GetOverview")
+    defer lc.End()
+
+    vessels, err := s.vesselRepo.CountByStatus(lc.Context())
+    if err != nil {
+        return nil, lc.Error(err, "failed to count vessels")
+    }
+
+    incidents, err := s.incidentRepo.FindRecent(lc.Context(), 24*time.Hour)
+    if err != nil {
+        return nil, lc.Error(err, "failed to fetch recent incidents")
+    }
+
+    weather, err := s.weatherClient.GetCurrent(lc.Context(), s.defaultLat, s.defaultLon)
+    if err != nil {
+        return nil, lc.Error(err, "failed to fetch weather")
+    }
+
+    return &Overview{
+        VesselCounts:    vessels,
+        RecentIncidents: incidents,
+        CurrentWeather:  weather,
+    }, lc.Success("dashboard overview loaded")
+}
+```
+
+### Transactions
+
+When multiple writes must succeed or fail together, the **service** owns the transaction. The service holds a `*gorm.DB` reference alongside its repository/client dependencies and uses `db.Transaction()` directly.
+
+```go
+// Service constructor with transaction support
+type Service struct {
+    db           *gorm.DB
+    incidentRepo IncidentRepository
+    auditRepo    AuditLogRepository
+}
+
+func NewService(db *gorm.DB, incidentRepo IncidentRepository, auditRepo AuditLogRepository) *Service {
+    return &Service{db: db, incidentRepo: incidentRepo, auditRepo: auditRepo}
+}
+
+func (s *Service) ReportWithAudit(ctx context.Context, req ReportRequest) (*model.Incident, error) {
+    lc := otel.Layers.StartService(ctx, "incident", "ReportWithAudit")
+    defer lc.End()
+
+    var incident model.Incident
+    err := s.db.WithContext(lc.Context()).Transaction(func(tx *gorm.DB) error {
+        incident = model.Incident{
+            Title:    req.Title,
+            Severity: req.Severity,
+        }
+        if err := tx.Create(&incident).Error; err != nil {
+            return err
+        }
+
+        auditLog := model.AuditLog{
+            EntityType: "incident",
+            EntityID:   incident.ID,
+            Action:     "created",
+            ActorID:    req.ReportedBy,
+        }
+        return tx.Create(&auditLog).Error
+    })
+
+    if err != nil {
+        return nil, lc.Error(err, "transaction failed")
+    }
+
+    lc.Success("incident reported", otel.F("incident.id", incident.ID))
+    return &incident, nil
+}
+```
+
+### Transaction Rules
+
+- **Keep transactions short** — no external API calls, no long-running work inside them.
+- **Let errors propagate** by returning them from the `Transaction` callback; GORM handles rollback automatically.
+- **Don't nest transactions** — if a service calls another service, the outer service should own the transaction scope.
+- **Use `tx` (not `r.db`)** for all operations inside the callback.
+- **Direct `tx.Create()`/`tx.Save()` is acceptable inside transaction callbacks** — since the transaction callback receives a `*gorm.DB` (`tx`), you use it directly for model operations. Repository methods are not used here because they hold their own `r.db` reference, which is outside the transaction scope. This is the one place where the service layer performs direct GORM operations.
 
 ---
 
@@ -1289,22 +1815,46 @@ tasks:
 
 ## 14. Architecture Rules (Checklist)
 
+### Configuration & OTel
 1. **Config tags:** Every config struct field has `yaml`, `mapstructure`, and `validate` tags.
 2. **OTelConfig isolation:** `OTelConfig *otel.Config` always tagged `yaml:"-" mapstructure:"-"`. Never serialized.
 3. **OTel injection:** OTelConfig is set at runtime via functional options or direct assignment — never from YAML/env.
-4. **Layer separation:** Handler → Service → Repository. No skipping layers. Handlers never touch `*gorm.DB` directly.
-5. **LayerContext usage:** Every service/repository method starts with `otel.Layers.Start*()` and defers `lc.End()`.
-6. **Context propagation:** Always pass `lc.Context()` to downstream calls, never the original `ctx`.
-7. **DTO mapping:** Handlers use DTOs (`handler/dto.go`) for request/response. GORM models stay in `model/`. Map between them in handlers or services.
-8. **Exported DTOs:** Request/Response structs in `handler/dto.go` must be exported (capitalized) for `swag` to parse.
-9. **Swagger annotations:** Every handler method has `@Summary`, `@Tags`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` (where applicable).
-10. **E2E tests exist:** `test/e2e/` contains full-stack API tests using `startTestServer(t)` with testcontainer DB.
-11. **`.http` file exists:** `http/api.http` covers every API endpoint with example payloads.
-12. **Migration naming:** `{6-digit sequence}_{description}.{up|down}.sql` with `embed.FS`.
-13. **Test assertions:** Use `testify/assert` and `testify/require` — never `if err != nil { t.Fatal() }` patterns for assertions.
-14. **Error returns:** `lc.Error(err, msg)` returns `error` — use it as a return value. `lc.Success(msg)` returns nothing.
-15. **Temporal separation:** Workflow functions use `workflow.Context`, activity functions use `context.Context`. Activities hold injected dependencies via a struct. Worker binary lives in `cmd/worker/`, separate from the API server.
-16. **Temporal config:** `temporal.Config` has no `OTelConfig` field — it is fully serializable. Embed as a value type in `AppConfig`, not a pointer.
+4. **LayerContext usage:** Every service/repository method starts with `otel.Layers.Start*()` and defers `lc.End()`.
+5. **Context propagation:** Always pass `lc.Context()` to downstream calls, never the original `ctx`.
+6. **Error returns:** `lc.Error(err, msg)` returns `error` — use it as a return value. `lc.Success(msg)` returns nothing.
+
+### Architecture & Layer Separation
+7. **Layer separation:** Handler → Service → Repository. No skipping layers. Handlers never touch `*gorm.DB` directly.
+8. **Consumer-defined interfaces:** Interfaces live in the consuming module's `interfaces.go`. Each consumer defines only the methods it uses.
+9. **Module-local errors:** Each module defines domain errors in `errors.go` (`var ErrXxx = errors.New(...)`). Handlers map these to HTTP status codes.
+10. **DTO mapping:** Handlers use DTOs (`dto.go`) for request/response. GORM models stay in `shared/model/`. Map between them in handlers or services.
+11. **Exported DTOs:** Request/Response structs must be exported (capitalized) for `swag` to parse.
+
+### Database & Data Access
+12. **One DB hit per repository method** — no multi-step queries, no loops with queries inside.
+13. **Always use `r.db.WithContext(lc.Context())`** — never skip context for OTel tracing.
+14. **Always use parameterized queries** (`?` placeholders) — never string concatenation for SQL values.
+15. **Service owns transactions** — repositories never start transactions. Use `db.Transaction()` in the service.
+16. **Transaction callbacks use `tx` directly** — not repository methods (which hold their own `r.db` outside the tx scope).
+17. **Keep transactions short** — no external API calls or long-running work inside them.
+
+### Client Layer
+18. **One client per external service** — each in `shared/client/`, using `rest.NewClient()` with OTel.
+19. **Never expose HTTP details** — return typed Go structs, not raw responses.
+20. **Prefer header-based auth** — over query-string API keys.
+
+### API & Documentation
+21. **Swagger annotations:** Every handler method has `@Summary`, `@Tags`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` (where applicable).
+22. **`.http` file exists:** `http/api.http` covers every API endpoint with example payloads.
+
+### Testing
+23. **E2E tests exist:** `test/e2e/` contains full-stack API tests using `startTestServer(t)` with testcontainer DB.
+24. **Migration naming:** `{6-digit sequence}_{description}.{up|down}.sql` with `embed.FS`.
+25. **Test assertions:** Use `testify/assert` and `testify/require` — never `if err != nil { t.Fatal() }` patterns.
+
+### Temporal
+26. **Temporal separation:** Workflow functions use `workflow.Context`, activity functions use `context.Context`. Activities hold injected dependencies via a struct. Worker binary lives in `cmd/worker/`, separate from the API server.
+27. **Temporal config:** `temporal.Config` has no `OTelConfig` field — it is fully serializable. Embed as a value type in `AppConfig`, not a pointer.
 
 ---
 
@@ -1331,7 +1881,11 @@ tasks:
 
 ---
 
-## 16. Complete Wiring Example
+## 16. Complete Wiring Examples
+
+### Module-Based Wiring (Recommended)
+
+With the module-based layout, each module exports its own constructors. Import modules by alias to avoid name collisions:
 
 ```go
 package main
@@ -1346,9 +1900,10 @@ import (
     echoSwagger "github.com/swaggo/echo-swagger"
 
     "myapp/internal/config"
-    "myapp/internal/handler"
-    "myapp/internal/repository"
-    "myapp/internal/service"
+    "myapp/internal/shared/client"
+    usermod "myapp/internal/user"
+    vesselmod "myapp/internal/vessel"
+    dashboardmod "myapp/internal/dashboard"
     "myapp/migrations"
 
     "github.com/jasoet/pkg/v2/db"
@@ -1379,8 +1934,6 @@ func main() {
 
     // --- OpenTelemetry ---
     otelCfg := otel.NewConfig("myapp")
-    // Attach real providers here if needed:
-    // otelCfg = otelCfg.WithTracerProvider(tp).WithMeterProvider(mp)
 
     // --- Database ---
     cfg.Database.OTelConfig = otelCfg
@@ -1394,14 +1947,20 @@ func main() {
         log.Fatalf("failed to run migrations: %v", err)
     }
 
-    // --- Repositories ---
-    userRepo := repository.NewUserRepo(pool)
+    // --- 1. Repositories (depend on *gorm.DB) ---
+    userRepo := usermod.NewRepository(pool)
+    vesselRepo := vesselmod.NewRepository(pool)
 
-    // --- Services ---
-    userSvc := service.NewUserService(userRepo)
+    // --- 2. Clients (depend on *otel.Config + config values) ---
+    weatherClient := client.NewWeatherClient(otelCfg, cfg.Weather.BaseURL, cfg.Weather.APIKey)
 
-    // --- Handlers ---
-    userHandler := handler.NewUserHandler(userSvc)
+    // --- 3. Services (depend on repositories, clients, optionally *gorm.DB for transactions) ---
+    userSvc := usermod.NewService(userRepo)
+    dashboardSvc := dashboardmod.NewService(vesselRepo, weatherClient)
+
+    // --- 4. Handlers (depend on services) ---
+    userHandler := usermod.NewHandler(userSvc)
+    dashboardHandler := dashboardmod.NewHandler(dashboardSvc)
 
     // --- Server ---
     server.StartWithConfig(server.Config{
@@ -1416,6 +1975,7 @@ func main() {
 
             apiV1 := e.Group("/api/v1")
             userHandler.RegisterRoutes(apiV1.Group("/users"))
+            dashboardHandler.RegisterRoutes(apiV1.Group("/dashboard"))
         },
         Operation: func(e *echo.Echo) {},
         Shutdown: func(e *echo.Echo) {
@@ -1429,4 +1989,26 @@ func main() {
 }
 ```
 
-This example demonstrates the full bootstrap sequence: config → OTel → database → migrations → repositories → services → handlers → routes → server start.
+### Flat Layout Wiring
+
+For the simpler flat layout:
+
+```go
+import (
+    "myapp/internal/config"
+    "myapp/internal/handler"
+    "myapp/internal/repository"
+    "myapp/internal/service"
+)
+
+// Repositories
+userRepo := repository.NewUserRepo(pool)
+
+// Services
+userSvc := service.NewUserService(userRepo)
+
+// Handlers
+userHandler := handler.NewUserHandler(userSvc)
+```
+
+Both examples demonstrate the same bootstrap sequence: **config → OTel → database → migrations → repositories → clients → services → handlers → routes → server start**.
