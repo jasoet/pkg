@@ -4,7 +4,104 @@ Comprehensive guide for AI agents and developers scaffolding new Go projects tha
 
 > **Audience:** AI code-generation agents (Claude, Cursor, Copilot) and human developers.
 > **Scope:** Consumer projects — applications built _with_ this library, not contributions _to_ it.
-> **Prerequisite:** Go 1.24+ (generics required).
+> **Prerequisites:** [Nix](https://nixos.org/) (with flakes enabled), [go-task](https://taskfile.dev/) (global via Homebrew). Go 1.24+ is provided by the Nix flake.
+
+---
+
+## 0. Dev Environment Setup
+
+### Three-Layer Tool Strategy
+
+Each layer handles a different concern. They don't overlap.
+
+| Layer | Tool | What It Manages | Examples |
+|---|---|---|---|
+| **Global CLI + GUI apps** | Homebrew | Always-available tools, GUI apps, system utilities | fish, git, go-task, direnv, gh |
+| **Per-project dev tools** | Nix (`flake.nix`) | Compilers, linters, language runtimes, build tools | go, golangci-lint, gofumpt, buf, bun |
+| **Services** | Podman/Docker | Databases, message brokers, infrastructure | PostgreSQL, Redis, Temporal |
+
+### Why Nix
+
+Nix provides **per-project, reproducible development environments**. Each project declares its exact tool versions in a `flake.nix` file. The `flake.lock` file pins those versions — commit it to git so all machines (macOS ARM, Linux x86_64) get identical tooling. When you enter the project directory with `direnv`, tools activate automatically. When you leave, they deactivate.
+
+Without Nix, tool versions drift across machines, global upgrades break unrelated projects, and onboarding requires manually installing the right versions of everything.
+
+### Why `go-task` Stays Global
+
+`go-task` is the entry point that runs Taskfile commands. Taskfile commands invoke Nix (`nix develop -c ...`), so if `go-task` were inside the flake, you'd need Nix to run tasks, but you'd need tasks to run Nix — a chicken-and-egg problem. Install `go-task` globally via Homebrew. Same reasoning applies to `gh` (GitHub CLI).
+
+### Taskfile Integration: Pattern A (`nix develop -c` prefix)
+
+Every Taskfile command that uses a Nix-provided tool is prefixed with `nix develop -c` via a variable:
+
+```yaml
+vars:
+  N: "nix develop -c"
+
+tasks:
+  test:
+    cmds:
+      - '{{.N}} go test ./...'
+  lint:
+    cmds:
+      - '{{.N}} golangci-lint run'
+```
+
+This is the default because most commands are executed by AI agents through the Taskfile — tasks work without requiring `direnv` to be active. `direnv` with `.envrc` (`use flake`) is optional for interactive shell use.
+
+Infrastructure commands (`docker compose`, `podman`) run bare — they are system-level, not Nix-provided.
+
+### `flake.nix` Template (Go Service)
+
+```nix
+{
+  description = "Project development environment";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in {
+        devShells.default = pkgs.mkShell {
+          packages = [
+            pkgs.go
+            pkgs.golangci-lint
+            pkgs.gofumpt
+            pkgs.jq
+            # Add project-specific tools here (buf, grpcurl, etc.)
+            # go-task is global (Homebrew), not in flake
+          ];
+
+          shellHook = ''
+            export GOPATH="$HOME/go"
+            export PATH="$GOPATH/bin:$PATH"
+            echo "Dev environment ready — Go $(go version | awk '{print $3}')"
+          '';
+        };
+      });
+}
+```
+
+### `.envrc` and `.gitignore`
+
+```bash
+# .envrc (optional — for interactive shell auto-activation)
+use flake
+```
+
+Add to `.gitignore`:
+
+```gitignore
+# Nix / direnv
+.direnv/
+```
+
+> **No Nix?** If you skip Nix, install Go, golangci-lint, and other tools globally and remove the `N:` variable prefix from the Taskfile. Everything else in this template still applies.
 
 ---
 
@@ -18,6 +115,9 @@ Each domain concept is a self-contained package under `internal/`. All layers fo
 
 ```
 myapp/
+├── flake.nix                    # Nix: per-project dev tools
+├── flake.lock                   # Nix: pinned versions (committed)
+├── .envrc                       # direnv: auto-activate nix (optional)
 ├── cmd/
 │   ├── server/
 │   │   └── main.go              # API server entry point
@@ -69,9 +169,9 @@ myapp/
 ├── http/
 │   └── api.http                 # IntelliJ/VS Code REST Client file
 ├── docker/
-│   └── compose.yml              # Dev infrastructure (PostgreSQL, etc.)
+│   └── compose.yml              # Podman/Docker: dev services (PostgreSQL, etc.)
 ├── tools.go                     # //go:build tools — pin swag, testcontainers, etc.
-├── Taskfile.yml                 # Task runner configuration
+├── Taskfile.yml                 # Task runner (commands prefixed with nix develop -c)
 ├── config.yaml                  # Default configuration
 ├── go.mod
 └── go.sum
@@ -79,6 +179,9 @@ myapp/
 
 | Directory | Purpose |
 |-----------|---------|
+| `flake.nix` | Nix flake — declares project dev tools (Go, linters, etc.) |
+| `flake.lock` | Pinned Nix package versions — commit this file |
+| `.envrc` | direnv auto-activation (optional — `use flake`) |
 | `cmd/server/` | API server entry point — config load, wiring, server start |
 | `cmd/worker/` | Temporal worker entry point — registers workflows/activities |
 | `internal/config/` | `AppConfig` struct with YAML + env var support |
@@ -92,7 +195,7 @@ myapp/
 | `test/e2e/` | End-to-end API tests against real HTTP + real DB |
 | `docs/` | Generated Swagger/OpenAPI files (committed) |
 | `http/` | `.http` files for manual API testing |
-| `docker/` | Docker Compose files for dev infrastructure |
+| `docker/` | Podman/Docker Compose for dev services (PostgreSQL, Temporal, etc.) |
 
 #### Module Rules
 
@@ -138,6 +241,9 @@ For small projects with 1-2 domains, a flat layout groups files by layer instead
 
 ```
 myapp/
+├── flake.nix                    # Nix: per-project dev tools
+├── flake.lock                   # Nix: pinned versions (committed)
+├── .envrc                       # direnv: auto-activate nix (optional)
 ├── cmd/
 │   └── server/
 │       └── main.go
@@ -1724,10 +1830,13 @@ GET {{host}}/swagger/index.html
 
 ## 13. Taskfile Configuration
 
+Commands that use Nix-provided tools (Go, linters, formatters) are prefixed with `{{.N}}` which expands to `nix develop -c`. Infrastructure commands (`docker compose`, `podman`) run bare since they are system-level.
+
 ```yaml
 version: "3"
 
 vars:
+  N: "nix develop -c"
   BIN_DIR: ./bin
 
 tasks:
@@ -1736,14 +1845,14 @@ tasks:
     cmds:
       - task --list-all
 
-  # --- Infrastructure ---
+  # --- Infrastructure (system-level — no Nix prefix) ---
   infra:up:
-    desc: Start dev infrastructure (PostgreSQL, Temporal, etc.)
+    desc: Start dev services (PostgreSQL, Temporal, etc.)
     cmds:
       - docker compose -f docker/compose.yml up -d
 
   infra:down:
-    desc: Stop dev infrastructure
+    desc: Stop dev services
     cmds:
       - docker compose -f docker/compose.yml down
 
@@ -1751,28 +1860,28 @@ tasks:
   dev:api:
     desc: Run the API server locally
     cmds:
-      - go run ./cmd/server
+      - '{{.N}} go run ./cmd/server'
 
   dev:worker:
     desc: Run the Temporal worker locally
     cmds:
-      - go run ./cmd/worker
+      - '{{.N}} go run ./cmd/worker'
 
   # --- Test ---
   test:unit:
     desc: Run unit tests (short mode, no Docker)
     cmds:
-      - go test ./... -short -v
+      - '{{.N}} go test ./... -short -v'
 
   test:integration:
     desc: Run integration tests (Docker required)
     cmds:
-      - go test ./internal/... -tags=integration -v -count=1 -timeout 300s
+      - '{{.N}} go test ./internal/... -tags=integration -v -count=1 -timeout 300s'
 
   test:e2e:
     desc: Run E2E API tests (full server + real DB)
     cmds:
-      - go test ./test/e2e/ -tags=integration -v -count=1 -timeout 300s
+      - '{{.N}} go test ./test/e2e/ -tags=integration -v -count=1 -timeout 300s'
 
   test:all:
     desc: Run all tests (unit + integration + e2e)
@@ -1785,25 +1894,39 @@ tasks:
   docs:swagger:
     desc: Generate Swagger/OpenAPI docs
     cmds:
-      - swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal
+      - '{{.N}} swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal'
 
   # --- Quality ---
   lint:
     desc: Run golangci-lint
     cmds:
-      - golangci-lint run
+      - '{{.N}} golangci-lint run'
 
   fmt:
     desc: Format code with gofumpt
     cmds:
-      - gofumpt -w .
+      - '{{.N}} gofumpt -w .'
 
   # --- Dependencies ---
   vendor:
     desc: Tidy and vendor dependencies
     cmds:
-      - go mod tidy
-      - go mod vendor
+      - '{{.N}} go mod tidy'
+      - '{{.N}} go mod vendor'
+
+  # --- Nix ---
+  nix:check:
+    desc: Verify Nix environment and tool availability
+    cmds:
+      - '{{.N}} go version'
+      - '{{.N}} golangci-lint --version'
+      - echo "All tools available"
+
+  nix:update:
+    desc: Update flake inputs (bump tool versions)
+    cmds:
+      - nix flake update
+      - echo "Flake inputs updated. Run 'task nix:check' to verify."
 
   clean:
     desc: Remove build artifacts
@@ -1815,46 +1938,52 @@ tasks:
 
 ## 14. Architecture Rules (Checklist)
 
+### Dev Environment
+1. **`flake.nix` exists** with project-specific dev tools. `flake.lock` is committed.
+2. **`go-task` is not in `flake.nix`** — it's global via Homebrew (chicken-and-egg). Same for `gh`.
+3. **Taskfile uses `{{.N}}` prefix** (`nix develop -c`) for all Nix-provided tool commands. Infrastructure commands (`docker compose`) run bare.
+4. **`.direnv/` is in `.gitignore`** if `.envrc` is present.
+
 ### Configuration & OTel
-1. **Config tags:** Every config struct field has `yaml`, `mapstructure`, and `validate` tags.
-2. **OTelConfig isolation:** `OTelConfig *otel.Config` always tagged `yaml:"-" mapstructure:"-"`. Never serialized.
-3. **OTel injection:** OTelConfig is set at runtime via functional options or direct assignment — never from YAML/env.
-4. **LayerContext usage:** Every service/repository method starts with `otel.Layers.Start*()` and defers `lc.End()`.
-5. **Context propagation:** Always pass `lc.Context()` to downstream calls, never the original `ctx`.
-6. **Error returns:** `lc.Error(err, msg)` returns `error` — use it as a return value. `lc.Success(msg)` returns nothing.
+5. **Config tags:** Every config struct field has `yaml`, `mapstructure`, and `validate` tags.
+6. **OTelConfig isolation:** `OTelConfig *otel.Config` always tagged `yaml:"-" mapstructure:"-"`. Never serialized.
+7. **OTel injection:** OTelConfig is set at runtime via functional options or direct assignment — never from YAML/env.
+8. **LayerContext usage:** Every service/repository method starts with `otel.Layers.Start*()` and defers `lc.End()`.
+9. **Context propagation:** Always pass `lc.Context()` to downstream calls, never the original `ctx`.
+10. **Error returns:** `lc.Error(err, msg)` returns `error` — use it as a return value. `lc.Success(msg)` returns nothing.
 
 ### Architecture & Layer Separation
-7. **Layer separation:** Handler → Service → Repository. No skipping layers. Handlers never touch `*gorm.DB` directly.
-8. **Consumer-defined interfaces:** Interfaces live in the consuming module's `interfaces.go`. Each consumer defines only the methods it uses.
-9. **Module-local errors:** Each module defines domain errors in `errors.go` (`var ErrXxx = errors.New(...)`). Handlers map these to HTTP status codes.
-10. **DTO mapping:** Handlers use DTOs (`dto.go`) for request/response. GORM models stay in `shared/model/`. Map between them in handlers or services.
-11. **Exported DTOs:** Request/Response structs must be exported (capitalized) for `swag` to parse.
+11. **Layer separation:** Handler → Service → Repository. No skipping layers. Handlers never touch `*gorm.DB` directly.
+12. **Consumer-defined interfaces:** Interfaces live in the consuming module's `interfaces.go`. Each consumer defines only the methods it uses.
+13. **Module-local errors:** Each module defines domain errors in `errors.go` (`var ErrXxx = errors.New(...)`). Handlers map these to HTTP status codes.
+14. **DTO mapping:** Handlers use DTOs (`dto.go`) for request/response. GORM models stay in `shared/model/`. Map between them in handlers or services.
+15. **Exported DTOs:** Request/Response structs must be exported (capitalized) for `swag` to parse.
 
 ### Database & Data Access
-12. **One DB hit per repository method** — no multi-step queries, no loops with queries inside.
-13. **Always use `r.db.WithContext(lc.Context())`** — never skip context for OTel tracing.
-14. **Always use parameterized queries** (`?` placeholders) — never string concatenation for SQL values.
-15. **Service owns transactions** — repositories never start transactions. Use `db.Transaction()` in the service.
-16. **Transaction callbacks use `tx` directly** — not repository methods (which hold their own `r.db` outside the tx scope).
-17. **Keep transactions short** — no external API calls or long-running work inside them.
+16. **One DB hit per repository method** — no multi-step queries, no loops with queries inside.
+17. **Always use `r.db.WithContext(lc.Context())`** — never skip context for OTel tracing.
+18. **Always use parameterized queries** (`?` placeholders) — never string concatenation for SQL values.
+19. **Service owns transactions** — repositories never start transactions. Use `db.Transaction()` in the service.
+20. **Transaction callbacks use `tx` directly** — not repository methods (which hold their own `r.db` outside the tx scope).
+21. **Keep transactions short** — no external API calls or long-running work inside them.
 
 ### Client Layer
-18. **One client per external service** — each in `shared/client/`, using `rest.NewClient()` with OTel.
-19. **Never expose HTTP details** — return typed Go structs, not raw responses.
-20. **Prefer header-based auth** — over query-string API keys.
+22. **One client per external service** — each in `shared/client/`, using `rest.NewClient()` with OTel.
+23. **Never expose HTTP details** — return typed Go structs, not raw responses.
+24. **Prefer header-based auth** — over query-string API keys.
 
 ### API & Documentation
-21. **Swagger annotations:** Every handler method has `@Summary`, `@Tags`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` (where applicable).
-22. **`.http` file exists:** `http/api.http` covers every API endpoint with example payloads.
+25. **Swagger annotations:** Every handler method has `@Summary`, `@Tags`, `@Param`, `@Success`, `@Failure`, `@Router`, and `@Security` (where applicable).
+26. **`.http` file exists:** `http/api.http` covers every API endpoint with example payloads.
 
 ### Testing
-23. **E2E tests exist:** `test/e2e/` contains full-stack API tests using `startTestServer(t)` with testcontainer DB.
-24. **Migration naming:** `{6-digit sequence}_{description}.{up|down}.sql` with `embed.FS`.
-25. **Test assertions:** Use `testify/assert` and `testify/require` — never `if err != nil { t.Fatal() }` patterns.
+27. **E2E tests exist:** `test/e2e/` contains full-stack API tests using `startTestServer(t)` with testcontainer DB.
+28. **Migration naming:** `{6-digit sequence}_{description}.{up|down}.sql` with `embed.FS`.
+29. **Test assertions:** Use `testify/assert` and `testify/require` — never `if err != nil { t.Fatal() }` patterns.
 
 ### Temporal
-26. **Temporal separation:** Workflow functions use `workflow.Context`, activity functions use `context.Context`. Activities hold injected dependencies via a struct. Worker binary lives in `cmd/worker/`, separate from the API server.
-27. **Temporal config:** `temporal.Config` has no `OTelConfig` field — it is fully serializable. Embed as a value type in `AppConfig`, not a pointer.
+30. **Temporal separation:** Workflow functions use `workflow.Context`, activity functions use `context.Context`. Activities hold injected dependencies via a struct. Worker binary lives in `cmd/worker/`, separate from the API server.
+31. **Temporal config:** `temporal.Config` has no `OTelConfig` field — it is fully serializable. Embed as a value type in `AppConfig`, not a pointer.
 
 ---
 
