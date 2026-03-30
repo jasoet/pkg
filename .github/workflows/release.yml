@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Install semantic-release
-        run: nix develop --command bun install -g semantic-release @semantic-release/github conventional-changelog-conventionalcommits
+        run: nix develop --command bun install --frozen-lockfile
 
       - name: Release
         env:
