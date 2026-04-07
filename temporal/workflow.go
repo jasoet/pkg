@@ -3,7 +3,6 @@ package temporal
 import (
 	"context"
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"time"
@@ -18,10 +17,9 @@ import (
 
 // WorkflowManager provides workflow query and management operations
 type WorkflowManager struct {
-	client        client.Client
-	ownsClient    bool
-	metricsCloser io.Closer
-	namespace     string
+	client     client.Client
+	ownsClient bool
+	namespace  string
 }
 
 // WorkflowDetails contains detailed information about a workflow execution
@@ -67,7 +65,6 @@ func NewWorkflowManagerWithNamespace(clientOrConfig interface{}, namespace strin
 
 	var temporalClient client.Client
 	var ownsClient bool
-	var metricsCloser io.Closer
 
 	switch v := clientOrConfig.(type) {
 	case client.Client:
@@ -83,7 +80,7 @@ func NewWorkflowManagerWithNamespace(clientOrConfig interface{}, namespace strin
 			otel.F("namespace", namespace))
 
 		var err error
-		temporalClient, metricsCloser, err = NewClient(v)
+		temporalClient, err = NewClient(v)
 		if err != nil {
 			logger.Error(err, "Failed to create Temporal client for Workflow Manager")
 			return nil, fmt.Errorf("create temporal client: %w", err)
@@ -96,10 +93,9 @@ func NewWorkflowManagerWithNamespace(clientOrConfig interface{}, namespace strin
 
 	logger.Debug("Workflow Manager created successfully")
 	return &WorkflowManager{
-		client:        temporalClient,
-		ownsClient:    ownsClient,
-		metricsCloser: metricsCloser,
-		namespace:     namespace,
+		client:     temporalClient,
+		ownsClient: ownsClient,
+		namespace:  namespace,
 	}, nil
 }
 
@@ -121,10 +117,6 @@ func (wm *WorkflowManager) Close() {
 	if wm.ownsClient && wm.client != nil {
 		logger.Debug("Closing Temporal client")
 		wm.client.Close()
-	}
-
-	if wm.metricsCloser != nil {
-		_ = wm.metricsCloser.Close()
 	}
 
 	logger.Debug("Workflow Manager closed")

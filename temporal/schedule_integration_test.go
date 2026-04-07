@@ -347,7 +347,6 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {
 		sm, err := NewScheduleManager(config)

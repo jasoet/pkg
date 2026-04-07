@@ -52,7 +52,6 @@ func main() {
     config := &temporal.Config{
         HostPort:  "localhost:7233",
         Namespace: "default",
-        MetricsListenAddress: "0.0.0.0:9090",
     }
 
     client, err := temporal.NewClient(config)
@@ -289,7 +288,6 @@ See the [testcontainer package documentation](./testcontainer/doc.go) and [examp
 
 Tests the Temporal client functionality:
 - **NewClient**: Tests client creation with default configuration
-- **NewClientWithMetrics**: Tests client creation with metrics enabled/disabled
 - **DescribeNamespace**: Tests basic server connectivity
 - **WorkflowService**: Tests access to workflow service APIs
 - **Configuration Validation**: Tests various client configurations

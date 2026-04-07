@@ -105,7 +105,6 @@ func TestWorkerManager(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("CreateWorkerManager", func(t *testing.T) {
 		wm, err := NewWorkerManager(config)
@@ -166,7 +165,6 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
 	require.NoError(t, err)
@@ -299,7 +297,6 @@ func TestWorkerManagerLifecycle(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("StartAll", func(t *testing.T) {
 		wm, err := NewWorkerManager(config)
@@ -363,7 +360,6 @@ func TestWorkerConfiguration(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	wm, err := NewWorkerManager(config)
 	require.NoError(t, err)

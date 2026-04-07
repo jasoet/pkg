@@ -3,7 +3,6 @@ package temporal
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -23,7 +22,6 @@ type WorkflowScheduleOptions struct {
 type ScheduleManager struct {
 	client           client.Client
 	ownsClient       bool
-	metricsCloser    io.Closer
 	mu               sync.RWMutex
 	scheduleHandlers map[string]client.ScheduleHandle
 }
@@ -34,7 +32,6 @@ func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
 
 	var temporalClient client.Client
 	var ownsClient bool
-	var metricsCloser io.Closer
 
 	switch v := clientOrConfig.(type) {
 	case client.Client:
@@ -49,7 +46,7 @@ func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
 			otel.F("namespace", v.Namespace))
 
 		var err error
-		temporalClient, metricsCloser, err = NewClientWithMetrics(v, true)
+		temporalClient, err = NewClient(v)
 		if err != nil {
 			logger.Error(err, "Failed to create Temporal client for Schedule Manager")
 			return nil, fmt.Errorf("failed to create Temporal client: %w", err)
@@ -63,7 +60,6 @@ func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
 	return &ScheduleManager{
 		client:           temporalClient,
 		ownsClient:       ownsClient,
-		metricsCloser:    metricsCloser,
 		scheduleHandlers: make(map[string]client.ScheduleHandle),
 	}, nil
 }
@@ -77,10 +73,6 @@ func (sm *ScheduleManager) Close() {
 	if sm.ownsClient && sm.client != nil {
 		logger.Debug("Closing Temporal client")
 		sm.client.Close()
-	}
-
-	if sm.metricsCloser != nil {
-		_ = sm.metricsCloser.Close()
 	}
 
 	logger.Debug("Schedule Manager closed")
