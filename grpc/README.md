@@ -8,9 +8,9 @@ A production-ready, reusable gRPC server with Echo HTTP framework integration fo
 - **Dual Protocol Support**: Run gRPC and HTTP services on the same port (H2C) or separate ports
 - **gRPC Gateway**: Automatic HTTP/REST endpoints for gRPC services
 - **Zero Configuration**: Works out-of-the-box with sensible defaults
-- **Production Ready**: Built-in Prometheus metrics, health checks, and graceful shutdown
+- **Production Ready**: Built-in OpenTelemetry metrics, health checks, and graceful shutdown
 - **Highly Configurable**: Extensive configuration options including CORS, rate limiting, and custom middleware
-- **Observability**: Prometheus metrics with detailed request tracking for both gRPC and HTTP
+- **Observability**: OpenTelemetry metrics, tracing, and structured logging for both gRPC and HTTP
 - **Easy Integration**: Clean API that works with any gRPC service implementation
 
 ## Installation
@@ -54,7 +54,6 @@ This starts a server in H2C mode where both gRPC and HTTP endpoints are availabl
 - gRPC endpoints: `localhost:8080`
 - HTTP gateway: `http://localhost:8080/api/v1/`
 - Health checks: `http://localhost:8080/health`
-- Metrics: `http://localhost:8080/metrics`
 
 ## Server Modes
 
@@ -109,9 +108,7 @@ func main() {
     config.MaxConnectionAgeGrace = 10 * time.Second
 
     // Production Features
-    config.EnableMetrics = true
     config.EnableHealthCheck = true
-    config.EnableLogging = true
     config.EnableReflection = true
 
     // Echo-specific Features
@@ -198,7 +195,7 @@ config.EchoConfigurer = func(e *echo.Echo) {
 
 ## OpenTelemetry Integration
 
-The gRPC server package supports OpenTelemetry for comprehensive observability with distributed tracing, metrics, and structured logging. When `OTelConfig` is provided, it replaces traditional Prometheus metrics with OpenTelemetry instrumentation.
+The gRPC server package supports OpenTelemetry for comprehensive observability with distributed tracing, metrics, and structured logging. Provide `OTelConfig` to enable instrumentation.
 
 ### Basic OpenTelemetry Setup
 
@@ -379,38 +376,9 @@ When using the `logging` package LoggerProvider, all logs automatically include 
 }
 ```
 
-### Backwards Compatibility
+### Without OTelConfig
 
-The gRPC server maintains backwards compatibility:
-- **Without OTelConfig**: Uses traditional Prometheus metrics and standard logging
-- **With OTelConfig**: Uses OpenTelemetry instrumentation
-- Health checks work in both modes
-- No breaking changes to existing code
-
-### Migration from Prometheus to OTel
-
-**Before (Prometheus):**
-```go
-server, err := grpcserver.New(
-    grpcserver.WithGRPCPort("50051"),
-    grpcserver.WithMetrics(),  // Prometheus metrics
-    grpcserver.WithLogging(),  // Standard logging
-    grpcserver.WithServiceRegistrar(serviceRegistrar),
-)
-```
-
-**After (OpenTelemetry):**
-```go
-otelCfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
-
-server, err := grpcserver.New(
-    grpcserver.WithGRPCPort("50051"),
-    grpcserver.WithOTelConfig(otelCfg),  // Replaces metrics and logging
-    grpcserver.WithServiceRegistrar(serviceRegistrar),
-)
-```
+When no `OTelConfig` is provided, the server runs without metrics or structured logging instrumentation. Health checks still work. To enable observability, provide an `OTelConfig` via `WithOTelConfig()`.
 
 ## Configuration Options
 
@@ -429,12 +397,9 @@ server, err := grpcserver.New(
 - `MaxConnectionAgeGrace`: Connection age grace period (default: 5s)
 
 ### Features
-- `EnableMetrics`: Enable Prometheus metrics (default: true)
-- `MetricsPath`: Metrics endpoint path (default: "/metrics")
 - `EnableHealthCheck`: Enable health check endpoints (default: true)
 - `HealthPath`: Health check path (default: "/health")
-- `EnableLogging`: Enable request logging (default: true)
-- `EnableReflection`: Enable gRPC reflection (default: true)
+- `EnableReflection`: Enable gRPC reflection (default: false)
 
 ### Echo-Specific Features
 - `EnableCORS`: Enable CORS middleware (default: false)
@@ -487,29 +452,28 @@ if err := server.Start(); err != nil {
 }
 ```
 
-## Metrics
+## Metrics (OpenTelemetry)
 
-Built-in Prometheus metrics include:
+When `OTelConfig` is provided with a `MeterProvider`, the following OTel metrics are emitted:
 
 ### gRPC Metrics
-- `grpc_server_grpc_requests_total` - Total gRPC requests by method and status
-- `grpc_server_grpc_request_duration_seconds` - Request duration histogram
-- `grpc_server_grpc_request_size_bytes` - Request payload size histogram
-- `grpc_server_grpc_response_size_bytes` - Response payload size histogram
-- `grpc_server_grpc_active_connections` - Active gRPC connections
+- `rpc.server.request.count` - Total gRPC requests by method and status
+- `rpc.server.duration` - Request duration histogram (ms)
+- `rpc.server.active_requests` - Active concurrent gRPC requests
+- `rpc.server.stream.count` - Total gRPC streams
+- `rpc.server.stream.duration` - Stream duration histogram (ms)
+- `rpc.server.active_streams` - Active concurrent streams
 
-### HTTP Metrics (Echo)
-- `grpc_server_http_requests_total` - Total HTTP requests by method, path, and status
-- `grpc_server_http_request_duration_seconds` - Request duration histogram
-- `grpc_server_http_request_size_bytes` - Request payload size histogram
-- `grpc_server_http_response_size_bytes` - Response payload size histogram
-- `grpc_server_http_active_requests` - Active HTTP requests
+### HTTP Gateway Metrics
+- `http.server.request.count` - Total HTTP gateway requests
+- `http.server.request.duration` - Request duration histogram (ms)
+- `http.server.active_requests` - Active concurrent HTTP requests
 
 ### Server Metrics
-- `grpc_server_uptime_seconds` - Server uptime in seconds
-- `grpc_server_start_time_seconds` - Server start timestamp
+- `server.uptime` - Server uptime in seconds
+- `server.start_time` - Server start time as Unix timestamp
 
-Access metrics at `http://localhost:{port}/metrics`
+Metrics flow through the OTel pipeline (OTLP exporter → collector → backend).
 
 ## API Reference
 
@@ -560,7 +524,6 @@ if err != nil {
 
 // Access managers before starting
 healthManager := server.GetHealthManager()
-metricsManager := server.GetMetricsManager()
 
 // Start when ready
 if err := server.Start(); err != nil {
@@ -586,7 +549,6 @@ Server instance with methods:
 - `Start() error` - Start the server
 - `Stop() error` - Gracefully stop the server
 - `GetHealthManager() *HealthManager` - Get health check manager
-- `GetMetricsManager() *MetricsManager` - Get metrics manager
 - `GetGRPCServer() *grpc.Server` - Get underlying gRPC server
 - `IsRunning() bool` - Check if server is running
 
@@ -610,7 +572,6 @@ Client Request → Port 8080
          ↓                     ↓
     Your Services        - gRPC Gateway
                         - Health Checks
-                        - Metrics
                         - Custom Routes
 ```
 
@@ -622,7 +583,6 @@ Client Request
     │
     └─→ Port 9091 → Echo HTTP Server → - gRPC Gateway
                                        - Health Checks
-                                       - Metrics
                                        - Custom Routes
 ```
 
@@ -652,7 +612,6 @@ go run -tags examples cmd/client/main.go
 # Test HTTP endpoints
 curl http://localhost:50051/status
 curl http://localhost:50051/health
-curl http://localhost:50051/metrics
 curl http://localhost:50051/calculator
 ```
 
@@ -662,7 +621,7 @@ The package includes comprehensive tests covering:
 - Server lifecycle (start, stop, restart)
 - Configuration validation
 - Health check functionality
-- Metrics collection
+- OTel instrumentation
 - H2C and Separate modes
 - Graceful shutdown
 
@@ -675,7 +634,7 @@ go test ./...
 
 1. **Use H2C Mode for Development**: Simplifies local testing with a single port
 2. **Use Separate Mode for Production**: Better isolation and flexibility
-3. **Enable All Observability Features**: Metrics and health checks are essential for production
+3. **Enable OTel Observability**: Provide `OTelConfig` with `MeterProvider` and `TracerProvider` for production
 4. **Configure Timeouts**: Set appropriate timeouts based on your service requirements
 5. **Use gRPC Reflection in Development**: Makes testing with tools like grpcurl easier
 6. **Disable Reflection in Production**: Security best practice
@@ -687,7 +646,7 @@ go test ./...
 - `google.golang.org/grpc` - gRPC framework
 - `github.com/grpc-ecosystem/grpc-gateway/v2` - gRPC gateway
 - `github.com/labstack/echo/v4` - Echo HTTP framework
-- `github.com/prometheus/client_golang` - Prometheus metrics
+- `go.opentelemetry.io/otel` - OpenTelemetry instrumentation
 - `golang.org/x/net` - HTTP/2 support
 
 ## License
