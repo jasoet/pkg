@@ -42,7 +42,6 @@ func main() {
 		// Enable features
 		grpcserver.WithReflection(),
 		grpcserver.WithHealthCheck(),
-		grpcserver.WithMetrics(),
 
 		// Configure Echo with custom routes
 		grpcserver.WithEchoConfigurer(func(e *echo.Echo) {
@@ -55,7 +54,6 @@ func main() {
 					"endpoints": map[string]string{
 						"grpc_gateway": "/api/v1/",
 						"health":       "/health",
-						"metrics":      "/metrics",
 						"status":       "/status",
 						"calculator":   "/calculator",
 					},

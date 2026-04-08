@@ -209,7 +209,6 @@ func main() {
     config := &temporal.Config{
         HostPort:  "localhost:7233",
         Namespace: "default",
-        MetricsListenAddress: "0.0.0.0:0",
     }
 
     wm, err := temporal.NewWorkflowManager(config)

@@ -169,7 +169,7 @@ Each example directory contains a README.md with specific instructions for runni
 
 ## Best Practices
 
-- Use the `NewClient()` or `NewClientWithMetrics()` functions from the main temporal package
+- Use the `NewClient()` function from the main temporal package
 - Always handle errors properly in workflows and activities
 - Use proper logging with zerolog
 - Implement proper shutdown handling for workers
@@ -180,7 +180,7 @@ Each example directory contains a README.md with specific instructions for runni
 
 These examples use the main temporal package from this project. Key integration points:
 
-- Client creation using `temporal.NewClient()` or `temporal.NewClientWithMetrics()`
+- Client creation using `temporal.NewClient()`
 - Worker management using `temporal.WorkerManager`
 - Schedule management using `temporal.ScheduleManager`
 - Logging using `temporal.ZerologAdapter`

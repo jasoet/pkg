@@ -1025,9 +1025,8 @@ All enabled by default (toggle with `Without*()` options):
 | Feature | Option | Default |
 |---------|--------|---------|
 | Health checks (`/health`, `/health/ready`, `/health/live`) | `WithHealthCheck()` / `WithoutHealthCheck()` | Enabled |
-| Prometheus metrics (`/metrics`) | `WithMetrics()` / `WithoutMetrics()` | Enabled |
-| gRPC reflection | `WithReflection()` / `WithoutReflection()` | Enabled |
-| Request logging | `WithLogging()` / `WithoutLogging()` | Enabled |
+| OpenTelemetry (traces, metrics, logs) | `WithOTelConfig(cfg)` | Disabled (nil) |
+| gRPC reflection | `WithReflection()` / `WithoutReflection()` | Disabled |
 | CORS | `WithCORS()` | Disabled |
 | Rate limiting | `WithRateLimit(rps)` | Disabled |
 
@@ -2002,7 +2001,7 @@ tasks:
 | REST Client | `rest` | `rest.NewClient(opts...)`, `client.MakeRequestWithTrace(...)` |
 | Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.DefaultConfig().WithName(n).WithOTel(c)` |
 | Concurrency | `concurrent` | `concurrent.ExecuteConcurrently(ctx, funcs)` |
-| Temporal Client | `temporal` | `temporal.NewClient(cfg)`, `temporal.NewClientWithMetrics(cfg, bool)` |
+| Temporal Client | `temporal` | `temporal.NewClient(cfg)` |
 | Temporal Worker | `temporal` | `temporal.NewWorkerManager(cfg)`, `wm.Register(queue, opts)` |
 | Temporal Schedule | `temporal` | `temporal.NewScheduleManager(client)`, `sm.CreateWorkflowSchedule(...)` |
 | Temporal Test | `temporal/testcontainer` | `testcontainer.Setup(ctx, cfg, opts)` |
