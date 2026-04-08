@@ -16,9 +16,8 @@ import (
 func main() {
 	// Configure Temporal connection
 	config := &temporal.Config{
-		HostPort:             getEnv("TEMPORAL_HOST", "localhost:7233"),
-		Namespace:            getEnv("TEMPORAL_NAMESPACE", "default"),
-		MetricsListenAddress: "0.0.0.0:0",
+		HostPort:  getEnv("TEMPORAL_HOST", "localhost:7233"),
+		Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
 	}
 
 	// Create WorkflowManager

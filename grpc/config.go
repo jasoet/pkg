@@ -42,11 +42,8 @@ type config struct {
 	maxConnectionAgeGrace time.Duration // gRPC server max connection age grace
 
 	// Production Features
-	enableMetrics     bool   // Enable Prometheus metrics endpoint
-	metricsPath       string // Path for metrics endpoint
 	enableHealthCheck bool   // Enable health check endpoints
 	healthPath        string // Base path for health check endpoints
-	enableLogging     bool   // Enable request/response logging
 	enableReflection  bool   // Enable gRPC server reflection
 
 	// Customization Hooks
@@ -88,11 +85,8 @@ func newConfig(opts ...Option) (*config, error) {
 		maxConnectionAgeGrace: 5 * time.Second,
 
 		// Production Features
-		enableMetrics:     true,
-		metricsPath:       "/metrics",
 		enableHealthCheck: true,
 		healthPath:        "/health",
-		enableLogging:     true,
 		enableReflection:  false,
 
 		// Gateway Configuration
@@ -294,20 +288,6 @@ func WithMaxConnectionAgeGrace(d time.Duration) Option {
 // Feature Toggle Options
 // ============================================================================
 
-// WithMetrics enables Prometheus metrics endpoint
-func WithMetrics() Option {
-	return func(c *config) {
-		c.enableMetrics = true
-	}
-}
-
-// WithoutMetrics disables Prometheus metrics endpoint
-func WithoutMetrics() Option {
-	return func(c *config) {
-		c.enableMetrics = false
-	}
-}
-
 // WithHealthCheck enables health check endpoints
 func WithHealthCheck() Option {
 	return func(c *config) {
@@ -319,20 +299,6 @@ func WithHealthCheck() Option {
 func WithoutHealthCheck() Option {
 	return func(c *config) {
 		c.enableHealthCheck = false
-	}
-}
-
-// WithLogging enables request/response logging
-func WithLogging() Option {
-	return func(c *config) {
-		c.enableLogging = true
-	}
-}
-
-// WithoutLogging disables request/response logging
-func WithoutLogging() Option {
-	return func(c *config) {
-		c.enableLogging = false
 	}
 }
 
@@ -377,13 +343,6 @@ func WithRateLimit(rps float64) Option {
 // ============================================================================
 // Path Configuration Options
 // ============================================================================
-
-// WithMetricsPath sets the metrics endpoint path
-func WithMetricsPath(path string) Option {
-	return func(c *config) {
-		c.metricsPath = path
-	}
-}
 
 // WithHealthPath sets the health check base path
 func WithHealthPath(path string) Option {
@@ -447,7 +406,6 @@ func WithMiddleware(mw ...echo.MiddlewareFunc) Option {
 // ============================================================================
 
 // WithOTelConfig sets the OpenTelemetry configuration for traces, metrics, and logs
-// When set, the gRPC server will instrument with OTel instead of Prometheus
 func WithOTelConfig(cfg *otel.Config) Option {
 	return func(c *config) {
 		c.otelConfig = cfg

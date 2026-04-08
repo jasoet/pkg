@@ -27,17 +27,15 @@ import (
 
 // Server represents the gRPC server and gateway
 type Server struct {
-	config         *config
-	grpcServer     *grpc.Server
-	echo           *echo.Echo
-	httpServer     *http.Server // Used only for H2C mode
-	gatewayMux     *runtime.ServeMux
-	healthManager  *HealthManager
-	metricsManager *MetricsManager
-	shutdownOnce   sync.Once
-	running        bool
-	mu             sync.RWMutex
-	stopUptime     chan struct{} // signals trackUptime goroutine to exit
+	config        *config
+	grpcServer    *grpc.Server
+	echo          *echo.Echo
+	httpServer    *http.Server // Used only for H2C mode
+	gatewayMux    *runtime.ServeMux
+	healthManager *HealthManager
+	shutdownOnce  sync.Once
+	running       bool
+	mu            sync.RWMutex
 }
 
 // New creates a new server instance with the given options
@@ -48,9 +46,8 @@ func New(opts ...Option) (*Server, error) {
 	}
 
 	server := &Server{
-		config:         cfg,
-		healthManager:  NewHealthManager(),
-		metricsManager: NewMetricsManager("grpc_server"),
+		config:        cfg,
+		healthManager: NewHealthManager(),
 	}
 
 	// Setup gRPC server
@@ -107,6 +104,9 @@ func (s *Server) setupGRPCServer() {
 			createGRPCStreamMetricsInterceptor(s.config.otelConfig),
 		}
 		opts = append(opts, grpc.ChainStreamInterceptor(streamInterceptors...))
+
+		// Register server uptime/start_time observable gauges
+		registerServerMetrics(s.config.otelConfig)
 	}
 
 	// Create gRPC server
@@ -147,15 +147,6 @@ func (s *Server) setupEchoServer() error {
 		}
 		if s.config.otelConfig.IsMetricsEnabled() {
 			e.Use(createHTTPGatewayMetricsMiddleware(s.config.otelConfig))
-		}
-	} else {
-		// Fallback to traditional logging and metrics (backwards compatibility)
-		if s.config.enableLogging {
-			e.Use(middleware.RequestLogger())
-		}
-		if s.config.enableMetrics {
-			e.Use(s.metricsManager.EchoMetricsMiddleware())
-			s.metricsManager.RegisterEchoMetrics(e, s.config.metricsPath)
 		}
 	}
 
@@ -234,12 +225,6 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to setup Echo server: %w", err)
 	}
 
-	// Start metrics uptime tracking
-	if s.config.enableMetrics {
-		s.stopUptime = make(chan struct{})
-		go s.trackUptime()
-	}
-
 	switch s.config.mode {
 	case SeparateMode:
 		return s.startSeparateMode()
@@ -279,9 +264,6 @@ func (s *Server) startSeparateMode() error {
 	if s.config.enableHealthCheck {
 		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.httpPort, s.config.healthPath))
 	}
-	if s.config.enableMetrics {
-		s.logInfo(fmt.Sprintf("Metrics available at http://localhost:%s%s", s.config.httpPort, s.config.metricsPath))
-	}
 	if s.config.serviceRegistrar != nil {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath))
 	}
@@ -318,9 +300,6 @@ func (s *Server) startH2CMode() error {
 	if s.config.enableHealthCheck {
 		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.grpcPort, s.config.healthPath))
 	}
-	if s.config.enableMetrics {
-		s.logInfo(fmt.Sprintf("Metrics available at http://localhost:%s%s", s.config.grpcPort, s.config.metricsPath))
-	}
 	if s.config.serviceRegistrar != nil {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath))
 	}
@@ -340,11 +319,6 @@ func (s *Server) Stop() error {
 	var stopErr error
 	s.shutdownOnce.Do(func() {
 		log.Println("Stopping server gracefully...")
-
-		// Stop uptime goroutine
-		if s.stopUptime != nil {
-			close(s.stopUptime)
-		}
 
 		// Create shutdown context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), s.config.shutdownTimeout)
@@ -404,11 +378,6 @@ func (s *Server) GetHealthManager() *HealthManager {
 	return s.healthManager
 }
 
-// GetMetricsManager returns the metrics manager
-func (s *Server) GetMetricsManager() *MetricsManager {
-	return s.metricsManager
-}
-
 // GetGRPCServer returns the underlying gRPC server
 func (s *Server) GetGRPCServer() *grpc.Server {
 	return s.grpcServer
@@ -419,21 +388,6 @@ func (s *Server) IsRunning() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.running
-}
-
-// trackUptime periodically updates the uptime metric until stopUptime is closed.
-func (s *Server) trackUptime() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			s.metricsManager.UpdateUptime()
-		case <-s.stopUptime:
-			return
-		}
-	}
 }
 
 // Start creates and starts a server with the given options

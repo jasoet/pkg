@@ -28,7 +28,6 @@ func TestNewServer(t *testing.T) {
 
 	assert.Equal(t, "8080", server.config.grpcPort)
 	assert.NotNil(t, server.healthManager)
-	assert.NotNil(t, server.metricsManager)
 	assert.NotNil(t, server.grpcServer)
 }
 
@@ -47,10 +46,6 @@ func TestServerGetters(t *testing.T) {
 	// Test health manager getter
 	hm := server.GetHealthManager()
 	assert.NotNil(t, hm)
-
-	// Test metrics manager getter
-	mm := server.GetMetricsManager()
-	assert.NotNil(t, mm)
 
 	// Test gRPC server getter
 	grpcSrv := server.GetGRPCServer()
@@ -92,9 +87,7 @@ func TestServerSetupEchoServer(t *testing.T) {
 	server, err := New(
 		WithSeparateMode("9090", "9091"),
 		WithHealthCheck(),
-		WithMetrics(),
 		WithHealthPath("/health"),
-		WithMetricsPath("/metrics"),
 		WithEchoConfigurer(func(e *echo.Echo) {
 			configurerCalled = true
 			e.GET("/test", func(c echo.Context) error {
@@ -341,7 +334,6 @@ func TestServerIntegration(t *testing.T) {
 	server, err := New(
 		WithGRPCPort("8080"),
 		WithH2CMode(),
-		WithMetrics(),
 		WithHealthCheck(),
 		WithReflection(),
 		WithServiceRegistrar(func(s *grpc.Server) {
@@ -372,41 +364,6 @@ func TestServerIntegration(t *testing.T) {
 
 	// Cleanup
 	server.grpcServer.GracefulStop()
-}
-
-func TestServerTrackUptime(t *testing.T) {
-	server, err := New(
-		WithGRPCPort("8080"),
-		WithMetrics(),
-	)
-	require.NoError(t, err)
-
-	// C11: trackUptime must exit when stopUptime is closed
-	server.stopUptime = make(chan struct{})
-	go server.trackUptime()
-
-	// Let it run briefly
-	time.Sleep(50 * time.Millisecond)
-
-	// Close the stop channel — goroutine should exit
-	close(server.stopUptime)
-	time.Sleep(50 * time.Millisecond) // give it time to exit
-
-	// Get metrics to verify uptime is being tracked
-	mm := server.GetMetricsManager()
-	metricFamilies, err := mm.GetRegistry().Gather()
-	require.NoError(t, err)
-
-	// Look for uptime metric
-	found := false
-	for _, mf := range metricFamilies {
-		if mf.GetName() == "grpc_server_uptime_seconds" {
-			found = true
-			break
-		}
-	}
-
-	assert.True(t, found, "Expected uptime metric to be present")
 }
 
 func TestServerWithMiddleware(t *testing.T) {
@@ -444,13 +401,10 @@ func TestServerWithAllOptions(t *testing.T) {
 		WithWriteTimeout(20*time.Second),
 		WithIdleTimeout(90*time.Second),
 		WithConnectionTimeouts(20*time.Minute, 40*time.Minute, 10*time.Second),
-		WithMetrics(),
 		WithHealthCheck(),
-		WithLogging(),
 		WithReflection(),
 		WithCORS(),
 		WithRateLimit(250.0),
-		WithMetricsPath("/custom-metrics"),
 		WithHealthPath("/custom-health"),
 		WithGatewayBasePath("/api/v2"),
 	)
@@ -467,14 +421,11 @@ func TestServerWithAllOptions(t *testing.T) {
 	assert.Equal(t, 20*time.Minute, server.config.maxConnectionIdle)
 	assert.Equal(t, 40*time.Minute, server.config.maxConnectionAge)
 	assert.Equal(t, 10*time.Second, server.config.maxConnectionAgeGrace)
-	assert.True(t, server.config.enableMetrics)
 	assert.True(t, server.config.enableHealthCheck)
-	assert.True(t, server.config.enableLogging)
 	assert.True(t, server.config.enableReflection)
 	assert.True(t, server.config.enableCORS)
 	assert.True(t, server.config.enableRateLimit)
 	assert.Equal(t, 250.0, server.config.rateLimit)
-	assert.Equal(t, "/custom-metrics", server.config.metricsPath)
 	assert.Equal(t, "/custom-health", server.config.healthPath)
 	assert.Equal(t, "/api/v2", server.config.gatewayBasePath)
 }

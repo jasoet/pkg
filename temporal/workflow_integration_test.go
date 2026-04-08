@@ -53,7 +53,6 @@ func TestWorkflowManagerCreation(t *testing.T) {
 	config := &Config{
 		HostPort:             container.HostPort(),
 		Namespace:            "default",
-		MetricsListenAddress: "0.0.0.0:0",
 	}
 
 	t.Run("NewWorkflowManagerWithClient", func(t *testing.T) {

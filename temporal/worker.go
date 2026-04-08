@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"context"
-	"io"
 	"sync"
 
 	"go.temporal.io/sdk/client"
@@ -12,10 +11,9 @@ import (
 )
 
 type WorkerManager struct {
-	client        client.Client
-	metricsCloser io.Closer
-	mu            sync.RWMutex
-	workers       []worker.Worker
+	client  client.Client
+	mu      sync.RWMutex
+	workers []worker.Worker
 }
 
 func NewWorkerManager(config *Config) (*WorkerManager, error) {
@@ -26,7 +24,7 @@ func NewWorkerManager(config *Config) (*WorkerManager, error) {
 		otel.F("hostPort", config.HostPort),
 		otel.F("namespace", config.Namespace))
 
-	temporalClient, metricsCloser, err := NewClient(config)
+	temporalClient, err := NewClient(config)
 	if err != nil {
 		logger.Error(err, "Failed to create Temporal client for Worker Manager")
 		return nil, err
@@ -34,9 +32,8 @@ func NewWorkerManager(config *Config) (*WorkerManager, error) {
 
 	logger.Debug("Worker Manager created successfully")
 	return &WorkerManager{
-		client:        temporalClient,
-		metricsCloser: metricsCloser,
-		workers:       make([]worker.Worker, 0),
+		client:  temporalClient,
+		workers: make([]worker.Worker, 0),
 	}, nil
 }
 
@@ -66,10 +63,6 @@ func (wm *WorkerManager) Close() {
 	if wm.client != nil {
 		logger.Debug("Closing Temporal client")
 		wm.client.Close()
-	}
-
-	if wm.metricsCloser != nil {
-		_ = wm.metricsCloser.Close()
 	}
 
 	logger.Debug("Worker Manager closed")

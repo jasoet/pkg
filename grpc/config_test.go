@@ -32,15 +32,12 @@ func TestNewConfigDefaults(t *testing.T) {
 	assert.Equal(t, 5*time.Second, cfg.maxConnectionAgeGrace)
 
 	// Test feature flags
-	assert.True(t, cfg.enableMetrics)
 	assert.True(t, cfg.enableHealthCheck)
-	assert.True(t, cfg.enableLogging)
 	assert.False(t, cfg.enableReflection)
 	assert.False(t, cfg.enableCORS)
 	assert.False(t, cfg.enableRateLimit)
 
 	// Test paths
-	assert.Equal(t, "/metrics", cfg.metricsPath)
 	assert.Equal(t, "/health", cfg.healthPath)
 	assert.Equal(t, "/api/v1", cfg.gatewayBasePath)
 
@@ -115,18 +112,6 @@ func TestWithMaxConnectionAgeGrace(t *testing.T) {
 	assert.Equal(t, 15*time.Second, cfg.maxConnectionAgeGrace)
 }
 
-func TestWithMetrics(t *testing.T) {
-	cfg, err := newConfig(WithMetrics())
-	require.NoError(t, err)
-	assert.True(t, cfg.enableMetrics)
-}
-
-func TestWithoutMetrics(t *testing.T) {
-	cfg, err := newConfig(WithoutMetrics())
-	require.NoError(t, err)
-	assert.False(t, cfg.enableMetrics)
-}
-
 func TestWithHealthCheck(t *testing.T) {
 	cfg, err := newConfig(WithHealthCheck())
 	require.NoError(t, err)
@@ -137,18 +122,6 @@ func TestWithoutHealthCheck(t *testing.T) {
 	cfg, err := newConfig(WithoutHealthCheck())
 	require.NoError(t, err)
 	assert.False(t, cfg.enableHealthCheck)
-}
-
-func TestWithLogging(t *testing.T) {
-	cfg, err := newConfig(WithLogging())
-	require.NoError(t, err)
-	assert.True(t, cfg.enableLogging)
-}
-
-func TestWithoutLogging(t *testing.T) {
-	cfg, err := newConfig(WithoutLogging())
-	require.NoError(t, err)
-	assert.False(t, cfg.enableLogging)
 }
 
 func TestWithReflection(t *testing.T) {
@@ -174,12 +147,6 @@ func TestWithRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.enableRateLimit)
 	assert.Equal(t, 250.0, cfg.rateLimit)
-}
-
-func TestWithMetricsPath(t *testing.T) {
-	cfg, err := newConfig(WithMetricsPath("/custom-metrics"))
-	require.NoError(t, err)
-	assert.Equal(t, "/custom-metrics", cfg.metricsPath)
 }
 
 func TestWithHealthPath(t *testing.T) {
@@ -409,7 +376,6 @@ func TestMultipleOptions(t *testing.T) {
 		WithShutdownTimeout(45*time.Second),
 		WithCORS(),
 		WithRateLimit(200.0),
-		WithMetricsPath("/custom-metrics"),
 		WithHealthPath("/custom-health"),
 		WithGatewayBasePath("/api/v2"),
 		WithoutReflection(),
@@ -424,7 +390,6 @@ func TestMultipleOptions(t *testing.T) {
 	assert.True(t, cfg.enableCORS)
 	assert.True(t, cfg.enableRateLimit)
 	assert.Equal(t, 200.0, cfg.rateLimit)
-	assert.Equal(t, "/custom-metrics", cfg.metricsPath)
 	assert.Equal(t, "/custom-health", cfg.healthPath)
 	assert.Equal(t, "/api/v2", cfg.gatewayBasePath)
 	assert.False(t, cfg.enableReflection)

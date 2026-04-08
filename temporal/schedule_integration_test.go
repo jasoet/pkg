@@ -347,7 +347,6 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {
 		sm, err := NewScheduleManager(config)
@@ -358,14 +357,9 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("NewScheduleManagerWithClient", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err)
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
@@ -380,14 +374,9 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("CreateScheduleWithOptions", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err)
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
@@ -424,14 +413,9 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("CreateWorkflowSchedule", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err)
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
@@ -463,14 +447,9 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteSchedules", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err)
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
@@ -513,14 +492,9 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteSchedulesWithEmpty", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err)
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
@@ -535,14 +509,9 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("GetScheduleHandlers", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err)
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)

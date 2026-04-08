@@ -31,19 +31,13 @@ func TestClientIntegration(t *testing.T) {
 	config := &Config{
 		HostPort:             container.HostPort(),
 		Namespace:            "default",
-		MetricsListenAddress: "0.0.0.0:0", // Random port
 	}
 
 	t.Run("NewClient", func(t *testing.T) {
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err, "Failed to create Temporal client")
 		require.NotNil(t, temporalClient, "Client should not be nil")
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		// Test basic client functionality
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -57,42 +51,16 @@ func TestClientIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("NewClientWithMetrics", func(t *testing.T) {
-		temporalClient, closer, err := NewClientWithMetrics(config, true)
-		require.NoError(t, err, "Failed to create Temporal client with metrics")
-		require.NotNil(t, temporalClient, "Client should not be nil")
-
-		temporalClient.Close()
-		if closer != nil {
-			closer.Close()
-		}
-	})
-
-	t.Run("NewClientWithoutMetrics", func(t *testing.T) {
-		temporalClient, closer, err := NewClientWithMetrics(config, false)
-		require.NoError(t, err, "Failed to create Temporal client without metrics")
-		require.NotNil(t, temporalClient, "Client should not be nil")
-
-		temporalClient.Close()
-		if closer != nil {
-			closer.Close()
-		}
-	})
-
 	t.Run("InvalidHost", func(t *testing.T) {
 		invalidConfig := &Config{
-			HostPort:             "invalid-host:7233",
-			Namespace:            "default",
-			MetricsListenAddress: "0.0.0.0:9092",
+			HostPort:  "invalid-host:7233",
+			Namespace: "default",
 		}
 
 		// This should fail quickly since the host doesn't exist
-		temporalClient, closer, err := NewClient(invalidConfig)
+		temporalClient, err := NewClient(invalidConfig)
 		if err == nil && temporalClient != nil {
 			temporalClient.Close()
-		}
-		if closer != nil {
-			closer.Close()
 		}
 		// We don't assert error here because the client creation might succeed
 		// but connection will fail later during actual operations
@@ -188,23 +156,18 @@ func TestClientConfig(t *testing.T) {
 		config := DefaultConfig()
 		assert.Equal(t, "localhost:7233", config.HostPort)
 		assert.Equal(t, "default", config.Namespace)
-		assert.Equal(t, "127.0.0.1:9090", config.MetricsListenAddress)
 	})
 
 	t.Run("CustomConfig", func(t *testing.T) {
 		config := &Config{
 			HostPort:             "custom-host:1234",
 			Namespace:            "custom-namespace",
-			MetricsListenAddress: "127.0.0.1:8080",
 		}
 
 		// Should be able to create client with custom config (connection may fail)
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		if err == nil && temporalClient != nil {
 			temporalClient.Close()
-		}
-		if closer != nil {
-			closer.Close()
 		}
 		// Don't assert success since custom host might not exist
 	})

@@ -522,3 +522,39 @@ func createHTTPGatewayLoggingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc
 		}
 	}
 }
+
+// ============================================================================
+// Server Metrics (OpenTelemetry)
+// ============================================================================
+
+// registerServerMetrics registers OTel observable gauges for server uptime and
+// start time. These replace the legacy Prometheus-based uptime tracking.
+func registerServerMetrics(cfg *pkgotel.Config) {
+	if cfg == nil || !cfg.IsMetricsEnabled() {
+		return
+	}
+	meter := cfg.GetMeter("grpc.server")
+	startTime := time.Now()
+
+	//nolint:errcheck // errors only occur with nil meter (checked by GetMeter)
+	meter.Float64ObservableGauge(
+		"server.uptime",
+		metric.WithDescription("Server uptime in seconds"),
+		metric.WithUnit("s"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			o.Observe(time.Since(startTime).Seconds())
+			return nil
+		}),
+	)
+
+	//nolint:errcheck // errors only occur with nil meter (checked by GetMeter)
+	meter.Float64ObservableGauge(
+		"server.start_time",
+		metric.WithDescription("Server start time as Unix timestamp"),
+		metric.WithUnit("s"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			o.Observe(float64(startTime.Unix()))
+			return nil
+		}),
+	)
+}

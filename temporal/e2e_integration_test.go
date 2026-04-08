@@ -273,7 +273,6 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	// wm is intentionally shared across subtests in this e2e suite. Each subtest
 	// registers its own task queue so there is no cross-subtest worker conflict.
@@ -477,20 +476,14 @@ func TestE2ETemporalIntegration(t *testing.T) {
 	// Create config using container's address
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
-	config.MetricsListenAddress = "0.0.0.0:0" // Random port
 
 	t.Run("FullTemporalStackTest", func(t *testing.T) {
 		// Test the full Temporal stack integration
 
 		// 1. Create client
-		temporalClient, closer, err := NewClient(config)
+		temporalClient, err := NewClient(config)
 		require.NoError(t, err, "Failed to create Temporal client")
-		defer func() {
-			temporalClient.Close()
-			if closer != nil {
-				closer.Close()
-			}
-		}()
+		defer temporalClient.Close()
 
 		// 2. Create worker manager
 		wm, err := NewWorkerManager(config)
