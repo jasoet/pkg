@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -92,10 +91,15 @@ func (r *Registry) RegisterAll(w worker.Worker) {
 }
 
 // ApplySchedules creates or updates Temporal schedules for every Definition
-// that has one. Implemented after Definition.ApplySchedule (Task 8).
+// that has one. Returns the first error encountered (does not roll back).
 func (r *Registry) ApplySchedules(ctx context.Context, c client.Client) error {
-	// Pending Task 8 — Definition.ApplySchedule must exist first.
-	_ = ctx
-	_ = c
-	return errors.New("ApplySchedules not yet implemented — pending Task 8")
+	for _, d := range r.List() {
+		if d.Schedule == nil {
+			continue
+		}
+		if err := d.ApplySchedule(ctx, c); err != nil {
+			return fmt.Errorf("apply schedule for %q: %w", d.Name, err)
+		}
+	}
+	return nil
 }
