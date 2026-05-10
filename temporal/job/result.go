@@ -101,7 +101,7 @@ type ScheduleSummary struct {
 // ScheduleDetail is the full schedule description.
 type ScheduleDetail struct {
 	ScheduleSummary
-	Spec       any // wrapped ScheduleSpec; typed in Task 3
+	Spec       ScheduleSpec
 	RecentRuns []RunSummary
 }
 
