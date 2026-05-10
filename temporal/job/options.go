@@ -46,7 +46,6 @@ type executeConfig struct {
 	taskTimeout time.Duration
 	retryPolicy *temporal.RetryPolicy
 	memo        map[string]any
-	searchAttrs map[string]any
 }
 
 // ExecuteOption customizes a single Definition.Execute call.
@@ -77,10 +76,12 @@ func WithMemo(m map[string]any) ExecuteOption {
 	return func(c *executeConfig) { c.memo = m }
 }
 
-// WithSearchAttributes attaches search attributes to the workflow execution.
-func WithSearchAttributes(sa map[string]any) ExecuteOption {
-	return func(c *executeConfig) { c.searchAttrs = sa }
-}
+// Note: search attributes are intentionally not exposed here yet. The Temporal
+// SDK's legacy map[string]any path is deprecated in favor of TypedSearchAttributes,
+// which requires per-attribute schema definitions. Callers that need search
+// attributes today can construct their own client.StartWorkflowOptions and
+// call client.ExecuteWorkflow directly. A future revision will add typed
+// support.
 
 // apply builds a client.StartWorkflowOptions from defaults + accumulated options.
 func (c executeConfig) apply(defaultID, taskQueue string) client.StartWorkflowOptions {
@@ -103,9 +104,6 @@ func (c executeConfig) apply(defaultID, taskQueue string) client.StartWorkflowOp
 	}
 	if c.memo != nil {
 		opts.Memo = c.memo
-	}
-	if c.searchAttrs != nil {
-		opts.SearchAttributes = c.searchAttrs
 	}
 	return opts
 }
