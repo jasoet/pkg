@@ -83,8 +83,6 @@ func WithSearchAttributes(sa map[string]any) ExecuteOption {
 }
 
 // apply builds a client.StartWorkflowOptions from defaults + accumulated options.
-//
-//nolint:unused
 func (c executeConfig) apply(defaultID, taskQueue string) client.StartWorkflowOptions {
 	id := c.workflowID
 	if id == "" {
