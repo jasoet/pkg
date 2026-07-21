@@ -31,23 +31,23 @@ This directory contains comprehensive examples demonstrating various ways to use
 Each example file can be run independently:
 
 ```bash
-# Run client configuration examples
-go run -tags=example ./argo/examples/main.go
+# Run basic client configuration examples
+go run -tags=example ./examples/argo/basic
 
 # Run workflow builder examples
-go run -tags=example ./argo/examples/builder_example.go
+go run -tags=example ./examples/argo/builder
 
 # Run operations examples
-go run -tags=example ./argo/examples/operations_example.go
+go run -tags=example ./examples/argo/operations
 
 # Run template examples
-go run -tags=example ./argo/examples/templates_example.go
+go run -tags=example ./examples/argo/templates
 
 # Run advanced features examples
-go run -tags=example ./argo/examples/advanced_features_example.go
+go run -tags=example ./examples/argo/advanced
 
 # Run pattern examples
-go run -tags=example ./argo/examples/patterns_example.go
+go run -tags=example ./examples/argo/patterns
 ```
 
 Each example file has a `main()` function with commented-out example functions. Uncomment the one you want to run.

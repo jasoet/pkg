@@ -107,7 +107,7 @@ config := db.ConnectionConfig{
 }
 ```
 
-**DSN Format:** `user=admin password=*** host=localhost port=5432 dbname=myapp sslmode=disable connect_timeout=5`
+**DSN Format:** `user=admin password=*** host=localhost port=5432 dbname=myapp sslmode=require connect_timeout=5`
 
 ### MySQL
 
@@ -141,12 +141,12 @@ config := db.ConnectionConfig{
 
 ```go
 type ConnectionConfig struct {
-    DbType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL"`
+    DBType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL"`
     Host         string        `yaml:"host" validate:"required,min=1"`
     Port         int           `yaml:"port"`
     Username     string        `yaml:"username" validate:"required,min=1"`
     Password     string        `yaml:"password"`
-    DbName       string        `yaml:"dbName" validate:"required,min=1"`
+    DBName       string        `yaml:"dbName" validate:"required,min=1"`
     Timeout      time.Duration `yaml:"timeout" validate:"min=3s"`
     MaxIdleConns int           `yaml:"maxIdleConns" validate:"min=1"`
     MaxOpenConns int           `yaml:"maxOpenConns" validate:"min=2"`
@@ -155,6 +155,8 @@ type ConnectionConfig struct {
     OTelConfig   *otel.Config  `yaml:"-"`
 }
 ```
+
+> **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev or test databases without TLS, set `SSLMode: "disable"` explicitly.
 
 ### Methods
 

@@ -4,7 +4,7 @@ Comprehensive guide for AI agents and developers scaffolding new Go projects tha
 
 > **Audience:** AI code-generation agents (Claude, Cursor, Copilot) and human developers.
 > **Scope:** Consumer projects — applications built _with_ this library, not contributions _to_ it.
-> **Prerequisites:** [Nix](https://nixos.org/) (with flakes enabled), [go-task](https://taskfile.dev/) (global via Homebrew). Go 1.24+ is provided by the Nix flake.
+> **Prerequisites:** [Nix](https://nixos.org/) (with flakes enabled), [go-task](https://taskfile.dev/) (global via Homebrew). Go 1.26+ is provided by the Nix flake.
 
 ---
 
@@ -313,7 +313,10 @@ Automatic via Viper: `APP_SERVER_PORT=9090` overrides `server.port`.
 For deeply nested structs, use:
 
 ```go
-config.NestedEnvVars("APP", 3, "database", viperInstance)
+// keyDepth is the index of the entity-name token in the underscore-split env key,
+// including prefix tokens. APP_DATABASE_USER_NAME → ["APP","DATABASE","USER","NAME"],
+// so keyDepth=1 treats "DATABASE" as the entity under config path "database".
+config.NestedEnvVars("APP", 1, "database", viperInstance)
 ```
 
 ### Layer 3: Runtime Functional Options
@@ -566,15 +569,17 @@ Services should never return HTTP-specific errors — keep the domain clean.
 
 ```go
 pool, err := db.ConnectionConfig{
-    DbType:     db.Postgresql,
+    DBType:     db.Postgresql,
     Host:       cfg.Database.Host,
     Port:       cfg.Database.Port,
     Username:   cfg.Database.Username,
     Password:   cfg.Database.Password,
-    DbName:     cfg.Database.DbName,
+    DBName:     cfg.Database.DBName,
     OTelConfig:  otelCfg, // Automatic query tracing
 }.Pool()
 ```
+
+> **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev databases without TLS (e.g. the compose stack), add `SSLMode: "disable"` to your `ConnectionConfig` YAML.
 
 ### Migrations with embed.FS
 
@@ -785,7 +790,7 @@ func (c *WeatherClient) GetCurrent(ctx context.Context, lat, lon float64) (*Weat
     var data WeatherData
     url := fmt.Sprintf("%s/current?lat=%f&lon=%f", c.baseURL, lat, lon)
 
-    resp, err := c.client.R().
+    resp, err := c.client.GetRestClient().R().
         SetContext(lc.Context()).
         SetHeader("X-API-Key", c.apiKey).
         SetResult(&data).
@@ -841,11 +846,12 @@ func (s *Service) GetOverview(ctx context.Context) (*Overview, error) {
         return nil, lc.Error(err, "failed to fetch weather")
     }
 
+    lc.Success("dashboard overview loaded")
     return &Overview{
         VesselCounts:    vessels,
         RecentIncidents: incidents,
         CurrentWeather:  weather,
-    }, lc.Success("dashboard overview loaded")
+    }, nil
 }
 ```
 
@@ -945,12 +951,13 @@ The `server` package automatically registers:
 
 | Endpoint | Response |
 |----------|----------|
-| `GET /` | `200 "Home"` |
 | `GET /health` | `200 {"status": "UP"}` |
 | `GET /health/ready` | `200 {"status": "READY"}` |
 | `GET /health/live` | `200 {"status": "ALIVE"}` |
 
-**Note:** `server.Config` does not have an `OTelConfig` field. Inject OTel middleware through the `Middleware` slice or inside `EchoConfigurer`.
+There is no built-in `GET /` handler — register your own routes via `EchoConfigurer`.
+
+**Note:** `server.Config` has an `OTelConfig` field (`yaml:"-" mapstructure:"-"`), used for OTel-based logging during startup/shutdown. Set it directly on the config or via `server.WithOTelConfig()`. HTTP request tracing is not added automatically — add tracing middleware through the `Middleware` slice or inside `EchoConfigurer`.
 
 ---
 
@@ -1075,7 +1082,7 @@ If your application needs async jobs, background processing, or scheduled tasks,
 
 ### Config
 
-`temporal.Config` is a plain serializable struct (no `OTelConfig` field — unlike most other packages):
+`temporal.Config` has two serializable fields (`HostPort`, `Namespace`) plus the usual `OTelConfig *otel.Config` field tagged `yaml:"-" mapstructure:"-"` (injected at runtime, never serialized):
 
 ```go
 import "github.com/jasoet/pkg/v2/temporal"
@@ -1089,7 +1096,6 @@ Temporal temporal.Config `yaml:"temporal" mapstructure:"temporal"`
 temporal:
   hostPort: localhost:7233
   namespace: default
-  metricsListenAddress: "0.0.0.0:9090"
 ```
 
 ### Defining Workflows and Activities
@@ -1243,7 +1249,10 @@ run, err := temporalClient.ExecuteWorkflow(ctx,
 For recurring jobs (e.g., periodic sync, cleanup):
 
 ```go
-sm := temporal.NewScheduleManager(temporalClient)
+sm, err := temporal.NewScheduleManager(temporalClient)
+if err != nil {
+    return err
+}
 
 handle, err := sm.CreateWorkflowSchedule(ctx, "daily-cleanup", temporal.WorkflowScheduleOptions{
     WorkflowID: "cleanup-workflow",
@@ -1257,6 +1266,28 @@ handle, err := sm.CreateWorkflowSchedule(ctx, "daily-cleanup", temporal.Workflow
 schedules, _ := sm.ListSchedules(ctx, 10)
 sm.DeleteSchedule(ctx, "daily-cleanup")
 ```
+
+### Type-Safe Job Definitions (`temporal/job`)
+
+New in v2.13.0: the `temporal/job` package provides a `Definition` — a typed handle for one registered workflow, bundling registration, execution, scheduling, and lifecycle control:
+
+```go
+import "github.com/jasoet/pkg/v2/temporal/job"
+
+def, err := job.New("orders-sync", "myapp-tasks",
+    job.WithRegister(func(w worker.Worker) {
+        w.RegisterWorkflow(OrderSyncWorkflow)
+        w.RegisterActivity(activities)
+    }),
+    job.WithNewInput(func() any { return &OrdersInput{} }),
+    job.WithSchedule(&job.ScheduleSpec{Interval: time.Hour}),
+)
+
+def.Register(worker)                                   // on the worker binary
+run, _ := def.Execute(ctx, temporalClient, &OrdersInput{...}) // from the API server
+```
+
+Use a `Definition` when you own the workflow; use the namespace-wide `WorkflowManager`/`ScheduleManager` to inspect workflows you didn't register. See `temporal/job/doc.go` for details.
 
 ### Temporal Testcontainer
 
@@ -1982,7 +2013,7 @@ tasks:
 
 ### Temporal
 30. **Temporal separation:** Workflow functions use `workflow.Context`, activity functions use `context.Context`. Activities hold injected dependencies via a struct. Worker binary lives in `cmd/worker/`, separate from the API server.
-31. **Temporal config:** `temporal.Config` has no `OTelConfig` field — it is fully serializable. Embed as a value type in `AppConfig`, not a pointer.
+31. **Temporal config:** `temporal.Config` serializes only `HostPort` and `Namespace`; its `OTelConfig` field is tagged `yaml:"-" mapstructure:"-"` and injected at runtime. Embed as a value type in `AppConfig`, not a pointer.
 
 ---
 

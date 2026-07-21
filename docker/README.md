@@ -732,19 +732,19 @@ go test ./docker -bench=. -benchmem
 
 ## Examples
 
-See [examples/](.../examples/docker/docker/) directory for complete, runnable examples:
+See the [examples/docker/](../examples/docker/) directory for complete, runnable examples:
 
-- **[basic.go](../examples/docker/basic.go)** - Functional options, struct-based, and hybrid styles
-- **[database.go](../examples/docker/database.go)** - PostgreSQL container with real database operations
-- **[logs.go](../examples/docker/logs.go)** - Log streaming, filtering, and following
-- **[multi_container.go](../examples/docker/multi_container.go)** - Running multiple containers (Nginx + Redis)
+- **[basic](../examples/docker/basic/)** - Functional options, struct-based, and hybrid styles
+- **[database](../examples/docker/database/)** - PostgreSQL container with real database operations
+- **[logs](../examples/docker/logs/)** - Log streaming, filtering, and following
+- **[multi_container](../examples/docker/multi_container/)** - Running multiple containers (Nginx + Redis)
 
 Run examples:
 ```bash
-go run -tags example ./docker/examples/basic.go
-go run -tags example ./docker/examples/database.go
-go run -tags example ./docker/examples/logs.go
-go run -tags example ./docker/examples/multi_container.go
+go run -tags=example ./examples/docker/basic
+go run -tags=example ./examples/docker/database
+go run -tags=example ./examples/docker/logs
+go run -tags=example ./examples/docker/multi_container
 ```
 
 ## Comparison with Testcontainers

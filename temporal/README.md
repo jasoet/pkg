@@ -117,7 +117,10 @@ err = wfm.CancelWorkflow(ctx, "problematic-workflow-id", "")
 
 ```go
 // Create schedule manager
-sm := temporal.NewScheduleManager(config)
+sm, err := temporal.NewScheduleManager(config)
+if err != nil {
+    return err
+}
 defer sm.Close()
 
 // Schedule a workflow to run every hour

@@ -196,12 +196,12 @@ func main() {
     // =========================================================================
 
     dbConfig := &db.ConnectionConfig{
-        DbType:       db.Postgresql,
+        DBType:       db.Postgresql,
         Host:         "localhost",
         Port:         5432,
         Username:     "user",
         Password:     "password",
-        DbName:       "testdb",
+        DBName:       "testdb",
         Timeout:      30 * time.Second,
         MaxIdleConns: 5,
         MaxOpenConns: 10,

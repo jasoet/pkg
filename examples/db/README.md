@@ -14,12 +14,12 @@ import "github.com/jasoet/pkg/db"
 
 // Create database connection
 config := &db.ConnectionConfig{
-    DbType:       db.Postgresql, // or db.Mysql, db.SqlServer
+    DBType:       db.Postgresql, // or db.Mysql, db.MSSQL
     Host:         "localhost",
     Port:         5432,
     Username:     "user",
     Password:     "pass",
-    DbName:       "mydb",
+    DBName:       "mydb",
     MaxIdleConns: 10,
     MaxOpenConns: 100,
 }
@@ -36,7 +36,7 @@ err = database.Exec("SELECT 1").Error
 
 **Critical notes:**
 - Always use logging.Initialize() before database operations
-- Connection strings are built automatically based on DbType
+- Connection strings are built automatically based on DBType
 - Migrations use golang-migrate library format
 
 ## Overview
@@ -83,12 +83,12 @@ Connect to different database types with proper configuration:
 ```go
 // PostgreSQL connection
 config := &db.ConnectionConfig{
-    DbType:       db.Postgresql,
+    DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5439,
     Username:     "jasoet",
     Password:     "localhost",
-    DbName:       "pkg_db",
+    DBName:       "pkg_db",
     Timeout:      10 * time.Second,
     MaxIdleConns: 5,
     MaxOpenConns: 25,
@@ -106,12 +106,12 @@ Configure connection pools for optimal performance:
 
 ```go
 config := &db.ConnectionConfig{
-    DbType:       db.Postgresql,
+    DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
     Username:     "user",
     Password:     "password",
-    DbName:       "myapp",
+    DBName:       "myapp",
     Timeout:      30 * time.Second,
     MaxIdleConns: 10,  // Number of idle connections
     MaxOpenConns: 100, // Maximum open connections
@@ -143,19 +143,19 @@ Manage connections to multiple databases:
 ```go
 // Primary database
 primaryDB, err := (&db.ConnectionConfig{
-    DbType: db.Postgresql,
+    DBType: db.Postgresql,
     Host: "primary.db.com", Port: 5432,
     Username: "app", Password: "secret",
-    DbName: "primary_db",
+    DBName: "primary_db",
     MaxIdleConns: 5, MaxOpenConns: 25,
 }).Pool()
 
 // Analytics database
 analyticsDB, err := (&db.ConnectionConfig{
-    DbType: db.Mysql,
+    DBType: db.Mysql,
     Host: "analytics.db.com", Port: 3306,
     Username: "analytics", Password: "secret",
-    DbName: "analytics_db",
+    DBName: "analytics_db",
     MaxIdleConns: 3, MaxOpenConns: 15,
 }).Pool()
 ```
@@ -275,12 +275,12 @@ The `ConnectionConfig` struct supports the following options:
 
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
-| `DbType` | DatabaseType | Database type (MYSQL, POSTGRES, MSSQL) | Yes |
+| `DBType` | DatabaseType | Database type (MYSQL, POSTGRES, MSSQL) | Yes |
 | `Host` | string | Database server hostname or IP | Yes |
 | `Port` | int | Database server port | Yes |
 | `Username` | string | Database username | Yes |
 | `Password` | string | Database password | No |
-| `DbName` | string | Database name | Yes |
+| `DBName` | string | Database name | Yes |
 | `Timeout` | time.Duration | Connection timeout (min: 3s) | No |
 | `MaxIdleConns` | int | Maximum idle connections (min: 1) | No |
 | `MaxOpenConns` | int | Maximum open connections (min: 2) | No |
@@ -333,30 +333,30 @@ DROP TABLE IF EXISTS users;
 
 ```go
 config := &db.ConnectionConfig{
-    DbType:       db.Postgresql,
+    DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
     Username:     "postgres",
     Password:     "password",
-    DbName:       "myapp",
+    DBName:       "myapp",
     Timeout:      30 * time.Second,
     MaxIdleConns: 10,
     MaxOpenConns: 100,
 }
 ```
 
-**Connection String Format**: `user=username password=password host=host port=5432 dbname=database sslmode=disable connect_timeout=30`
+**Connection String Format**: `user=username password=password host=host port=5432 dbname=database sslmode=require connect_timeout=30`
 
 ### MySQL
 
 ```go
 config := &db.ConnectionConfig{
-    DbType:       db.Mysql,
+    DBType:       db.Mysql,
     Host:         "localhost",
     Port:         3306,
     Username:     "root",
     Password:     "password",
-    DbName:       "myapp",
+    DBName:       "myapp",
     Timeout:      30 * time.Second,
     MaxIdleConns: 10,
     MaxOpenConns: 100,
@@ -369,12 +369,12 @@ config := &db.ConnectionConfig{
 
 ```go
 config := &db.ConnectionConfig{
-    DbType:       db.MSSQL,
+    DBType:       db.MSSQL,
     Host:         "localhost",
     Port:         1433,
     Username:     "sa",
     Password:     "password",
-    DbName:       "myapp",
+    DBName:       "myapp",
     Timeout:      30 * time.Second,
     MaxIdleConns: 10,
     MaxOpenConns: 100,
@@ -465,12 +465,12 @@ func runMigrations(ctx context.Context, db *gorm.DB) error {
 // Use test databases for testing
 func setupTestDB() *gorm.DB {
     config := &db.ConnectionConfig{
-        DbType:   db.Postgresql,
+        DBType:   db.Postgresql,
         Host:     "localhost",
         Port:     5432,
         Username: "test",
         Password: "test",
-        DbName:   "test_db",
+        DBName:   "test_db",
         MaxIdleConns: 2,
         MaxOpenConns: 10,
     }

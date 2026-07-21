@@ -377,7 +377,7 @@ otelConfig := otel.NewConfig("my-db-service").
     WithMeterProvider(meterProvider)
 
 pool, _ := db.ConnectionConfig{
-    DbType:     db.Postgresql,
+    DBType:     db.Postgresql,
     Host:       "localhost",
     OTelConfig: otelConfig,
 }.Pool()

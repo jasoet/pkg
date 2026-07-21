@@ -325,12 +325,12 @@ func setupDatabase(ctx context.Context) (*gorm.DB, error) {
     logger := logging.ContextLogger(ctx, "database-setup")
     
     config := &db.ConnectionConfig{
-        DbType: db.Postgresql,
+        DBType: db.Postgresql,
         Host:   "localhost",
         // ... other config
     }
     
-    logger.Info().Str("db_type", string(config.DbType)).Msg("Connecting to database")
+    logger.Info().Str("db_type", string(config.DBType)).Msg("Connecting to database")
     
     database, err := config.Pool()
     if err != nil {

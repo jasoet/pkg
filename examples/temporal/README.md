@@ -72,7 +72,10 @@ var result string
 err = we.Get(context.Background(), &result)
 
 // 6. Or create a scheduler for periodic execution
-scheduleManager := temporal.NewScheduleManager(client)
+scheduleManager, err := temporal.NewScheduleManager(client)
+if err != nil {
+    log.Fatal().Err(err).Msg("failed to create schedule manager")
+}
 defer scheduleManager.Close()
 
 scheduleID := "my-schedule-id"

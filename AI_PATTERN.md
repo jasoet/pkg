@@ -35,7 +35,7 @@ All packages follow the same OTel pattern:
 
 1. Config struct has `OTelConfig *otel.Config` field with `yaml:"-" mapstructure:"-"` (never serialized)
 2. Runtime injection via `WithOTelConfig()` functional option
-3. Access providers: `cfg.GetTracer()`, `cfg.GetMeter()`, `cfg.GetLogger()`
+3. Access providers: `cfg.GetTracer(scope)`, `cfg.GetMeter(scope)`, `cfg.GetLogger(scope)`
 4. Context propagation: `otel.ContextWithConfig(ctx, cfg)` / `otel.ConfigFromContext(ctx)`
 5. All providers default to no-op when nil (zero overhead, no nil checks needed)
 
@@ -54,7 +54,8 @@ lc.Logger.Info("Creating user")
 if err := repo.Save(lc.Context(), user); err != nil {
     return lc.Error(err, "failed to save user")
 }
-return lc.Success("User created successfully")
+lc.Success("User created successfully")
+return nil
 ```
 
 Available layers: `Handler`, `Service`, `Repository`, `Operations`, `Middleware`
@@ -78,20 +79,20 @@ cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 | Package | Description | README | Examples |
 |---------|-------------|--------|----------|
 | [otel](./otel/) | OpenTelemetry unified config (tracing, metrics, logging) | [README](otel/README.md) | [examples_test.go](otel/examples_test.go), [instrumentation_example_test.go](otel/instrumentation_example_test.go) |
-| [config](./config/) | Type-safe YAML config with env overrides and validation | [README](config/README.md) | [examples/](config/examples/) |
-| [logging](./logging/) | Structured logging with zerolog + OTel LoggerProvider | [README](logging/README.md) | [examples/](logging/examples/) |
-| [db](./db/) | Multi-database (PostgreSQL, MySQL, MSSQL) with GORM + migrations | [README](db/README.md) | [examples/](db/examples/) |
-| [docker](./docker/) | Container executor with dual API (functional + struct) | [README](docker/README.md) | [examples/](docker/examples/) |
-| [server](./server/) | HTTP server with Echo, health checks, graceful shutdown | [README](server/README.md) | [examples/](server/examples/) |
-| [grpc](./grpc/) | gRPC server with Echo gateway, H2C + separate modes | [README](grpc/README.md) | [examples/](grpc/examples/) |
-| [rest](./rest/) | HTTP client with retries, middleware, OTel tracing | [README](rest/README.md) | [examples/](rest/examples/) |
-| [concurrent](./concurrent/) | Type-safe parallel execution with generics | [README](concurrent/README.md) | [examples/](concurrent/examples/) |
-| [temporal](./temporal/) | Temporal workflows, workers, scheduling, monitoring | [README](temporal/README.md) | [examples/](temporal/examples/) |
-| [ssh](./ssh/) | SSH tunneling and port forwarding | [README](ssh/README.md) | [examples/](ssh/examples/) |
-| [compress](./compress/) | File compression (gzip, tar.gz) with security validation | [README](compress/README.md) | [examples/](compress/examples/) |
-| [argo](./argo/) | Argo Workflows client with builder API and patterns | [README](argo/README.md) | [examples/](argo/examples/) |
-| [retry](./retry/) | Retry with exponential backoff, OTel, permanent errors | [README](retry/README.md) | [examples/](retry/examples/) |
-| [base32](./base32/) | Crockford Base32 encoding with CRC-10 checksums | [README](base32/README.md) | [examples/](base32/examples/) |
+| [config](./config/) | Type-safe YAML config with env overrides and validation | [README](config/README.md) | [examples/](examples/config/) |
+| [logging](./logging/) | Structured logging with zerolog + OTel LoggerProvider | [README](logging/README.md) | [examples/](examples/logging/) |
+| [db](./db/) | Multi-database (PostgreSQL, MySQL, MSSQL) with GORM + migrations | [README](db/README.md) | [examples/](examples/db/) |
+| [docker](./docker/) | Container executor with dual API (functional + struct) | [README](docker/README.md) | [examples/](examples/docker/) |
+| [server](./server/) | HTTP server with Echo, health checks, graceful shutdown | [README](server/README.md) | [examples/](examples/server/) |
+| [grpc](./grpc/) | gRPC server with Echo gateway, H2C + separate modes | [README](grpc/README.md) | [examples/](examples/grpc/) |
+| [rest](./rest/) | HTTP client with retries, middleware, OTel tracing | [README](rest/README.md) | [examples/](examples/rest/) |
+| [concurrent](./concurrent/) | Type-safe parallel execution with generics | [README](concurrent/README.md) | [examples/](examples/concurrent/) |
+| [temporal](./temporal/) | Temporal workflows, workers, scheduling, monitoring | [README](temporal/README.md) | [examples/](examples/temporal/) |
+| [ssh](./ssh/) | SSH tunneling and port forwarding | [README](ssh/README.md) | [examples/](examples/ssh/) |
+| [compress](./compress/) | File compression (gzip, tar.gz) with security validation | [README](compress/README.md) | [examples/](examples/compress/) |
+| [argo](./argo/) | Argo Workflows client with builder API and patterns | [README](argo/README.md) | [examples/](examples/argo/) |
+| [retry](./retry/) | Retry with exponential backoff, OTel, permanent errors | [README](retry/README.md) | [examples/](examples/retry/) |
+| [base32](./base32/) | Crockford Base32 encoding with CRC-10 checksums | [README](base32/README.md) | [examples/](examples/base32/) |
 
 ## Common Tasks
 
@@ -99,8 +100,8 @@ cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 
 ```go
 pool, _ := db.ConnectionConfig{
-    DbType: db.Postgresql, Host: "localhost", Port: 5432,
-    Username: "user", Password: "pass", DbName: "mydb",
+    DBType: db.Postgresql, Host: "localhost", Port: 5432,
+    Username: "user", Password: "pass", DBName: "mydb",
     OTelConfig: otelConfig,
 }.Pool()
 ```

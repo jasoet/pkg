@@ -3,18 +3,18 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/jasoet/pkg/actions/workflows/release.yml/badge.svg)](https://github.com/jasoet/pkg/actions)
-[![Test Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/jasoet/pkg)
+[![Test Coverage](https://img.shields.io/badge/coverage-79%25-brightgreen.svg)](https://github.com/jasoet/pkg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jasoet/pkg/v2)](https://goreportcard.com/report/github.com/jasoet/pkg/v2)
 
 Production-ready Go utility packages with **OpenTelemetry** instrumentation, comprehensive testing, and battle-tested components for building modern cloud-native applications.
 
 ## Versioning
 
-**Current Release:** `v2.9.0` (GA)
+**Current Release:** `v2.13.0` (GA)
 **Status:** Production Ready
-**Test Coverage:** 85%
+**Test Coverage:** 79%
 
-> **v2 Highlights:** OpenTelemetry instrumentation across all packages, 85% test coverage, modernized dependencies
+> **v2 Highlights:** OpenTelemetry instrumentation across all packages, 79% test coverage, modernized dependencies
 >
 > **Breaking Change:** v1 does not include OpenTelemetry. v2 adds optional OTel support with minimal API changes.
 
@@ -35,20 +35,20 @@ Production-ready components with comprehensive observability, testing, and examp
 | Package | Description | Key Features |
 |---------|-------------|--------------|
 | **[otel](./otel/)** | OpenTelemetry integration | Tracing, metrics, logging, unified config |
-| **[config](./config/)** | YAML configuration with env overrides | Type-safe, validation, hot-reload |
+| **[config](./config/)** | YAML configuration with env overrides | Type-safe, generics, nested env vars |
 | **[logging](./logging/)** | Structured logging with zerolog | Context-aware, OTel integration |
 | **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations, OTel |
 | **[docker](./docker/)** | Docker container executor | Lifecycle management, wait strategies, dual API |
 | **[argo](./argo/)** | Argo Workflows client | Kubernetes API, Argo Server, OTel, flexible config |
-| **[server](./server/)** | HTTP server with Echo | Health checks, metrics, graceful shutdown |
+| **[server](./server/)** | HTTP server with Echo | Health checks, graceful shutdown, middleware |
 | **[grpc](./grpc/)** | gRPC server with Echo gateway | H2C mode, dual protocol, observability |
 | **[rest](./rest/)** | HTTP client framework | Retries, timeouts, OTel tracing |
 | **[retry](./retry/)** | Retry with exponential backoff | Context-aware, OTel tracing, permanent errors |
 | **[concurrent](./concurrent/)** | Type-safe concurrent execution | Generics, error handling, cancellation |
-| **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, monitoring |
+| **[temporal](./temporal/)** | Temporal workflow integration | Workers, scheduling, job definitions, monitoring |
 | **[ssh](./ssh/)** | SSH tunneling utilities | Secure connections, port forwarding |
 | **[base32](./base32/)** | Crockford Base32 encoding | Human-readable IDs, CRC-10 checksums, error correction |
-| **[compress](./compress/)** | File compression utilities | ZIP, tar.gz, security validation |
+| **[compress](./compress/)** | File compression utilities | gzip, tar.gz, security validation |
 
 ## Quick Start
 
@@ -109,22 +109,22 @@ Each package includes comprehensive examples:
 
 ```bash
 # Run specific package examples
-go run -tags=example ./logging/examples
-go run -tags=example ./db/examples
-go run -tags=example ./server/examples
+go run -tags=example ./examples/logging
+go run -tags=example ./examples/db
+go run -tags=example ./examples/server
 
 # Build all examples
 go build -tags=example ./...
 ```
 
-Each package's examples live in its own `examples/` subdirectory (e.g. `./logging/examples/`).
+Examples for all packages live in the top-level `examples/` directory (e.g. `./examples/logging/`).
 
 ## Test Coverage
 
-**Overall Coverage: 85%**
+**Overall Coverage: 79%** (unit + integration suites; Argo tests require a k8s cluster and are not included)
 
 ### Package Coverage
-- concurrent (100%), otel (97%), config (95%), rest (93%), compress (86%), temporal (86%), docker (84%), server (83%), grpc (82%), logging (82%), db (79%), ssh (77%)
+- base32 (99%), config (98%), concurrent (95%), logging (95%), rest (93%), argo (91%), otel (85%), docker (83%), compress (82%), temporal (81%), retry (79%), ssh (78%), server (77%), db (77%), grpc (71%)
 
 ### Run Tests
 
@@ -146,7 +146,8 @@ open output/coverage-all.html
 - **Unified Configuration:** Single config for tracing, metrics, and logging
 - **Automatic Instrumentation:** Built-in for HTTP, gRPC, database operations
 - **Context Propagation:** Distributed tracing across services
-- **Metrics Collection:** Prometheus-compatible metrics
+- **Metrics Collection:** OTel MeterProvider-based metrics
+- **Log Export:** OTLP log export via `otlploghttp`
 
 ### Database Support
 - **Multi-Database:** PostgreSQL, MySQL, MSSQL with GORM
@@ -162,7 +163,6 @@ open output/coverage-all.html
 
 ### Resilient REST Client
 - **Retry Logic:** Configurable exponential backoff
-- **Circuit Breaking:** Fail-fast patterns
 - **Request Tracing:** Automatic distributed tracing
 - **Middleware Support:** Custom request/response handlers
 
@@ -179,7 +179,7 @@ open output/coverage-all.html
 **Prerequisites:**
 
 - **Nix** (with flakes enabled): install via [Determinate Nix Installer](https://install.determinate.systems/nix)
-- **go-task** (global): `nix profile install nixpkgs#go-task`
+- **go-task** (global): `brew install go-task`
 - **gh** (optional): for PR management
 
 **Quick start:**
@@ -224,13 +224,13 @@ config := otel.NewConfig("my-service").
     WithMeterProvider(meterProvider).
     WithLoggerProvider(loggerProvider)
 
-tracer := config.GetTracer()
-meter := config.GetMeter()
-logger := config.GetLogger()
+tracer := config.GetTracer("my-service")
+meter := config.GetMeter("my-service")
+logger := config.GetLogger("my-service")
 ```
 
 **Features:** Automatic instrumentation, context propagation, graceful shutdown
-**Coverage:** 97.1% | **[Examples](./otel/examples/)** | **[Documentation](./otel/README.md)**
+**Coverage:** 84.8% | **[Examples](./examples/otel/)** | **[Documentation](./otel/README.md)**
 
 #### [config](./config/) - Configuration Management
 Type-safe YAML configuration with environment variable overrides.
@@ -246,8 +246,8 @@ cfg, _ := config.LoadString[AppConfig](yamlContent, "APP")
 // Override via env: APP_SERVER_PORT=9090
 ```
 
-**Features:** Hot-reload, validation, environment overrides
-**Coverage:** 94.7% | **[Examples](./config/examples/)** | **[Documentation](./config/README.md)**
+**Features:** Environment variable overrides, nested env vars, generics-based loading
+**Coverage:** 97.6% | **[Examples](./examples/config/)** | **[Documentation](./config/README.md)**
 
 #### [logging](./logging/) - Structured Logging
 Zerolog-based OTel LoggerProvider with automatic trace correlation.
@@ -268,7 +268,7 @@ log.Info().Str("user", "john").Msg("User logged in")
 ```
 
 **Features:** Context-aware, OTel log provider, performance optimized
-**Coverage:** 82.0% | **[Examples](./logging/examples/)** | **[Documentation](./logging/README.md)**
+**Coverage:** 94.6% | **[Examples](./examples/logging/)** | **[Documentation](./logging/README.md)**
 
 ### Data Access
 
@@ -277,12 +277,12 @@ PostgreSQL, MySQL, MSSQL support with GORM and migrations.
 
 ```go
 pool, _ := db.ConnectionConfig{
-    DbType:     db.Postgresql,
+    DBType:     db.Postgresql,
     Host:       "localhost",
     Port:       5432,
     Username:   "user",
     Password:   "pass",
-    DbName:     "mydb",
+    DBName:     "mydb",
     OTelConfig: otelConfig,
 }.Pool()
 
@@ -291,7 +291,7 @@ pool.Find(&users)
 ```
 
 **Features:** Connection pooling, migrations, OTel tracing, health monitoring
-**Coverage:** 79.1% | **[Examples](./db/examples/)** | **[Documentation](./db/README.md)**
+**Coverage:** 76.7% | **[Examples](./examples/db/)** | **[Documentation](./db/README.md)**
 
 #### [docker](./docker/) - Docker Container Executor
 Production-ready Docker container management with dual API styles.
@@ -325,7 +325,7 @@ exec, _ := docker.NewFromRequest(req)
 ```
 
 **Features:** Lifecycle management, wait strategies, log streaming, dual API (functional + struct)
-**Coverage:** 83.9% | **[Examples](./docker/examples/)** | **[Documentation](./docker/README.md)**
+**Coverage:** 83.1% | **[Examples](./examples/docker/)** | **[Documentation](./docker/README.md)**
 
 #### [argo](./argo/) - Argo Workflows Client
 Production-ready Argo Workflows client with flexible configuration.
@@ -355,7 +355,7 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 ```
 
 **Features:** Multiple connection modes, functional options, OTel support, proper error handling
-**[Examples](./argo/examples/)** | **[Documentation](./argo/README.md)**
+**[Examples](./examples/argo/)** | **[Documentation](./argo/README.md)**
 
 #### [retry](./retry/) - Retry with Exponential Backoff
 Production-ready retry mechanism using `cenkalti/backoff/v4` with OTel instrumentation.
@@ -382,10 +382,10 @@ Crockford Base32 encoding with CRC-10 checksums for human-readable, error-correc
 
 ```go
 // Encode a value to fixed-length Base32
-id := base32.EncodeBase32(12345, 8) // "0000C1P9"
+id, _ := base32.EncodeBase32(12345, 8) // "0000C1P9"
 
 // Add checksum for error detection
-idWithChecksum := base32.AppendChecksum(id)
+idWithChecksum, _ := base32.AppendChecksum(id)
 
 // Validate and decode
 if base32.ValidateChecksum(idWithChecksum) {
@@ -397,7 +397,7 @@ normalized := base32.NormalizeBase32("ab-CD iL o9") // "ABCD1109"
 ```
 
 **Features:** URL-safe alphabet, automatic error correction, CRC-10 checksums, compact encoding
-**[Examples](./base32/examples/)** | **[Documentation](./base32/README.md)**
+**[Examples](./examples/base32/)** | **[Documentation](./base32/README.md)**
 
 ### HTTP & gRPC
 
@@ -420,7 +420,7 @@ if err := server.StartWithConfig(config); err != nil {
 ```
 
 **Features:** Health checks, graceful shutdown, middleware
-**Coverage:** 83.0% | **[Examples](./server/examples/)** | **[Documentation](./server/README.md)**
+**Coverage:** 77.1% | **[Examples](./examples/server/)** | **[Documentation](./server/README.md)**
 
 #### [grpc](./grpc/) - gRPC Server
 Production-ready gRPC with Echo gateway integration.
@@ -439,7 +439,7 @@ server.Start()
 ```
 
 **Features:** H2C mode, dual HTTP/gRPC, gateway, observability
-**Coverage:** 82.0% | **[Examples](./grpc/examples/)** | **[Documentation](./grpc/README.md)**
+**Coverage:** 71.2% | **[Examples](./examples/grpc/)** | **[Documentation](./grpc/README.md)**
 
 #### [rest](./rest/) - HTTP Client
 Resilient REST client with OTel tracing.
@@ -460,8 +460,8 @@ client := rest.NewClient(
 response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", headers)
 ```
 
-**Features:** Retries, circuit breaking, tracing, middleware support
-**Coverage:** 92.9% | **[Examples](./rest/examples/)** | **[Documentation](./rest/README.md)**
+**Features:** Retries, tracing, middleware support
+**Coverage:** 92.9% | **[Examples](./examples/rest/)** | **[Documentation](./rest/README.md)**
 
 ### Utilities
 
@@ -482,7 +482,7 @@ results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
 ```
 
 **Features:** Go 1.26+ generics, error aggregation, context support
-**Coverage:** 100% | **[Examples](./concurrent/examples/)** | **[Documentation](./concurrent/README.md)**
+**Coverage:** 95.1% | **[Examples](./examples/concurrent/)** | **[Documentation](./concurrent/README.md)**
 
 #### [temporal](./temporal/) - Workflow Orchestration
 Temporal workflow integration with observability.
@@ -494,13 +494,18 @@ config := &temporal.Config{
 }
 
 client, _ := temporal.NewClient(config)
-manager := temporal.NewScheduleManager(client)
+manager, _ := temporal.NewScheduleManager(client)
 
-manager.CreateWorkflowSchedule(ctx, scheduleID, workflow, schedule)
+handle, _ := manager.CreateWorkflowSchedule(ctx, "daily-job", temporal.WorkflowScheduleOptions{
+    WorkflowID: "my-workflow",
+    Workflow:   MyWorkflow,
+    TaskQueue:  "my-queue",
+    Interval:   24 * time.Hour,
+})
 ```
 
-**Features:** Schedule management, workers, monitoring
-**Coverage:** 86.4% | **[Examples](./temporal/examples/)** | **[Documentation](./temporal/README.md)**
+**Features:** Schedule management, workers, job definitions, monitoring
+**Coverage:** 81.2% | **[Examples](./examples/temporal/)** | **[Documentation](./temporal/README.md)**
 
 #### [ssh](./ssh/) - SSH Tunneling
 Secure SSH tunneling and port forwarding.
@@ -517,12 +522,12 @@ config := ssh.Config{
 }
 
 tunnel := ssh.New(config)
-tunnel.Start()
+tunnel.Start(ctx)
 defer tunnel.Close()
 ```
 
 **Features:** Port forwarding, connection pooling, error handling
-**Coverage:** 76.7% | **[Examples](./ssh/examples/)** | **[Documentation](./ssh/README.md)**
+**Coverage:** 78.2% | **[Examples](./examples/ssh/)** | **[Documentation](./ssh/README.md)**
 
 #### [compress](./compress/) - File Compression
 Secure file compression with validation.
@@ -538,8 +543,8 @@ outputFile, _ := os.Create("archive.tar.gz")
 compress.TarGz("/path/to/directory", outputFile)
 ```
 
-**Features:** ZIP, tar.gz, security validation, path traversal protection
-**Coverage:** 86.3% | **[Examples](./compress/examples/)** | **[Documentation](./compress/README.md)**
+**Features:** gzip, tar.gz, security validation, path traversal protection
+**Coverage:** 82.4% | **[Examples](./examples/compress/)** | **[Documentation](./compress/README.md)**
 
 ## Contributing
 

@@ -9,7 +9,7 @@ Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 
 
 **Module Path:** `github.com/jasoet/pkg/v2`
 **Go Version:** 1.26+ (uses generics)
-**Test Coverage:** 85%
+**Test Coverage:** 79%
 **v1 Branch:** [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) — final v1 release (v1.6.0), no longer maintained. Use `go get github.com/jasoet/pkg@v1.6.0` for projects that don't need OpenTelemetry.
 
 ## ABSOLUTE RULE — Git Authorship
@@ -40,7 +40,7 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 |------|---------|
 | `<module>/` | Package source (15 packages at root level) |
 | `<module>/README.md` | Per-package documentation |
-| `<module>/examples/` | Per-package runnable examples (`//go:build example`) |
+| `examples/<module>/` | Per-package runnable examples (`//go:build example`) |
 | `<module>/*_test.go` | Unit tests (no build tag) |
 | `<module>/*_integration_test.go` | Integration tests (`//go:build integration`) |
 | `docs/plans/` | Design docs and implementation plans |
@@ -49,6 +49,8 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 | `.envrc` | direnv auto-activation (optional) |
 | `Taskfile.yml` | All project commands |
 | `INSTRUCTION.md` | AI dev context (this file) |
+| `CLAUDE.md` | Compact critical rules safety net (Claude Code) |
+| `AGENTS.md` | Byte-copy of CLAUDE.md (Kimi Code auto-load) |
 | `AI_PATTERN.md` | AI library consumer patterns index |
 | `PROJECT_TEMPLATE.md` | New project scaffolding guide |
 | `README.md` | Human documentation |
