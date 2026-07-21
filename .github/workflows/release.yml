@@ -35,6 +35,15 @@ jobs:
       - name: Install semantic-release
         run: nix develop --command bun install --frozen-lockfile
 
+      # The self-hosted runner inherits the user's global gitconfig, which
+      # forces annotated + GPG-signed tags. semantic-release must create
+      # lightweight tags non-interactively, so neutralize those settings
+      # in the clone's local config.
+      - name: Force lightweight unsigned tags
+        run: |
+          git config tag.forceAnnotated false
+          git config tag.gpgsign false
+
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
