@@ -41,17 +41,24 @@ func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, running)
 
-	// Get endpoint and test HTTP
+	// Get endpoint and test HTTP. Retry briefly: the Docker port proxy can take
+	// a moment to accept connections even after the container log signals readiness.
 	endpoint, err := exec.Endpoint(ctx, "80/tcp")
 	require.NoError(t, err)
 	assert.NotEmpty(t, endpoint)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+endpoint, nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Eventually(t, func() bool {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+endpoint, nil)
+		if err != nil {
+			return false
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 15*time.Second, 500*time.Millisecond, "nginx endpoint should become reachable")
 }
 
 func TestExecutor_StructBased_Nginx(t *testing.T) {
