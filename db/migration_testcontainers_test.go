@@ -60,6 +60,7 @@ func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -262,6 +263,7 @@ func TestPostgresMigrationsWithGorm(t *testing.T) {
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -354,6 +356,7 @@ func TestPostgresMigrationsWithGormError(t *testing.T) {
 			Username:     "testuser",
 			Password:     "testpass",
 			DBName:       "testdb",
+			SSLMode:      "disable", // testcontainer has no TLS
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,

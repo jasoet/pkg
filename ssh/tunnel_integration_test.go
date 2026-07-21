@@ -326,6 +326,8 @@ func TestSSHTunnelIntegration(t *testing.T) {
 }
 
 func TestSSHTunnelConnectionTimeout(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("Tunnel respects timeout setting", func(t *testing.T) {
 		// Try to connect to a non-existent server with short timeout
 		config := Config{

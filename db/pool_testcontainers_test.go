@@ -51,6 +51,7 @@ func setupPostgresContainer(t *testing.T) (*postgres.PostgresContainer, *Connect
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -91,6 +92,7 @@ func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -137,6 +139,7 @@ func setupMSSQLContainer(t *testing.T) (*mssql.MSSQLServerContainer, *Connection
 		Username:     "sa",
 		Password:     "StrongPass123!",
 		DBName:       "master",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -154,7 +157,7 @@ func TestPostgresPoolWithTestcontainers(t *testing.T) {
 	}()
 
 	// Test the DSN generation
-	dsn := config.Dsn()
+	dsn := config.dsn()
 	assert.Contains(t, dsn, "user=testuser")
 	assert.Contains(t, dsn, "password=testpass")
 	assert.Contains(t, dsn, "dbname=testdb")
@@ -218,7 +221,7 @@ func TestMySQLPoolWithTestcontainers(t *testing.T) {
 	}()
 
 	// Test the DSN generation
-	dsn := config.Dsn()
+	dsn := config.dsn()
 	assert.Contains(t, dsn, fmt.Sprintf("testuser:testpass@tcp(%s:%d)/testdb", config.Host, config.Port))
 	assert.Contains(t, dsn, "parseTime=true")
 
@@ -280,7 +283,7 @@ func TestMSSQLPoolWithTestcontainers(t *testing.T) {
 	}()
 
 	// Test the DSN generation
-	dsn := config.Dsn()
+	dsn := config.dsn()
 	assert.Contains(t, dsn, fmt.Sprintf("sqlserver://sa:StrongPass123!@%s:%d", config.Host, config.Port))
 	assert.Contains(t, dsn, "database=master")
 	assert.Contains(t, dsn, "encrypt=disable")

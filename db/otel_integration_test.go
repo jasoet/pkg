@@ -64,6 +64,7 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -236,6 +237,7 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -308,6 +310,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 			Username:     "testuser",
 			Password:     "testpass",
 			DBName:       "testdb",
+			SSLMode:      "disable", // testcontainer has no TLS
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -339,6 +342,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 			Username:     "testuser",
 			Password:     "testpass",
 			DBName:       "testdb",
+			SSLMode:      "disable", // testcontainer has no TLS
 			Timeout:      10 * time.Second,
 			MaxIdleConns: 5,
 			MaxOpenConns: 10,
@@ -480,6 +484,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
@@ -532,7 +537,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 		}
 
 		// DSN will be empty for unsupported type, so test DSN generation separately
-		dsn := config.Dsn()
+		dsn := config.dsn()
 		assert.Equal(t, "", dsn, "DSN should be empty for unsupported database type")
 
 		db, err := config.Pool()
@@ -622,6 +627,7 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 		Username:     "testuser",
 		Password:     "testpass",
 		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
 		Timeout:      10 * time.Second,
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,

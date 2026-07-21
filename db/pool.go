@@ -62,8 +62,8 @@ type ConnectionConfig struct {
 	ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime" mapstructure:"connMaxIdleTime"`
 
 	// SSLMode configures TLS for the connection.
-	// PostgreSQL: "disable", "require", "verify-ca", "verify-full" (default: "disable")
-	// MSSQL: "disable", "true", "false" (default: "disable")
+	// PostgreSQL: "disable", "require", "verify-ca", "verify-full" (default: "require")
+	// MSSQL: "disable", "true", "false" (default: "require")
 	// MySQL: handled via DSN parameters (this field is ignored for MySQL)
 	SSLMode string `yaml:"sslMode" mapstructure:"sslMode"`
 
