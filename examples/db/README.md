@@ -4,16 +4,16 @@ This directory contains examples demonstrating how to use the `db` package for d
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/db/examples/example.go](https://github.com/jasoet/pkg/blob/main/db/examples/example.go)
+**Full example implementation:** [example.go](./example.go)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
 ```go
 // Basic usage pattern
-import "github.com/jasoet/pkg/db"
+import "github.com/jasoet/pkg/v3/db"
 
 // Create database connection
-config := &db.ConnectionConfig{
+config := db.ConnectionConfig{
     DBType:       db.Postgresql, // or db.Mysql, db.MSSQL
     Host:         "localhost",
     Port:         5432,
@@ -25,19 +25,20 @@ config := &db.ConnectionConfig{
 }
 
 // Get GORM database instance
-database, err := config.Pool()
+database, err := db.NewPool(db.WithConnectionConfig(config))
 
-// Run migrations
-err = db.Migrate(database, "file://migrations")
+// Run migrations (PostgreSQL only; pass the pool's raw *sql.DB)
+sqlDB, _ := database.DB()
+err = db.RunPostgresMigrations(ctx, sqlDB, migrationFS, "migrations")
 
 // Check connection
 err = database.Exec("SELECT 1").Error
 ```
 
 **Critical notes:**
-- Always use logging.Initialize() before database operations
-- Connection strings are built automatically based on DBType
-- Migrations use golang-migrate library format
+- Initialize observability with `otel.Initialize("my-app", true)` before database operations
+- Connection strings are built automatically based on DBType; use `config.RedactedDsn()` for safe logging
+- Migrations use golang-migrate library format and only support PostgreSQL
 
 ## Overview
 
@@ -45,36 +46,38 @@ The `db` package provides utilities for:
 - Multi-database support (PostgreSQL, MySQL, SQL Server)
 - Connection pooling configuration with GORM
 - Database migrations with golang-migrate
-- Context-aware logging integration
+- OpenTelemetry tracing, metrics, and structured logging
 - Connection validation and health checks
 
 ## Running the Examples
 
-To run the examples, use the following command from the `db/examples` directory:
+The example program is gated behind the `example` build tag. Run it from the repository root:
 
 ```bash
-go run example.go
+go run -tags=example ./examples/db
 ```
 
-**Note**: The examples require a working database server. Update the configuration in the examples to match your environment, or use the provided Docker Compose setup.
+**Note**: The examples require a working database server. Override the defaults with environment variables if needed: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
 
 ## Database Setup
 
-For testing, you can use the Docker Compose configuration in the repository:
+For testing, use the Docker Compose configuration in the repository:
 
 ```bash
-# From the root directory
-task docker:up
+# From the repository root
+docker compose -f scripts/compose/docker-compose.yml up -d
 ```
 
 This starts PostgreSQL on `localhost:5439` with:
 - Username: `jasoet`
-- Password: `localhost` 
+- Password: `localhost`
 - Database: `pkg_db`
+
+(MySQL on `3309` and MSSQL on `1439` are also included.)
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/db/examples/example.go) file demonstrates several use cases:
+The [example.go](./example.go) file demonstrates several use cases:
 
 ### 1. Basic Database Connection
 
@@ -82,7 +85,7 @@ Connect to different database types with proper configuration:
 
 ```go
 // PostgreSQL connection
-config := &db.ConnectionConfig{
+config := db.ConnectionConfig{
     DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5439,
@@ -94,7 +97,7 @@ config := &db.ConnectionConfig{
     MaxOpenConns: 25,
 }
 
-database, err := config.Pool()
+database, err := db.NewPool(db.WithConnectionConfig(config))
 if err != nil {
     log.Fatal("Failed to connect:", err)
 }
@@ -105,7 +108,7 @@ if err != nil {
 Configure connection pools for optimal performance:
 
 ```go
-config := &db.ConnectionConfig{
+config := db.ConnectionConfig{
     DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
@@ -126,14 +129,19 @@ Run database migrations using embedded SQL files:
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
+sqlDB, err := database.DB()
+if err != nil {
+    log.Fatal("Failed to get SQL DB:", err)
+}
+
 // Run migrations up
-err := db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, "migrations")
+err = db.RunPostgresMigrations(ctx, sqlDB, migrationFS, "migrations")
 if err != nil {
     log.Fatal("Migration failed:", err)
 }
 
 // Run migrations down (rollback)
-err = db.RunPostgresMigrationsDownWithGorm(ctx, database, migrationFS, "migrations")
+err = db.RunPostgresMigrationsDown(ctx, sqlDB, migrationFS, "migrations")
 ```
 
 ### 4. Multiple Database Connections
@@ -142,22 +150,22 @@ Manage connections to multiple databases:
 
 ```go
 // Primary database
-primaryDB, err := (&db.ConnectionConfig{
+primaryDB, err := db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     DBType: db.Postgresql,
     Host: "primary.db.com", Port: 5432,
     Username: "app", Password: "secret",
     DBName: "primary_db",
     MaxIdleConns: 5, MaxOpenConns: 25,
-}).Pool()
+}))
 
 // Analytics database
-analyticsDB, err := (&db.ConnectionConfig{
+analyticsDB, err := db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     DBType: db.Mysql,
     Host: "analytics.db.com", Port: 3306,
     Username: "analytics", Password: "secret",
     DBName: "analytics_db",
     MaxIdleConns: 3, MaxOpenConns: 15,
-}).Pool()
+}))
 ```
 
 ### 5. GORM Model Operations
@@ -191,13 +199,15 @@ database.Delete(&user)
 
 ### 6. Raw SQL with Connection Pool
 
-Execute raw SQL queries using the connection pool:
+Execute raw SQL queries using a dedicated connection pool:
 
 ```go
+// SQLDB() opens a new pool; the caller must close it.
 sqlDB, err := config.SQLDB()
 if err != nil {
     log.Fatal("Failed to get SQL DB:", err)
 }
+defer sqlDB.Close()
 
 rows, err := sqlDB.Query("SELECT id, name FROM users WHERE active = $1", true)
 if err != nil {
@@ -281,9 +291,13 @@ The `ConnectionConfig` struct supports the following options:
 | `Username` | string | Database username | Yes |
 | `Password` | string | Database password | No |
 | `DBName` | string | Database name | Yes |
-| `Timeout` | time.Duration | Connection timeout (min: 3s) | No |
+| `Timeout` | time.Duration | Connection timeout (default: 30s) | No |
 | `MaxIdleConns` | int | Maximum idle connections (min: 1) | No |
 | `MaxOpenConns` | int | Maximum open connections (min: 2) | No |
+| `ConnMaxLifetime` | time.Duration | Max connection reuse time (0 = unlimited) | No |
+| `ConnMaxIdleTime` | time.Duration | Max connection idle time (0 = unlimited) | No |
+| `SSLMode` | string | TLS mode for PostgreSQL/MSSQL (default: "require"; ignored for MySQL) | No |
+| `GormLogLevel` | int | GORM logger verbosity (1=Silent … 4=Info; default: 1) | No |
 
 ### Database Type Constants
 
@@ -332,7 +346,7 @@ DROP TABLE IF EXISTS users;
 ### PostgreSQL
 
 ```go
-config := &db.ConnectionConfig{
+config := db.ConnectionConfig{
     DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
@@ -350,7 +364,7 @@ config := &db.ConnectionConfig{
 ### MySQL
 
 ```go
-config := &db.ConnectionConfig{
+config := db.ConnectionConfig{
     DBType:       db.Mysql,
     Host:         "localhost",
     Port:         3306,
@@ -365,10 +379,12 @@ config := &db.ConnectionConfig{
 
 **Connection String Format**: `username:password@tcp(host:3306)/database?parseTime=true&timeout=30s`
 
+Note: `SSLMode` is ignored for MySQL.
+
 ### SQL Server
 
 ```go
-config := &db.ConnectionConfig{
+config := db.ConnectionConfig{
     DBType:       db.MSSQL,
     Host:         "localhost",
     Port:         1433,
@@ -381,18 +397,19 @@ config := &db.ConnectionConfig{
 }
 ```
 
-**Connection String Format**: `sqlserver://username:password@host:1433?database=myapp&connectTimeout=30s&encrypt=disable`
+**Connection String Format**: `sqlserver://username:password@host:1433?database=myapp&connectTimeout=30s&encrypt=require`
 
-## Integration with Logging
+## Integration with OTel Logging
 
-The db package integrates with the logging package for structured logging:
+The db package emits structured logs through the `otel` package's zerolog-based logger:
 
 ```go
 ctx := context.Background()
-logger := logging.ContextLogger(ctx, "database")
+logger := otel.ContextLogger(ctx, "database")
 
-// Migration logging is automatic
-err := db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, "migrations")
+// Migration logging is automatic (via otel.Layers spans)
+sqlDB, _ := database.DB()
+err := db.RunPostgresMigrations(ctx, sqlDB, migrationFS, "migrations")
 
 // Custom database logging
 logger.Info().Msg("Database operation started")
@@ -454,8 +471,12 @@ if err := database.Error; err != nil {
 var migrationFS embed.FS
 
 // Run migrations in a separate function
-func runMigrations(ctx context.Context, db *gorm.DB) error {
-    return db.RunPostgresMigrationsWithGorm(ctx, db, migrationFS, "migrations")
+func runMigrations(ctx context.Context, database *gorm.DB) error {
+    sqlDB, err := database.DB()
+    if err != nil {
+        return err
+    }
+    return db.RunPostgresMigrations(ctx, sqlDB, migrationFS, "migrations")
 }
 ```
 
@@ -464,7 +485,7 @@ func runMigrations(ctx context.Context, db *gorm.DB) error {
 ```go
 // Use test databases for testing
 func setupTestDB() *gorm.DB {
-    config := &db.ConnectionConfig{
+    database, err := db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
         DBType:   db.Postgresql,
         Host:     "localhost",
         Port:     5432,
@@ -473,13 +494,11 @@ func setupTestDB() *gorm.DB {
         DBName:   "test_db",
         MaxIdleConns: 2,
         MaxOpenConns: 10,
-    }
-    
-    database, err := config.Pool()
+    }))
     if err != nil {
         panic(err)
     }
-    
+
     return database
 }
 ```
@@ -490,7 +509,7 @@ func setupTestDB() *gorm.DB {
 
 - **MaxOpenConns**: Should not exceed database's max connections
 - **MaxIdleConns**: Balance between resource usage and connection overhead
-- **Connection lifetime**: Consider setting `SetConnMaxLifetime()` for long-running applications
+- **Connection lifetime**: Set `ConnMaxLifetime`/`ConnMaxIdleTime` for long-running applications
 
 ### Query Optimization
 
@@ -506,12 +525,13 @@ func setupTestDB() *gorm.DB {
 1. **Connection Refused**: Database server not running or wrong host/port
 2. **Authentication Failed**: Invalid username/password
 3. **Database Not Found**: Database doesn't exist or wrong name
-4. **Connection Pool Exhausted**: Too many concurrent connections
-5. **Migration Conflicts**: Conflicting migration files or database state
+4. **TLS errors against local databases**: `SSLMode` defaults to `"require"` — set `SSLMode: "disable"` for dev databases without TLS
+5. **Connection Pool Exhausted**: Too many concurrent connections
+6. **Migration Conflicts**: Conflicting migration files or database state
 
 ### Debug Tips
 
-- Enable GORM logging: `db.Config{Logger: logger.Default.LogMode(logger.Info)}`
+- Enable GORM logging: set `GormLogLevel: 4` (Info) on the `ConnectionConfig`
 - Check database logs for detailed error messages
 - Verify network connectivity and firewall rules
 - Test connection with database client tools first
