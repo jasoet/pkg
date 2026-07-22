@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next, 'release/v2']
     tags: ['*']
   pull_request:
-    branches: [main]
+    branches: [main, next, 'release/v2']
 
 jobs:
   ci:
@@ -28,10 +28,10 @@ jobs:
 
       - name: API compatibility check
         # Breaking API changes are intended on `next` (v3 line) — informational there.
-        if: github.ref_name != 'next'
+        if: github.ref_name != 'next' && github.base_ref != 'next'
         run: nix develop --command go run golang.org/x/exp/cmd/gorelease@latest
 
       - name: API compatibility report (informational on next)
-        if: github.ref_name == 'next'
+        if: github.ref_name == 'next' || github.base_ref == 'next'
         continue-on-error: true
         run: nix develop --command go run golang.org/x/exp/cmd/gorelease@latest
