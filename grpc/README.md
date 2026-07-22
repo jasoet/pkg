@@ -203,23 +203,22 @@ The gRPC server package supports OpenTelemetry for comprehensive observability w
 package main
 
 import (
-    "context"
     "log"
 
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/otel"
-    grpcserver "github.com/jasoet/pkg/grpc"
+    "github.com/jasoet/pkg/v3/otel"
+    grpcserver "github.com/jasoet/pkg/v3/grpc"
     "google.golang.org/grpc"
 )
 
 func main() {
-    // Create OTel config with logging (traces and metrics optional)
-    otelCfg := otel.NewConfig("my-grpc-service",
-        otel.WithServiceVersion("1.0.0"))
+    // Optional: logger provider with better log-span correlation
+    loggerProvider, err := otel.NewLoggerProviderWithOptions("my-grpc-service")
+    if err != nil {
+        log.Fatal(err)
+    }
 
-    // Or use logging package for better log-span correlation
-    loggerProvider := logging.NewLoggerProvider("my-grpc-service", false)
-    otelCfg = otel.NewConfig("my-grpc-service",
+    // Create OTel config once (traces and metrics optional)
+    otelCfg := otel.NewConfig("my-grpc-service",
         otel.WithServiceVersion("1.0.0"),
         otel.WithLoggerProvider(loggerProvider))
 
@@ -251,9 +250,8 @@ import (
     "log"
     "time"
 
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/otel"
-    grpcserver "github.com/jasoet/pkg/grpc"
+    "github.com/jasoet/pkg/v3/otel"
+    grpcserver "github.com/jasoet/pkg/v3/grpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -296,16 +294,17 @@ func main() {
     )
 
     // Setup LoggerProvider with trace correlation
-    loggerProvider := logging.NewLoggerProvider("my-grpc-service", false)
+    loggerProvider, err := otel.NewLoggerProviderWithOptions("my-grpc-service")
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Create OTel config
-    otelCfg := &otel.Config{
-        ServiceName:    "my-grpc-service",
-        ServiceVersion: "1.0.0",
-        TracerProvider: tracerProvider,
-        MeterProvider:  meterProvider,
-        LoggerProvider: loggerProvider,
-    }
+    otelCfg := otel.NewConfig("my-grpc-service",
+        otel.WithServiceVersion("1.0.0"),
+        otel.WithTracerProvider(tracerProvider),
+        otel.WithMeterProvider(meterProvider),
+        otel.WithLoggerProvider(loggerProvider))
 
     // Start gRPC server with full OTel instrumentation
     server, err := grpcserver.New(

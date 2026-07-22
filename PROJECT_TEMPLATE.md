@@ -334,20 +334,14 @@ pool, err := cfg.Database.Pool() // OTelConfig injected at runtime, not from YAM
 ### Bootstrap
 
 ```go
-// Create OTel config with service name
-otelCfg := otel.NewConfig("myapp")
-
-// Optionally attach real providers (nil = no-op, zero overhead)
-otelCfg = otel.NewConfig("myapp",
-    otel.WithTracerProvider(tracerProvider),
-    otel.WithMeterProvider(meterProvider))
-
-// For OTel-based logging (replaces zerolog global)
+// Optional: OTel-based logging provider (console + optional OTLP export)
 loggerProvider, err := otel.NewLoggerProviderWithOptions("myapp",
     otel.WithConsoleOutput(true),
-    otel.WithLogLevel(otel.LogLevel("info")),
+    otel.WithLogLevel(otel.LogLevelInfo),
 )
-otelCfg = otel.NewConfig("myapp",
+
+// Create OTel config once; unattached providers stay no-op with zero overhead
+otelCfg := otel.NewConfig("myapp",
     otel.WithTracerProvider(tracerProvider),
     otel.WithMeterProvider(meterProvider),
     otel.WithLoggerProvider(loggerProvider))
@@ -2027,7 +2021,7 @@ tasks:
 | Configuration | `config` | `config.LoadString[T](yaml, prefix...)` |
 | OpenTelemetry | `otel` | `otel.NewConfig(name)`, `otel.Layers.Start*()`, `otel.F(k, v)` |
 | OTel Logging | `otel` | `otel.NewLoggerProviderWithOptions(name, opts...)` |
-| Legacy Logging | `logging` | `logging.Initialize(name, debug)` |
+| Global Logger | `otel` | `otel.Initialize(name, debug)`, `otel.ContextLogger(ctx, component)` |
 | Database Pool | `db` | `db.ConnectionConfig{...}.Pool()` |
 | Migrations | `db` | `db.RunPostgresMigrationsWithGorm(ctx, pool, fs, path)` |
 | HTTP Server | `server` | `server.StartWithConfig(cfg)`, `server.DefaultConfig(port, op, shut)` |

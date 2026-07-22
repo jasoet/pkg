@@ -124,6 +124,8 @@ func Example_optionalFunctionParameter() {
 	logger2 := otel.NewLogHelper(ctx, cfg, "mypackage", "")
 	logger2.Info("Message without function", otel.F("key", "value"))
 
+	// Log records are written to stderr; stdout stays empty.
+
 	// Output:
 }
 
@@ -141,6 +143,8 @@ func Example_logHelperSpanAccessor() {
 	if logger != nil && logger.Span().IsRecording() {
 		logger.Info("Span is active")
 	}
+
+	// Log records are written to stderr; stdout stays empty.
 
 	// Output:
 }

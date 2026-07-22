@@ -5,19 +5,18 @@
 //   - Library-specific semantic conventions
 //   - No-op implementations when telemetry is disabled
 //   - Integrated span and logging with automatic correlation
-//   - Layer-aware instrumentation (Handler, Operations, Service, Repository)
+//   - Layer-aware instrumentation (Handler, Middleware, Operations, Service, Repository)
 //
 // # Configuration
 //
-// Create an otel.Config with the desired providers:
+// Create an otel.Config with NewConfig and functional options:
 //
-//	cfg := &otel.Config{
-//	    TracerProvider: tracerProvider,  // optional
-//	    MeterProvider:  meterProvider,   // optional
-//	    LoggerProvider: loggerProvider,  // optional
-//	    ServiceName:    "my-service",
-//	    ServiceVersion: "1.0.0",
-//	}
+//	cfg := otel.NewConfig("my-service",
+//	    otel.WithServiceVersion("1.0.0"),
+//	    otel.WithTracerProvider(tracerProvider),  // optional
+//	    otel.WithMeterProvider(meterProvider),    // optional
+//	    otel.WithLoggerProvider(loggerProvider),  // optional
+//	)
 //
 // Then pass this config to package configurations (server.Config, grpc options, etc.).
 //

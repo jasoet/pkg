@@ -222,6 +222,8 @@ func (h *SpanHelper) Error(err error, message string) error {
 
 // Success marks the span as successful with an optional message.
 // This is optional but provides explicit success signaling.
+// Note: per the OTel specification, the status description is dropped for
+// codes.Ok, so the message is not retained on the span.
 //
 // Example:
 //
@@ -306,7 +308,8 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 // Success marks the operation as successful in both span and logs.
 // Base fields from StartX are automatically included in the log via the Logger.
 // Additional fields are also added as span attributes for correlation.
-// The message is used as the span status message for consistency with Error().
+// The span status is set to codes.Ok; per the OTel specification the status
+// description is dropped for Ok, so the message appears only in the log.
 //
 // Example:
 //

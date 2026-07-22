@@ -232,4 +232,12 @@ func TestLayerContext_ErrorSuccessEnd(t *testing.T) {
 
 		requireSingleSpan(t, exporter)
 	})
+
+	t.Run("Success without config in context does not panic", func(t *testing.T) {
+		lc := Layers.StartService(context.Background(), "user", "CreateUser")
+		assert.NotPanics(t, func() {
+			lc.Success("user created", F("user.id", "123"))
+		})
+		lc.End()
+	})
 }

@@ -30,12 +30,14 @@ func Example_withoutOTelConfig() {
 	err := errors.New("validation failed")
 	if err != nil {
 		_ = lc.Error(err, "User creation failed")
+		fmt.Println("Error recorded in span and log")
 		return
 	}
 
 	lc.Success("User created successfully")
 
-	fmt.Println("Spans and logging work without OTel config")
+	// Output:
+	// Error recorded in span and log
 }
 
 // Example_withOTelConfig demonstrates full OTel integration with tracing and structured logging.
@@ -61,6 +63,9 @@ func Example_withOTelConfig() {
 	lc.Success("User created successfully")
 
 	fmt.Println("OTel integration active")
+
+	// Output:
+	// OTel integration active
 }
 
 // Example_layerPropagation demonstrates context propagation through layers.
@@ -108,6 +113,9 @@ func Example_layerPropagation() {
 
 	// All logs will be correlated with trace_id and span_id
 	fmt.Println("Request completed with full trace")
+
+	// Output:
+	// Request completed with full trace
 }
 
 // Example_gradualOTelAdoption shows how to add OTel config to an existing app.
@@ -131,6 +139,9 @@ func Example_gradualOTelAdoption() {
 	lc2.Logger.Info("Phase 2: OTel integration added")
 
 	fmt.Println("Gradual OTel adoption completed")
+
+	// Output:
+	// Gradual OTel adoption completed
 }
 
 // Example_configOptionalButRecommended demonstrates that config is optional but recommended.
@@ -158,4 +169,60 @@ func Example_configOptionalButRecommended() {
 	// - Consistent log formatting
 
 	fmt.Println("Both patterns work, config recommended for production")
+
+	// Output:
+	// Both patterns work, config recommended for production
+}
+
+// ExampleNewConfig demonstrates creating a Config with functional options.
+// Without provider options, tracing and metrics are no-op while logging
+// defaults to a zerolog-based provider.
+func ExampleNewConfig() {
+	cfg := otel.NewConfig("my-service",
+		otel.WithServiceVersion("1.0.0"))
+
+	fmt.Println("service:", cfg.ServiceName)
+	fmt.Println("version:", cfg.ServiceVersion)
+	fmt.Println("logging enabled:", cfg.IsLoggingEnabled())
+	fmt.Println("tracing enabled:", cfg.IsTracingEnabled())
+	fmt.Println("metrics enabled:", cfg.IsMetricsEnabled())
+
+	// Output:
+	// service: my-service
+	// version: 1.0.0
+	// logging enabled: true
+	// tracing enabled: false
+	// metrics enabled: false
+}
+
+// ExampleNewLoggerProviderWithOptions demonstrates creating a console-only
+// logger provider with a custom log level and attaching it to a Config.
+func ExampleNewLoggerProviderWithOptions() {
+	// Console output is enabled by default; no OTLP collector required.
+	provider, err := otel.NewLoggerProviderWithOptions("my-service",
+		otel.WithLogLevel(otel.LogLevelDebug))
+	if err != nil {
+		panic(err)
+	}
+
+	cfg := otel.NewConfig("my-service", otel.WithLoggerProvider(provider))
+
+	fmt.Println("logging enabled:", cfg.IsLoggingEnabled())
+
+	// Output:
+	// logging enabled: true
+}
+
+// ExampleInitialize demonstrates bootstrapping the global zerolog logger
+// for plain (non-OTel) logging. Log records are written to stderr.
+func ExampleInitialize() {
+	// Console-only global logger at info level.
+	if err := otel.Initialize("my-service", false); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("global logger initialized")
+
+	// Output:
+	// global logger initialized
 }
