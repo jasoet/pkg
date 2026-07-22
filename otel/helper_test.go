@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel/log/noop"
-
-	"github.com/jasoet/pkg/v3/logging"
 )
 
 func TestNewLogHelper(t *testing.T) {
@@ -184,7 +182,7 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 	t.Run("warn level filters info and debug", func(t *testing.T) {
 		// Create logger provider with WARN level
 		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
-			WithLogLevel(logging.LogLevelWarn))
+			WithLogLevel(LogLevelWarn))
 
 		cfg := &Config{
 			ServiceName:    "test-service",
@@ -204,7 +202,7 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 
 	t.Run("info level filters debug only", func(t *testing.T) {
 		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
-			WithLogLevel(logging.LogLevelInfo))
+			WithLogLevel(LogLevelInfo))
 
 		cfg := &Config{
 			ServiceName:    "test-service",
@@ -224,7 +222,7 @@ func TestLogHelper_LogLevelFiltering(t *testing.T) {
 
 	t.Run("error level filters all except errors", func(t *testing.T) {
 		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
-			WithLogLevel(logging.LogLevelError))
+			WithLogLevel(LogLevelError))
 
 		cfg := &Config{
 			ServiceName:    "test-service",

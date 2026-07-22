@@ -12,8 +12,6 @@ import (
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	noopt "go.opentelemetry.io/otel/trace/noop"
-
-	"github.com/jasoet/pkg/v3/logging"
 )
 
 type contextKey string
@@ -66,11 +64,11 @@ type Config struct {
 //
 // For custom logger configuration:
 //
-//	import "github.com/jasoet/pkg/v3/logging"
 //	cfg := &otel.Config{
-//	    ServiceName:    "my-service",
-//	    LoggerProvider: logging.NewLoggerProvider("my-service", true), // enable debug mode
+//	    ServiceName: "my-service",
 //	}
+//	cfg.LoggerProvider, _ = otel.NewLoggerProviderWithOptions("my-service",
+//	    otel.WithLogLevel(otel.LogLevelDebug)) // enable debug mode
 //	cfg.WithTracerProvider(tp).WithMeterProvider(mp)
 func NewConfig(serviceName string) *Config {
 	return &Config{
@@ -162,7 +160,7 @@ func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
 	// Use the otel package's own logger provider with console output only (no OTLP)
 	var opts []LoggerProviderOption
 	if debug {
-		opts = append(opts, WithLogLevel(logging.LogLevelDebug))
+		opts = append(opts, WithLogLevel(LogLevelDebug))
 	}
 	provider, err := NewLoggerProviderWithOptions(serviceName, opts...)
 	if err != nil {

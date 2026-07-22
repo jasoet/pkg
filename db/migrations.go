@@ -13,14 +13,14 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/jasoet/pkg/v3/logging"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // RunPostgresMigrationsWithGorm applies pending UP migrations using a GORM connection.
 //
 // Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrationsWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
-	logger := logging.ContextLogger(ctx, "db.migrations")
+	logger := otel.ContextLogger(ctx, "db.migrations")
 	logger.Debug().Msg("Starting PostgreSQL migrations UP with GORM")
 
 	sqlDB, err := db.DB()
@@ -34,7 +34,7 @@ func RunPostgresMigrationsWithGorm(ctx context.Context, db *gorm.DB, migrationFs
 //
 // Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrationsDownWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
-	logger := logging.ContextLogger(ctx, "db.migrations")
+	logger := otel.ContextLogger(ctx, "db.migrations")
 	logger.Debug().Msg("Starting PostgreSQL migrations DOWN with GORM")
 
 	sqlDB, err := db.DB()
@@ -45,7 +45,7 @@ func RunPostgresMigrationsDownWithGorm(ctx context.Context, db *gorm.DB, migrati
 }
 
 func setupMigration(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) (*migrate.Migrate, zerolog.Logger, error) {
-	logger := logging.ContextLogger(ctx, "db.migrations")
+	logger := otel.ContextLogger(ctx, "db.migrations")
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {

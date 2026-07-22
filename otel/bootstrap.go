@@ -1,4 +1,4 @@
-package logging
+package otel
 
 import (
 	"context"
@@ -183,16 +183,3 @@ func ContextLogger(ctx context.Context, component string) zerolog.Logger {
 		Str("component", component).
 		Logger()
 }
-
-// LogLevel defines log level strings used by the otel package for cross-package configuration.
-// Trace and Fatal levels are intentionally excluded: Trace is not supported by zerolog natively,
-// and Fatal triggers os.Exit which is unsuitable for library use.
-type LogLevel string
-
-const (
-	LogLevelDebug LogLevel = "debug"
-	LogLevelInfo  LogLevel = "info"
-	LogLevelWarn  LogLevel = "warn"
-	LogLevelError LogLevel = "error"
-	LogLevelNone  LogLevel = "none"
-)

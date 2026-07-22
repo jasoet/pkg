@@ -6,8 +6,6 @@ import (
 
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/noop"
-
-	"github.com/jasoet/pkg/v3/logging"
 )
 
 // TestWithConsoleOutput tests the WithConsoleOutput option
@@ -99,28 +97,28 @@ func TestWithLogLevel(t *testing.T) {
 	}{
 		{
 			name:     "debug level",
-			level:    logging.LogLevelDebug,
-			expected: logging.LogLevelDebug,
+			level:    LogLevelDebug,
+			expected: LogLevelDebug,
 		},
 		{
 			name:     "info level",
-			level:    logging.LogLevelInfo,
-			expected: logging.LogLevelInfo,
+			level:    LogLevelInfo,
+			expected: LogLevelInfo,
 		},
 		{
 			name:     "warn level",
-			level:    logging.LogLevelWarn,
-			expected: logging.LogLevelWarn,
+			level:    LogLevelWarn,
+			expected: LogLevelWarn,
 		},
 		{
 			name:     "error level",
-			level:    logging.LogLevelError,
-			expected: logging.LogLevelError,
+			level:    LogLevelError,
+			expected: LogLevelError,
 		},
 		{
 			name:     "none level",
-			level:    logging.LogLevelNone,
-			expected: logging.LogLevelNone,
+			level:    LogLevelNone,
+			expected: LogLevelNone,
 		},
 	}
 
@@ -147,7 +145,7 @@ func TestNewLoggerProviderWithOptions_NoOTLP(t *testing.T) {
 		{
 			name:        "debug mode without OTLP",
 			serviceName: "test-service",
-			opts:        []LoggerProviderOption{WithLogLevel(logging.LogLevelDebug)},
+			opts:        []LoggerProviderOption{WithLogLevel(LogLevelDebug)},
 		},
 		{
 			name:        "info mode without OTLP",
@@ -158,7 +156,7 @@ func TestNewLoggerProviderWithOptions_NoOTLP(t *testing.T) {
 			name:        "explicit log level without OTLP",
 			serviceName: "test-service",
 			opts: []LoggerProviderOption{
-				WithLogLevel(logging.LogLevelWarn),
+				WithLogLevel(LogLevelWarn),
 			},
 		},
 	}
@@ -203,7 +201,7 @@ func TestNewLoggerProviderWithOptions_WithOTLP(t *testing.T) {
 			serviceName,
 			WithOTLPEndpoint(endpoint, true),
 			WithConsoleOutput(true),
-			WithLogLevel(logging.LogLevelInfo),
+			WithLogLevel(LogLevelInfo),
 		)
 
 		// We expect an error since the endpoint is invalid
@@ -221,15 +219,15 @@ func TestNewLoggerProviderWithOptions_LogLevelPriority(t *testing.T) {
 	}{
 		{
 			name:          "explicit error level",
-			explicitLevel: logging.LogLevelError,
+			explicitLevel: LogLevelError,
 		},
 		{
 			name:          "explicit debug level",
-			explicitLevel: logging.LogLevelDebug,
+			explicitLevel: LogLevelDebug,
 		},
 		{
 			name:          "explicit warn level",
-			explicitLevel: logging.LogLevelWarn,
+			explicitLevel: LogLevelWarn,
 		},
 		{
 			name:          "default level (info)",
@@ -263,7 +261,7 @@ func TestNewLoggerProviderWithOptions_MultipleOptions(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
 			WithConsoleOutput(true),
-			WithLogLevel(logging.LogLevelWarn),
+			WithLogLevel(LogLevelWarn),
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -277,7 +275,7 @@ func TestNewLoggerProviderWithOptions_MultipleOptions(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
 			WithConsoleOutput(false),
-			WithLogLevel(logging.LogLevelInfo),
+			WithLogLevel(LogLevelInfo),
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -320,23 +318,23 @@ func TestSetupZerologConsole(t *testing.T) {
 	}{
 		{
 			name:     "debug level",
-			logLevel: logging.LogLevelDebug,
+			logLevel: LogLevelDebug,
 		},
 		{
 			name:     "info level",
-			logLevel: logging.LogLevelInfo,
+			logLevel: LogLevelInfo,
 		},
 		{
 			name:     "warn level",
-			logLevel: logging.LogLevelWarn,
+			logLevel: LogLevelWarn,
 		},
 		{
 			name:     "error level",
-			logLevel: logging.LogLevelError,
+			logLevel: LogLevelError,
 		},
 		{
 			name:     "none level",
-			logLevel: logging.LogLevelNone,
+			logLevel: LogLevelNone,
 		},
 		{
 			name:     "unknown level defaults to info",
@@ -389,7 +387,7 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"my-service",
 			WithConsoleOutput(true),
-			WithLogLevel(logging.LogLevelInfo),
+			WithLogLevel(LogLevelInfo),
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -404,7 +402,7 @@ func TestNewLoggerProviderWithOptions_Integration(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"my-service",
 			WithConsoleOutput(false),
-			WithLogLevel(logging.LogLevelNone),
+			WithLogLevel(LogLevelNone),
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -462,7 +460,7 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
 			WithConsoleOutput(true),
-			WithLogLevel(logging.LogLevelDebug),
+			WithLogLevel(LogLevelDebug),
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -476,8 +474,8 @@ func TestLoggerProviderOptions_Chaining(t *testing.T) {
 		// Multiple log level options - last one should win
 		provider, err := NewLoggerProviderWithOptions(
 			"test-service",
-			WithLogLevel(logging.LogLevelDebug),
-			WithLogLevel(logging.LogLevelError), // This should win
+			WithLogLevel(LogLevelDebug),
+			WithLogLevel(LogLevelError), // This should win
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)

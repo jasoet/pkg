@@ -12,13 +12,18 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
-
-	"github.com/jasoet/pkg/v3/logging"
 )
 
-// LogLevel is an alias for logging.LogLevel for convenience.
-// Use logging.LogLevel constants directly (logging.LogLevelDebug, etc.)
-type LogLevel = logging.LogLevel
+// LogLevel represents the logging level for the console/OTel log pipeline.
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
+	LogLevelNone  LogLevel = "none"
+)
 
 // LoggerProviderOption configures LoggerProvider behavior
 type LoggerProviderOption func(*loggerProviderConfig)
@@ -80,7 +85,7 @@ func WithLogLevel(level LogLevel) LoggerProviderOption {
 // Example:
 //
 //	provider, err := otel.NewLoggerProviderWithOptions("my-service",
-//	    otel.WithLogLevel(logging.LogLevelDebug),
+//	    otel.WithLogLevel(otel.LogLevelDebug),
 //	    otel.WithOTLPEndpoint("https://localhost:4318", true),
 //	    otel.WithConsoleOutput(true))
 func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOption) (log.LoggerProvider, error) {
@@ -95,7 +100,7 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 
 	effectiveLevel := cfg.logLevel
 	if effectiveLevel == "" {
-		effectiveLevel = logging.LogLevelInfo
+		effectiveLevel = LogLevelInfo
 	}
 
 	ctx := context.Background()
@@ -227,15 +232,15 @@ func (e *consoleExporter) ForceFlush(ctx context.Context) error {
 // logLevelToZerolog converts LogLevel to zerolog.Level
 func logLevelToZerolog(level LogLevel) zerolog.Level {
 	switch level {
-	case logging.LogLevelDebug:
+	case LogLevelDebug:
 		return zerolog.DebugLevel
-	case logging.LogLevelInfo:
+	case LogLevelInfo:
 		return zerolog.InfoLevel
-	case logging.LogLevelWarn:
+	case LogLevelWarn:
 		return zerolog.WarnLevel
-	case logging.LogLevelError:
+	case LogLevelError:
 		return zerolog.ErrorLevel
-	case logging.LogLevelNone:
+	case LogLevelNone:
 		return zerolog.Disabled
 	default:
 		return zerolog.InfoLevel
