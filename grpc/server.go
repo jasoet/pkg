@@ -36,6 +36,8 @@ type Server struct {
 	healthManager *HealthManager
 	shutdownOnce  sync.Once
 	running       bool
+	starting      bool // true while Start is in flight, before all handles are published
+	startCond     *sync.Cond
 	mu            sync.RWMutex
 }
 
@@ -50,6 +52,7 @@ func New(opts ...Option) (*Server, error) {
 		config:        cfg,
 		healthManager: NewHealthManager(),
 	}
+	server.startCond = sync.NewCond(&server.mu)
 
 	// Setup gRPC server
 	server.setupGRPCServer()
@@ -178,9 +181,10 @@ func (s *Server) setupEchoServer() error {
 	}
 
 	// Setup gateway integration if a service or gateway registrar is provided.
-	// NOTE: Gateway routes are registered here, before echoConfigurer, so that
-	// user-supplied routes from echoConfigurer always take precedence over the
-	// auto-generated gateway catch-all routes.
+	// NOTE: the gateway is mounted as a wildcard catch-all (basePath + "/*"),
+	// so Echo's route priority — static routes win over wildcards — lets
+	// user-supplied routes from echoConfigurer take precedence over the
+	// auto-generated gateway routes regardless of registration order.
 	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		if err := s.setupGatewayIntegration(e); err != nil {
 			return fmt.Errorf("failed to setup gateway integration: %w", err)
@@ -227,8 +231,11 @@ func (s *Server) Start() error {
 	}
 	// Mark running inside the same critical section as the check so two
 	// concurrent Start calls cannot both pass the guard; every error path
-	// below rolls this back to false.
+	// below rolls this back to false. Also mark starting so a concurrent
+	// Stop blocks (instead of tearing down a half-published server) until
+	// startup either completes or is rolled back.
 	s.running = true
+	s.starting = true
 	// On restart after a completed Stop the previous gRPC server is spent
 	// (Serve returns grpc.ErrServerStopped after GracefulStop) and
 	// shutdownOnce has been consumed; rebuild both so Start/Stop cycles work.
@@ -241,7 +248,9 @@ func (s *Server) Start() error {
 	if err := s.setupEchoServer(); err != nil {
 		s.mu.Lock()
 		s.running = false
+		s.starting = false
 		s.mu.Unlock()
+		s.startCond.Broadcast()
 		return fmt.Errorf("failed to setup Echo server: %w", err)
 	}
 
@@ -261,15 +270,29 @@ func (s *Server) Start() error {
 		// mark it spent so a subsequent Start rebuilds it.
 		s.mu.Lock()
 		s.running = false
+		s.starting = false
 		if s.grpcServer != nil {
 			s.grpcServer.Stop()
 			s.grpcServer = nil
 		}
 		s.mu.Unlock()
+		s.startCond.Broadcast()
 		return err
 	}
 
 	return nil
+}
+
+// endStartup closes the startup window and wakes any Stop callers blocked
+// waiting for startup to settle. It must be called after every handle Stop
+// needs (s.echo, s.httpServer) has been published and before Start blocks in
+// the serve loop. The lock round-trip publishes those handles to the woken
+// Stop.
+func (s *Server) endStartup() {
+	s.mu.Lock()
+	s.starting = false
+	s.mu.Unlock()
+	s.startCond.Broadcast()
 }
 
 // startSeparateMode starts gRPC and HTTP servers on separate ports
@@ -298,10 +321,15 @@ func (s *Server) startSeparateMode() error {
 		if s.config.enableReflection {
 			s.logInfo("gRPC reflection enabled")
 		}
-		if err := grpcServer.Serve(grpcListener); err != nil {
+		if err := grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			log.Printf("gRPC server error: %v", err)
 		}
 	}()
+
+	// All handles a concurrent Stop needs are published (s.echo during
+	// setupEchoServer, the gRPC server above); close the startup window
+	// before blocking in Echo's serve loop.
+	s.endStartup()
 
 	// Start Echo HTTP server
 	s.logInfo(fmt.Sprintf("Echo HTTP server starting on port %s", s.config.httpPort))
@@ -350,6 +378,10 @@ func (s *Server) startH2CMode() error {
 		IdleTimeout:       s.config.idleTimeout,
 	}
 
+	// s.echo and s.httpServer are now published; close the startup window
+	// before blocking in ListenAndServe so a concurrent Stop can proceed.
+	s.endStartup()
+
 	s.logInfo(fmt.Sprintf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.grpcPort))
 	s.logInfo(fmt.Sprintf("gRPC endpoints available on port %s", s.config.grpcPort))
 	if s.config.enableReflection {
@@ -368,9 +400,18 @@ func (s *Server) startH2CMode() error {
 	return nil
 }
 
-// Stop gracefully stops the server
+// Stop gracefully stops the server. If a Start call is currently in flight,
+// Stop blocks until startup has completed (or been rolled back) before
+// proceeding, so it never tears down a half-published server and never
+// leaves an unstoppable zombie behind.
 func (s *Server) Stop() error {
 	s.mu.Lock()
+	for s.starting {
+		// Start is between the running check and publishing all handles
+		// (s.echo, s.httpServer); wait for endStartup to close that window.
+		// The lock round-trip in endStartup also publishes those handles.
+		s.startCond.Wait()
+	}
 	if !s.running {
 		s.mu.Unlock()
 		return nil

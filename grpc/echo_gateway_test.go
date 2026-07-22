@@ -20,14 +20,18 @@ func TestMountGatewayOnEcho(t *testing.T) {
 
 	// Verify that routes were registered
 	routes := e.Routes()
-	found := false
+	foundWildcard := false
+	foundBare := false
 	for _, route := range routes {
 		if route.Path == "/api/v1/*" {
-			found = true
-			break
+			foundWildcard = true
+		}
+		if route.Path == "/api/v1" {
+			foundBare = true
 		}
 	}
-	assert.True(t, found, "Expected gateway route to be registered")
+	assert.True(t, foundWildcard, "Expected gateway wildcard route to be registered")
+	assert.True(t, foundBare, "Expected bare base-path route to be registered")
 }
 
 func TestCreateGatewayMux(t *testing.T) {

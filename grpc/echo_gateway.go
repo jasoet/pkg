@@ -22,6 +22,10 @@ func MountGatewayOnEcho(e *echo.Echo, gatewayMux *runtime.ServeMux, basePath str
 	// path so the mux matches proto http-rule patterns like "/users".
 	gatewayGroup.Any("/*", echo.WrapHandler(http.StripPrefix(basePath, gatewayMux)))
 
+	// Also route the bare base path ("/api/v1", no trailing slash) to the
+	// gateway mux; "/*" does not match it, so without this Echo would 404.
+	gatewayGroup.Any("", echo.WrapHandler(http.StripPrefix(basePath, gatewayMux)))
+
 	log.Printf("gRPC Gateway mounted at %s", basePath)
 }
 

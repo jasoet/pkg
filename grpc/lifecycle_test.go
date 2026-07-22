@@ -97,6 +97,102 @@ func TestServerRestartStoppable(t *testing.T) {
 	}
 }
 
+// TestServerRestartStoppableH2C is the H2C-mode counterpart of
+// TestServerRestartStoppable: full Start -> Stop -> Start -> Stop cycles on a
+// single port, with the port actually released after each Stop.
+func TestServerRestartStoppableH2C(t *testing.T) {
+	port := freePort(t)
+
+	server, err := New(
+		WithH2CMode(),
+		WithGRPCPort(port),
+		WithShutdownTimeout(5*time.Second),
+	)
+	require.NoError(t, err)
+
+	startErr := make(chan error, 2)
+
+	for cycle := 1; cycle <= 2; cycle++ {
+		t.Run(fmt.Sprintf("cycle%d", cycle), func(t *testing.T) {
+			go func() { startErr <- server.Start() }()
+
+			waitForPort(t, port, 5*time.Second)
+			assert.True(t, server.IsRunning(), "server should report running after Start (cycle %d)", cycle)
+
+			require.NoError(t, server.Stop(), "Stop must succeed (cycle %d)", cycle)
+
+			err := recvWithTimeout(t, startErr, 10*time.Second)
+			assert.NoError(t, err, "Start must return nil after graceful Stop (cycle %d)", cycle)
+			assert.False(t, server.IsRunning(), "server must not report running after Stop (cycle %d)", cycle)
+
+			conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+port, 100*time.Millisecond)
+			if dialErr == nil {
+				conn.Close()
+				t.Fatalf("port %s still accepting connections after Stop (cycle %d)", port, cycle)
+			}
+		})
+	}
+}
+
+// TestServerStopDuringStartNoZombie races Stop against an in-flight Start:
+// Stop must never observe a half-published server (no data race, no nil
+// handles) and must never leave a zombie that serves while IsRunning() is
+// false. Run with -race. Each iteration must settle into either fully
+// running or fully stopped, and a final Stop leaves nothing listening.
+func TestServerStopDuringStartNoZombie(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		grpcPort := freePort(t)
+		httpPort := freePort(t)
+
+		server, err := New(
+			WithSeparateMode(grpcPort, httpPort),
+			WithShutdownTimeout(5*time.Second),
+		)
+		require.NoError(t, err)
+
+		startErr := make(chan error, 1)
+		go func() { startErr <- server.Start() }()
+		require.NoError(t, server.Stop(), "Stop racing Start must not error")
+
+		// Wait until the iteration settles: Start returned (fully stopped) or
+		// the HTTP port is serving (fully running — the early Stop landed
+		// before Start marked the server running and was a no-op).
+		settled := false
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) && !settled {
+			select {
+			case err := <-startErr:
+				assert.NoError(t, err, "Start must return nil after graceful Stop")
+				settled = true
+			default:
+			}
+			if !settled {
+				conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+httpPort, 100*time.Millisecond)
+				if dialErr == nil {
+					conn.Close()
+					require.NoError(t, server.Stop(), "Stop of the fully running server must succeed")
+					err := recvWithTimeout(t, startErr, 10*time.Second)
+					assert.NoError(t, err, "Start must return nil after graceful Stop")
+					settled = true
+				}
+			}
+			if !settled {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		require.True(t, settled, "iteration %d never settled: Start neither returned nor served", i)
+
+		assert.False(t, server.IsRunning(), "no zombie: not serving while reporting stopped")
+		require.NoError(t, server.Stop(), "final Stop must be a no-op, not an error")
+
+		conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+httpPort, 100*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			t.Fatalf("iteration %d: HTTP port %s still accepting connections after final Stop", i, httpPort)
+		}
+	}
+}
+
 // TestServerFailedStartNotRunning verifies that a failed Start (e.g. busy
 // gRPC port) rolls back the running flag: IsRunning() must be false after
 // Start returns an error.
