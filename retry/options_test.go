@@ -30,3 +30,16 @@ func TestDo_InvalidConfigReturnsErrorNotPanic(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "multiplier")
 }
+
+func TestDo_InvalidInitialIntervalReturnsErrorNotPanic(t *testing.T) {
+	cfg := retry.New(retry.WithInitialInterval(0))
+
+	attempts := 0
+	err := retry.Do(context.Background(), cfg, func(ctx context.Context) error {
+		attempts++
+		return errors.New("boom")
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "initial interval")
+	assert.Equal(t, 0, attempts, "no attempt should run")
+}

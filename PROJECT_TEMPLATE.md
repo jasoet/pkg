@@ -363,10 +363,11 @@ client := rest.NewClient(
     rest.WithRestConfig(restCfg),
 )
 
-// Retry — builder method (value receiver)
-retryCfg := retry.DefaultConfig().
-    WithName("db.connect").
-    WithOTel(otelCfg)
+// Retry — functional options
+retryCfg := retry.New(
+    retry.WithName("db.connect"),
+    retry.WithOTelConfig(otelCfg),
+)
 ```
 
 ### No-Op Pattern
@@ -2027,7 +2028,7 @@ tasks:
 | HTTP Server | `server` | `server.StartWithConfig(cfg)`, `server.DefaultConfig(port, op, shut)` |
 | gRPC Server | `grpc` | `grpc.New(opts...)`, `grpc.Start(port, registrar, opts...)` |
 | REST Client | `rest` | `rest.NewClient(opts...)`, `client.MakeRequestWithTrace(...)` |
-| Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.DefaultConfig().WithName(n).WithOTel(c)` |
+| Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.New(retry.WithName(n), retry.WithOTelConfig(c))` |
 | Concurrency | `concurrent` | `concurrent.ExecuteConcurrently(ctx, funcs)` |
 | Temporal Client | `temporal` | `temporal.NewClient(cfg)` |
 | Temporal Worker | `temporal` | `temporal.NewWorkerManager(cfg)`, `wm.Register(queue, opts)` |

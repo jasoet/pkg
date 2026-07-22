@@ -120,7 +120,7 @@ server.StartWithConfig(cfg)
 ### Add Retry Logic
 
 ```go
-cfg := retry.DefaultConfig().WithName("db.connect").WithOTel(otelConfig)
+cfg := retry.New(retry.WithName("db.connect"), retry.WithOTelConfig(otelConfig))
 err := retry.Do(ctx, cfg, func(ctx context.Context) error { return db.Ping(ctx) })
 ```
 

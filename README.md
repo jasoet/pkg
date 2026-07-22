@@ -338,10 +338,11 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 Production-ready retry mechanism using `cenkalti/backoff/v4` with OTel instrumentation.
 
 ```go
-cfg := retry.DefaultConfig().
-    WithName("db.connect").
-    WithMaxRetries(3).
-    WithOTel(otelConfig)
+cfg := retry.New(
+    retry.WithName("db.connect"),
+    retry.WithMaxRetries(3),
+    retry.WithOTelConfig(otelConfig),
+)
 
 err := retry.Do(ctx, cfg, func(ctx context.Context) error {
     return db.Ping(ctx)

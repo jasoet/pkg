@@ -1,42 +1,40 @@
 # Retry Examples
 
-This directory contains comprehensive examples demonstrating the retry package functionality.
+This directory contains examples demonstrating the retry package functionality.
 
 ## Running Examples
 
 ```bash
-# Run all examples
+# From the repository root
 go run -tags=example ./examples/retry
 
-# Or from the repository root
-go run -tags=example github.com/jasoet/pkg/v2/examples/retry
+# Or by module path
+go run -tags=example github.com/jasoet/pkg/v3/examples/retry
 ```
 
 ## Examples Included
 
 ### 1. Basic Retry
-Demonstrates basic retry with default configuration (5 retries, 500ms initial interval, exponential backoff).
+Basic retry with `retry.New(...)`: fails twice, succeeds on the third attempt.
 
 ### 2. Custom Backoff
-Shows how to configure custom backoff parameters:
-- Initial interval
-- Maximum interval
-- Multiplier
-- Max retries
+Custom backoff parameters — initial interval, maximum interval, multiplier, max retries — with jitter disabled so the intervals are exact.
 
 ### 3. Permanent Errors
-Demonstrates how to use `retry.Permanent()` to stop retrying for non-transient errors like validation failures.
+`retry.Permanent()` stops retrying for non-transient errors like validation failures: one attempt, error returned immediately.
 
 ### 4. Context Cancellation
-Shows how retry respects context cancellation and stops immediately.
+Retry stops as soon as the context is cancelled.
 
 ### 5. Unlimited Retries with Timeout
-Demonstrates unlimited retries (MaxRetries=0) combined with context timeout for polling scenarios.
+`WithMaxRetries(0)` retries without an attempt limit; a context timeout acts as the safety net while polling.
 
 ### 6. Custom Notifications
-Shows how to use `retry.DoWithNotify()` to get notified on each retry attempt for custom logging or metrics.
+`retry.DoWithNotify()` invokes a callback before each retry wait, for custom logging or metrics.
 
 ## Expected Output
+
+The output below is reproducible: the examples disable jitter (`WithRandomizationFactor(0)`) and avoid timing- or randomness-dependent printout.
 
 ```
 === Retry Package Examples ===
@@ -50,16 +48,16 @@ Example 1: Basic Retry
 
 Example 2: Custom Backoff
 -------------------------
-  Attempt 1 at 0ms
-  Attempt 2 at 100ms
-  Attempt 3 at 250ms
-  Attempt 4 at 475ms
+  Attempt 1
+  Attempt 2
+  Attempt 3
+  Attempt 4
   ✅ Success after 4 attempts
 
 Example 3: Permanent Errors
 ---------------------------
   Attempt 1
-  ❌ Failed immediately (no retry): validation error: empty input
+  ❌ Failed immediately (no retry): example.permanent failed after 1 attempts (1 initial + 0 retries): validation error: empty input
   Total attempts: 1 (expected: 1)
 
 Example 4: Context Cancellation
@@ -67,9 +65,8 @@ Example 4: Context Cancellation
   Attempt 1
   Attempt 2
   🛑 Cancelling context...
-  Attempt 3
-  ❌ Cancelled: example.cancel cancelled after 3 attempts: context canceled
-  Stopped after 3 attempts
+  ❌ Cancelled: example.cancel canceled after 2 attempts: context canceled
+  Stopped after 2 attempts
 
 Example 5: Unlimited Retries with Timeout
 -----------------------------------------
@@ -77,7 +74,8 @@ Example 5: Unlimited Retries with Timeout
   Attempt 2
   Attempt 3
   Attempt 4
-  ✅ Success after 4 attempts
+  Attempt 5
+  ✅ Success after 5 attempts
 
 Example 6: Custom Notifications
 --------------------------------
@@ -89,4 +87,4 @@ Example 6: Custom Notifications
 ## Learn More
 
 - [Retry Package Documentation](../../retry/README.md)
-- [API Reference](https://pkg.go.dev/github.com/jasoet/pkg/v2/retry)
+- [API Reference](https://pkg.go.dev/github.com/jasoet/pkg/v3/retry)
