@@ -49,6 +49,8 @@ func TestCreateGatewayMuxMetadata(t *testing.T) {
 // TestWithGatewayRegistrar verifies that the function passed via
 // WithGatewayRegistrar is invoked with the server's gateway mux during setup,
 // and that routes registered through it are served under the gateway base path.
+// The mount strips the base path, so mux patterns are proto http-rule style
+// (e.g. "/ping"), while clients GET "/api/v1/ping".
 func TestWithGatewayRegistrar(t *testing.T) {
 	registrarCalled := false
 	var gotMux *runtime.ServeMux
@@ -58,7 +60,7 @@ func TestWithGatewayRegistrar(t *testing.T) {
 		WithGatewayRegistrar(func(mux *runtime.ServeMux) {
 			registrarCalled = true
 			gotMux = mux
-			err := mux.HandlePath(http.MethodGet, "/api/v1/ping", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+			err := mux.HandlePath(http.MethodGet, "/ping", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte("pong"))
 			})
@@ -82,18 +84,33 @@ func TestWithGatewayRegistrar(t *testing.T) {
 	assert.Equal(t, "pong", rec.Body.String())
 }
 
-// TestWithGatewayRegistrarNotInvokedWithoutServiceRegistrar pins the current
-// behavior that the gateway (and therefore the gateway registrar) is only set
-// up when a service registrar is configured.
-func TestWithGatewayRegistrarNotInvokedWithoutServiceRegistrar(t *testing.T) {
+// TestWithGatewayRegistrarInvokedWithoutServiceRegistrar verifies that the
+// gateway is mounted and the gateway registrar is invoked even when no
+// service registrar is configured.
+func TestWithGatewayRegistrarInvokedWithoutServiceRegistrar(t *testing.T) {
 	called := false
 	server, err := New(
-		WithGatewayRegistrar(func(mux *runtime.ServeMux) { called = true }),
+		WithGatewayRegistrar(func(mux *runtime.ServeMux) {
+			called = true
+			err := mux.HandlePath(http.MethodGet, "/ping", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+				_, _ = w.Write([]byte("pong"))
+			})
+			assert.NoError(t, err)
+		}),
 	)
 	require.NoError(t, err)
 
 	require.NoError(t, server.setupEchoServer())
 
-	assert.False(t, called, "gateway setup only runs when a service registrar is configured")
-	assert.Nil(t, server.gatewayMux)
+	assert.True(t, called, "gateway registrar must be invoked even without a service registrar")
+	assert.NotNil(t, server.gatewayMux, "gateway mux must be set up even without a service registrar")
+
+	// The gateway is mounted: the route registered on the mux is reachable
+	// through Echo under the gateway base path.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ping", nil)
+	rec := httptest.NewRecorder()
+	server.echo.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "pong", rec.Body.String())
 }

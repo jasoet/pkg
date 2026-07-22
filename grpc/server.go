@@ -177,11 +177,11 @@ func (s *Server) setupEchoServer() error {
 		e.Use(mw)
 	}
 
-	// Setup gateway integration if service registrar is provided.
+	// Setup gateway integration if a service or gateway registrar is provided.
 	// NOTE: Gateway routes are registered here, before echoConfigurer, so that
 	// user-supplied routes from echoConfigurer always take precedence over the
 	// auto-generated gateway catch-all routes.
-	if s.config.serviceRegistrar != nil {
+	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		if err := s.setupGatewayIntegration(e); err != nil {
 			return fmt.Errorf("failed to setup gateway integration: %w", err)
 		}
@@ -308,7 +308,7 @@ func (s *Server) startSeparateMode() error {
 	if s.config.enableHealthCheck {
 		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.httpPort, s.config.healthPath))
 	}
-	if s.config.serviceRegistrar != nil {
+	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath))
 	}
 
@@ -358,7 +358,7 @@ func (s *Server) startH2CMode() error {
 	if s.config.enableHealthCheck {
 		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.grpcPort, s.config.healthPath))
 	}
-	if s.config.serviceRegistrar != nil {
+	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath))
 	}
 

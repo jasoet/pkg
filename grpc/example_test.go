@@ -42,8 +42,10 @@ func ExampleWithGatewayRegistrar() {
 		// The gateway mounted under the base path (default /api/v1) only
 		// serves what is registered here — typically generated code:
 		//   pb.RegisterYourServiceHandlerServer(ctx, mux, conn)
+		// The mount strips the base path, so patterns are proto http-rule
+		// style ("/ping" here is served at /api/v1/ping):
 		grpcserver.WithGatewayRegistrar(func(mux *runtime.ServeMux) {
-			_ = mux.HandlePath(http.MethodGet, "/api/v1/ping",
+			_ = mux.HandlePath(http.MethodGet, "/ping",
 				func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 					_, _ = w.Write([]byte("pong"))
 				})

@@ -166,7 +166,7 @@ if err := server.Start(); err != nil {
 
 ## gRPC Gateway
 
-When a service registrar is configured, the server creates a grpc-gateway `runtime.ServeMux` and mounts it on Echo under the gateway base path (default `/api/v1`). The mount is a catch-all — **the gateway only serves what you register on the mux**, and the only way to register on it is `WithGatewayRegistrar`. The function runs during `Start`, after the mux is created and before it is mounted, which is where you hook in generated gateway code:
+When a service or gateway registrar is configured, the server creates a grpc-gateway `runtime.ServeMux` and mounts it on Echo under the gateway base path (default `/api/v1`). The mount is a catch-all — **the gateway only serves what you register on the mux**, and the only way to register on it is `WithGatewayRegistrar`. The function runs during `Start`, after the mux is created and before it is mounted, which is where you hook in generated gateway code:
 
 ```go
 server, err := grpcserver.New(
@@ -180,7 +180,7 @@ server, err := grpcserver.New(
         //   conn, _ := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
         //   calculatorv1.RegisterCalculatorServiceHandler(context.Background(), mux, conn)
         // or register plain HTTP routes directly:
-        _ = mux.HandlePath(http.MethodGet, "/api/v1/ping",
+        _ = mux.HandlePath(http.MethodGet, "/ping",
             func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
                 _, _ = w.Write([]byte("pong"))
             })
@@ -188,7 +188,7 @@ server, err := grpcserver.New(
 )
 ```
 
-Note the mux matches against the full request path (the mount does not strip the base path), so patterns registered with `HandlePath` must include the base path prefix.
+Note the mount strips the base path before requests reach the mux, so the mux sees proto http-rule paths verbatim — a pattern of `/ping` (as generated code registers it) is served at `/api/v1/ping`. Do not include the base path prefix in `HandlePath` patterns.
 
 `CreateGatewayMux()` and `MountGatewayOnEcho(e, mux, basePath)` are also exported if you need to assemble a gateway manually.
 

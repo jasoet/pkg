@@ -10,14 +10,17 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// MountGatewayOnEcho mounts a gRPC gateway mux onto Echo under a base path
+// MountGatewayOnEcho mounts a gRPC gateway mux onto Echo under a base path.
+// The base path is stripped before the request reaches the mux, so the mux
+// sees proto http-rule paths verbatim (e.g. "/users", not "/api/v1/users").
 func MountGatewayOnEcho(e *echo.Echo, gatewayMux *runtime.ServeMux, basePath string) {
 	// Create a group for the gateway routes
 	gatewayGroup := e.Group(basePath)
 
 	// Mount the entire gateway mux under the base path
-	// The "/*" pattern captures all sub-paths
-	gatewayGroup.Any("/*", echo.WrapHandler(gatewayMux))
+	// The "/*" pattern captures all sub-paths; StripPrefix removes the base
+	// path so the mux matches proto http-rule patterns like "/users".
+	gatewayGroup.Any("/*", echo.WrapHandler(http.StripPrefix(basePath, gatewayMux)))
 
 	log.Printf("gRPC Gateway mounted at %s", basePath)
 }
