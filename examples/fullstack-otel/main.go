@@ -200,7 +200,7 @@ func main() {
 		OTelConfig:   otelCfg,
 	}
 
-	database, err := dbConfig.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*dbConfig))
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}

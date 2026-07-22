@@ -123,7 +123,7 @@ func basicConnectionExample(ctx context.Context) {
 	fmt.Printf("- DSN: %s\n", config.RedactedDsn())
 
 	// Connect to database
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Connection failed: %v\n", err)
@@ -204,7 +204,7 @@ func connectionPoolExample(ctx context.Context) {
 
 		// Only attempt to connect to development database
 		if env == "development" {
-			if database, err := config.Pool(); err != nil {
+			if database, err := db.NewPool(db.WithConnectionConfig(*config)); err != nil {
 				logger.Warn().Err(err).Str("env", env).Msg("Failed to connect")
 				fmt.Printf("  ✗ Connection failed (expected for demo)\n")
 			} else {
@@ -273,7 +273,7 @@ func migrationExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -352,7 +352,7 @@ func multipleConnectionsExample(ctx context.Context) {
 	for name, config := range databases {
 		// Only connect to primary database for demo
 		if name == "primary" {
-			database, err := config.Pool()
+			database, err := db.NewPool(db.WithConnectionConfig(*config))
 			if err != nil {
 				logger.Error().Err(err).Str("database", name).Msg("Connection failed")
 				fmt.Printf("✗ %s connection failed: %v\n", name, err)
@@ -418,7 +418,7 @@ func gormOperationsExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -650,7 +650,7 @@ func transactionExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -793,7 +793,7 @@ func healthCheckExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)

@@ -72,7 +72,7 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 	}
 
 	// Test Pool() with OTel config
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database with OTel config")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -245,7 +245,7 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 	}
 
 	// Test Pool() with OTel metrics
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database with OTel metrics")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -317,7 +317,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 			OTelConfig:   nil,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		require.NoError(t, err, "Failed to connect to database without OTel")
 		require.NotNil(t, db, "Database connection should not be nil")
 
@@ -349,7 +349,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 			OTelConfig:   otelConfig,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		require.NoError(t, err, "Failed to connect to database with OTel but no tracer")
 		require.NotNil(t, db, "Database connection should not be nil")
 
@@ -382,7 +382,7 @@ func TestMySQLPoolWithOTel(t *testing.T) {
 	config.OTelConfig = otelConfig
 
 	// Test Pool() with OTel
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to MySQL with OTel")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -432,7 +432,7 @@ func TestMSSQLPoolWithOTel(t *testing.T) {
 	config.OTelConfig = otelConfig
 
 	// Test Pool() with OTel
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to MSSQL with OTel")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -491,7 +491,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 		OTelConfig:   otelConfig,
 	}
 
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -517,7 +517,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 			MaxOpenConns: 10,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		assert.Error(t, err, "Should fail with invalid config")
 		assert.Nil(t, db, "DB should be nil on error")
 		assert.Contains(t, err.Error(), "unsupported database type", "Error should mention unsupported type")
@@ -540,7 +540,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 		dsn := config.dsn()
 		assert.Equal(t, "", dsn, "DSN should be empty for unsupported database type")
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		assert.Error(t, err, "Should fail with unsupported database type")
 		assert.Nil(t, db, "DB should be nil on error")
 		assert.Contains(t, err.Error(), "unsupported database type", "Error should mention unsupported type")
@@ -559,7 +559,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 			MaxOpenConns: 10,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		assert.Error(t, err, "Should fail with invalid connection parameters")
 		assert.Nil(t, db, "DB should be nil on error")
 	})
@@ -634,7 +634,7 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 		OTelConfig:   otelConfig,
 	}
 
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err)
 
 	// Test with table name in statement

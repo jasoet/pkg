@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
@@ -100,7 +99,7 @@ func (c *ConnectionConfig) effectiveGormLogLevel() logger.LogLevel {
 }
 
 // Validate checks that the ConnectionConfig has all required fields set and
-// values are within acceptable ranges. It is called automatically by Pool().
+// values are within acceptable ranges. It is called automatically by NewPool().
 func (c *ConnectionConfig) Validate() error {
 	if c.DBType != Mysql && c.DBType != Postgresql && c.DBType != MSSQL {
 		return fmt.Errorf("unsupported database type: %q", c.DBType)
@@ -134,6 +133,13 @@ func (c *ConnectionConfig) Validate() error {
 // It is unexported to prevent accidental logging of credentials.
 // Use RedactedDsn() for safe logging.
 func (c *ConnectionConfig) dsn() string {
+	return c.dsnWithPassword(c.Password)
+}
+
+// dsnWithPassword builds the DSN using pw in the password position, so callers
+// can substitute a mask without corrupting other fields that happen to contain
+// the real password as a substring.
+func (c *ConnectionConfig) dsnWithPassword(pw string) string {
 	timeout := c.effectiveTimeout()
 	sslMode := c.effectiveSSLMode()
 
@@ -141,14 +147,14 @@ func (c *ConnectionConfig) dsn() string {
 	case Mysql:
 		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
 		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&timeout=%s",
-			c.Username, c.Password, c.Host, c.Port, c.DBName, timeoutStr)
+			c.Username, pw, c.Host, c.Port, c.DBName, timeoutStr)
 	case Postgresql:
 		return fmt.Sprintf("user=%s password=%s host=%s port=%d dbname=%s sslmode=%s connect_timeout=%d",
-			c.Username, c.Password, c.Host, c.Port, c.DBName, sslMode, int(timeout.Seconds()))
+			c.Username, pw, c.Host, c.Port, c.DBName, sslMode, int(timeout.Seconds()))
 	case MSSQL:
 		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
 		return fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connectTimeout=%s&encrypt=%s",
-			c.Username, c.Password, c.Host, c.Port, c.DBName, timeoutStr, sslMode)
+			c.Username, pw, c.Host, c.Port, c.DBName, timeoutStr, sslMode)
 	default:
 		return ""
 	}
@@ -157,18 +163,48 @@ func (c *ConnectionConfig) dsn() string {
 // RedactedDsn returns the DSN with the password replaced by "***",
 // safe for use in logs and error messages.
 func (c *ConnectionConfig) RedactedDsn() string {
-	original := c.dsn()
-	if c.Password != "" {
-		return strings.ReplaceAll(original, c.Password, "***")
+	if c.Password == "" {
+		return c.dsn()
 	}
-	return original
+	return c.dsnWithPassword("***")
 }
 
-// Pool creates a new GORM database connection pool.
+// Option configures a ConnectionConfig during NewPool.
+type Option func(*ConnectionConfig)
+
+// WithConnectionConfig seeds the pool configuration from cfg.
+func WithConnectionConfig(cfg ConnectionConfig) Option {
+	return func(c *ConnectionConfig) {
+		*c = cfg
+	}
+}
+
+// WithOTelConfig overrides the ConnectionConfig's OTelConfig when cfg is non-nil.
+func WithOTelConfig(cfg *pkgotel.Config) Option {
+	return func(c *ConnectionConfig) {
+		if cfg != nil {
+			c.OTelConfig = cfg
+		}
+	}
+}
+
+// NewPool creates a new GORM database connection pool from the given options.
 //
-// It validates the DSN, opens the connection, configures pool parameters,
-// pings to verify connectivity, and optionally installs OTel instrumentation.
-func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
+// It starts from an empty ConnectionConfig, applies opts in order, then runs the
+// pool pipeline: validate, open, configure pool parameters, ping, and optionally
+// install OTel instrumentation.
+func NewPool(opts ...Option) (*gorm.DB, error) {
+	cfg := ConnectionConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg.openPool()
+}
+
+// openPool validates the config, opens the connection, configures pool
+// parameters, pings to verify connectivity, and optionally installs OTel
+// instrumentation.
+func (c *ConnectionConfig) openPool() (*gorm.DB, error) {
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -215,7 +251,9 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to ping database at %s:%d/%s: %w", c.Host, c.Port, c.DBName, err)
 	}
 
-	// Install OpenTelemetry instrumentation if configured
+	// Install OpenTelemetry instrumentation if configured.
+	// Tracing and metrics are gated independently: the otelgorm plugin requires
+	// tracing, while pool metrics only require a MeterProvider.
 	if c.OTelConfig != nil && c.OTelConfig.IsTracingEnabled() {
 		// Configure otelgorm plugin options
 		opts := []otelgorm.Option{
@@ -242,25 +280,25 @@ func (c *ConnectionConfig) Pool() (*gorm.DB, error) {
 			_ = sqlDB.Close()
 			return nil, fmt.Errorf("failed to install otelgorm plugin: %w", err)
 		}
+	}
 
-		// Register connection pool metrics if metrics enabled.
-		// Note: collectPoolMetrics only registers an observable callback and returns
-		// immediately, so it does not need a goroutine.
-		if c.OTelConfig.IsMetricsEnabled() {
-			c.collectPoolMetrics(sqlDB)
-		}
+	// Register connection pool metrics if metrics enabled, independently of tracing.
+	// Note: collectPoolMetrics only registers an observable callback and returns
+	// immediately, so it does not need a goroutine.
+	if c.OTelConfig != nil && c.OTelConfig.IsMetricsEnabled() {
+		c.collectPoolMetrics(sqlDB)
 	}
 
 	return db, nil
 }
 
 // SQLDB creates a new connection pool internally. The caller is responsible for closing
-// the returned *sql.DB. Prefer Pool() when you need the GORM wrapper.
+// the returned *sql.DB. Prefer NewPool() when you need the GORM wrapper.
 //
 // Each call to SQLDB() opens a new connection pool; close the returned *sql.DB when done
 // to avoid leaking connections.
 func (c *ConnectionConfig) SQLDB() (*sql.DB, error) {
-	gormDB, err := c.Pool()
+	gormDB, err := NewPool(WithConnectionConfig(*c))
 	if err != nil {
 		return nil, err
 	}

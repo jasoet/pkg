@@ -294,7 +294,7 @@ func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
 		MaxOpenConns: 10,
 	}
 
-	_, err := config.Pool()
+	_, err := NewPool(WithConnectionConfig(*config))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported database type")
 }
@@ -312,7 +312,7 @@ func TestConnectionConfig_Pool_ConnectionFailure(t *testing.T) {
 		MaxOpenConns: 10,
 	}
 
-	_, err := config.Pool()
+	_, err := NewPool(WithConnectionConfig(*config))
 	assert.Error(t, err)
 	// The error should be from the connection attempt
 }
@@ -330,7 +330,7 @@ func TestConnectionConfig_Pool_EmptyDSN(t *testing.T) {
 		MaxOpenConns: 10,
 	}
 
-	_, err := config.Pool()
+	_, err := NewPool(WithConnectionConfig(*config))
 	assert.Error(t, err)
 }
 

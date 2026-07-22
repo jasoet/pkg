@@ -164,7 +164,7 @@ func TestPostgresPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, "sslmode=disable")
 
 	// Test connection to the database using Pool()
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database using Pool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -226,7 +226,7 @@ func TestMySQLPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, "parseTime=true")
 
 	// Test connection to the database using Pool()
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database using Pool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -289,7 +289,7 @@ func TestMSSQLPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, "encrypt=disable")
 
 	// Test connection to the database using Pool()
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database using Pool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -332,7 +332,7 @@ func TestPostgresPoolTransactionsWithTestcontainers(t *testing.T) {
 	}()
 
 	// Connect to the database
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database")
 
 	// Test transaction with commit

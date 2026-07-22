@@ -270,7 +270,7 @@ func TestPostgresMigrationsWithGorm(t *testing.T) {
 	}
 
 	// Connect to the database using Pool (GORM)
-	gormDB, err := config.Pool()
+	gormDB, err := NewPool(WithConnectionConfig(*config))
 	if err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestPostgresMigrationsWithGormError(t *testing.T) {
 			MaxOpenConns: 10,
 		}
 
-		gormDB, err := config.Pool()
+		gormDB, err := NewPool(WithConnectionConfig(*config))
 		if err != nil {
 			t.Fatalf("Failed to connect to database: %v", err)
 		}
