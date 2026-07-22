@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/viper"
 
@@ -115,27 +114,27 @@ services:
 	fmt.Printf("Database Host (from custom env): %s\n", appConfig.Database.Host)
 	fmt.Println()
 
-	// Example 4: Using custom configuration function
-	fmt.Println("Example 4: Using custom configuration function")
-	customConfigFn := func(v *viper.Viper) {
+	// Example 4: Using a custom option
+	fmt.Println("Example 4: Using a custom option")
+	customOption := func(v *viper.Viper) {
 		v.Set("name", "custom-function-app")
 		v.Set("database.host", "custom-function-db.example.com")
 		v.Set("services.payment.enabled", false)
 	}
 
-	appConfig, err = config.LoadStringWithConfig[AppConfig](yamlConfig, customConfigFn)
+	appConfig, err = config.LoadStringWithOptions[AppConfig](yamlConfig, customOption)
 	if err != nil {
 		fmt.Printf("Error loading configuration: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("App Name (from custom function): %s\n", appConfig.Name)
+	fmt.Printf("App Name (from custom option): %s\n", appConfig.Name)
 	fmt.Printf("Database Host (from custom function): %s\n", appConfig.Database.Host)
 	fmt.Printf("Payment Service Enabled: %v\n", appConfig.Services["payment"].Enabled)
 	fmt.Println()
 
-	// Example 5: Using NestedEnvVars for complex environment variable handling
-	fmt.Println("Example 5: Using NestedEnvVars for complex environment variable handling")
+	// Example 5: Using WithNestedEnvVars for complex environment variable handling
+	fmt.Println("Example 5: Using WithNestedEnvVars for complex environment variable handling")
 	nestedYamlConfig := `
 name: nested-app
 version: 1.0.0
@@ -148,13 +147,8 @@ goers:
 	os.Setenv("APP_GOERS_ACCOUNTS_ADMIN_NAME", "admin")
 	os.Setenv("APP_GOERS_ACCOUNTS_ADMIN_EMAIL", "admin@example.com")
 
-	nestedConfigFn := func(v *viper.Viper) {
-		// Process nested environment variables
-		nestedEnvPrefix := strings.ToUpper("APP_GOERS_ACCOUNTS_")
-		config.NestedEnvVars(nestedEnvPrefix, 3, "goers.accounts", v)
-	}
-
-	nestedConfig, err := config.LoadStringWithConfig[NestedConfig](nestedYamlConfig, nestedConfigFn)
+	nestedConfig, err := config.LoadStringWithOptions[NestedConfig](nestedYamlConfig,
+		config.WithNestedEnvVars("APP_GOERS_ACCOUNTS_", 0, "goers.accounts"))
 	if err != nil {
 		fmt.Printf("Error loading nested configuration: %v\n", err)
 		os.Exit(1)

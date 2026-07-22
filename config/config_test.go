@@ -56,31 +56,27 @@ nested:
 	assert.Equal(t, 42, config.Nested.Value)
 }
 
-func TestLoadStringWithConfig(t *testing.T) {
-	// Test with custom configuration function
+func TestLoadStringWithOptions_CustomOption(t *testing.T) {
+	// Test with a custom option mutating viper directly
 	yamlConfig := `
 name: test-app
 version: 1.0.0
 nested:
   value: 42
 `
-	customConfigFn := func(v *viper.Viper) {
+	customOption := func(v *viper.Viper) {
 		v.Set("name", "custom-function-app")
 		v.Set("nested.value", 100)
 	}
 
-	config, err := LoadStringWithConfig[TestConfig](yamlConfig, customConfigFn)
+	config, err := LoadStringWithOptions[TestConfig](yamlConfig, customOption)
 	assert.NoError(t, err)
 	assert.Equal(t, "custom-function-app", config.Name)
 	assert.Equal(t, "1.0.0", config.Version)
 	assert.Equal(t, 100, config.Nested.Value)
 
-	// Test with NestedEnvVars
+	// Test with WithNestedEnvVars
 	t.Setenv("TEST_GOERS_ACCOUNTS_USER_NAME", "test-user")
-
-	nestedConfigFn := func(v *viper.Viper) {
-		NestedEnvVars("TEST_GOERS_ACCOUNTS_", 3, "goers.accounts", v)
-	}
 
 	type NestedConfig struct {
 		Name    string `yaml:"name"`
@@ -90,7 +86,8 @@ nested:
 		} `yaml:"goers"`
 	}
 
-	nestedConfig, err := LoadStringWithConfig[NestedConfig](yamlConfig, nestedConfigFn)
+	nestedConfig, err := LoadStringWithOptions[NestedConfig](yamlConfig,
+		WithNestedEnvVars("TEST_GOERS_ACCOUNTS_", 0, "goers.accounts"))
 	assert.NoError(t, err)
 	assert.Equal(t, "test-app", nestedConfig.Name)
 	assert.Equal(t, "1.0.0", nestedConfig.Version)
@@ -104,32 +101,43 @@ func TestNestedEnvVars(t *testing.T) {
 	t.Setenv("TEST_APP_ADMIN_NAME", "admin")
 	t.Setenv("TEST_APP_ADMIN_EMAIL", "admin@example.com")
 
-	// Create viper instance
-	v := viper.New()
+	type AppConfig struct {
+		App map[string]map[string]string `yaml:"app"`
+	}
 
-	// Call NestedEnvVars
-	NestedEnvVars("TEST_APP_", 2, "app", v)
+	config, err := LoadStringWithOptions[AppConfig](``,
+		WithNestedEnvVars("TEST_APP_", 0, "app"))
+	assert.NoError(t, err)
 
 	// Verify the values were set correctly
-	assert.Equal(t, "john", v.GetString("app.user.name"))
-	assert.Equal(t, "john@example.com", v.GetString("app.user.email"))
-	assert.Equal(t, "admin", v.GetString("app.admin.name"))
-	assert.Equal(t, "admin@example.com", v.GetString("app.admin.email"))
+	assert.Equal(t, "john", config.App["user"]["name"])
+	assert.Equal(t, "john@example.com", config.App["user"]["email"])
+	assert.Equal(t, "admin", config.App["admin"]["name"])
+	assert.Equal(t, "admin@example.com", config.App["admin"]["email"])
 }
 
 func TestNestedEnvVars_NegativeKeyDepth(t *testing.T) {
-	v := viper.New()
 	t.Setenv("TEST_APP_DB_HOST", "localhost")
 	assert.NotPanics(t, func() {
-		NestedEnvVars("TEST_APP_", -1, "app", v)
+		type AppConfig struct {
+			App map[string]map[string]string `yaml:"app"`
+		}
+		_, _ = LoadStringWithOptions[AppConfig](``,
+			WithNestedEnvVars("TEST_APP_", -1, "app"))
 	})
 }
 
 func TestNestedEnvVars_MultiSegmentFieldName(t *testing.T) {
-	v := viper.New()
 	t.Setenv("TEST_APP_DB_CONNECTION_TIMEOUT", "30")
-	NestedEnvVars("TEST_APP_", 2, "app", v)
-	assert.Equal(t, "30", v.GetString("app.db.connection_timeout"))
+
+	type AppConfig struct {
+		App map[string]map[string]string `yaml:"app"`
+	}
+
+	config, err := LoadStringWithOptions[AppConfig](``,
+		WithNestedEnvVars("TEST_APP_", 0, "app"))
+	assert.NoError(t, err)
+	assert.Equal(t, "30", config.App["db"]["connection_timeout"])
 }
 
 func TestStringSliceConfig(t *testing.T) {
@@ -153,7 +161,7 @@ features:
 	// Test with environment variables overriding string slices
 	t.Setenv("ENV_TAGS", "env-tag1,env-tag2,env-tag3")
 
-	config, err = LoadStringWithConfig[StringSliceConfig](yamlConfig, nil)
+	config, err = LoadStringWithOptions[StringSliceConfig](yamlConfig)
 	assert.NoError(t, err)
 	assert.Equal(t, "slice-app", config.Name)
 	assert.Equal(t, []string{"env-tag1", "env-tag2", "env-tag3"}, config.Tags)
@@ -163,8 +171,8 @@ features:
 	t.Setenv("CUSTOM_FEATURES", "custom-feature1,custom-feature2,custom-feature3")
 	t.Setenv("CUSTOM_TAGS", "custom-tag1,custom-tag2,custom-tag3")
 
-	// Use LoadStringWithConfig directly with custom prefix
-	config, err = LoadStringWithConfig[StringSliceConfig](yamlConfig, nil, "CUSTOM")
+	// Use LoadStringWithOptions with a custom prefix
+	config, err = LoadStringWithOptions[StringSliceConfig](yamlConfig, WithEnvPrefix("CUSTOM"))
 	assert.NoError(t, err)
 	assert.Equal(t, "slice-app", config.Name)
 	assert.Equal(t, []string{"custom-tag1", "custom-tag2", "custom-tag3"}, config.Tags)
