@@ -91,7 +91,7 @@ func databaseTunnelExample() {
 	fmt.Printf("Created tunnel instance: %T\n", tunnel)
 
 	// In a real scenario, you would:
-	// 1. Start the tunnel: err := tunnel.Start()
+	// 1. Start the tunnel: err := tunnel.Start(ctx)
 	// 2. Connect to database through tunnel
 	// 3. Perform database operations
 	// 4. Close tunnel: defer tunnel.Close()
@@ -102,7 +102,7 @@ func databaseTunnelExample() {
 
 	// Example of database connection (commented out as it requires actual tunnel)
 	/*
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		if err != nil {
 			log.Fatal("Failed to start tunnel:", err)
 		}
@@ -174,7 +174,7 @@ func multipleTunnelsExample() {
 	// In a real scenario, you would start all tunnels:
 	/*
 		for i, tunnel := range tunnels {
-			err := tunnel.Start()
+			err := tunnel.Start(ctx)
 			if err != nil {
 				log.Printf("Failed to start %s tunnel: %v", services[i], err)
 				continue
@@ -190,11 +190,13 @@ func multipleTunnelsExample() {
 func yamlConfigExample() {
 	fmt.Println("Loading SSH configuration from YAML...")
 
+	// Note: Password, PrivateKey, and PrivateKeyPassphrase are tagged
+	// yaml:"-" so they cannot come from YAML (secrets must not sit in
+	// config files). Inject them from the environment after loading.
 	yamlConfig := `
 host: bastion.example.com
 port: 22
 user: deploy
-password: secure-password
 remoteHost: service.internal.com
 remotePort: 8080
 localPort: 8081
@@ -207,6 +209,7 @@ timeout: 30s
 		log.Printf("Failed to parse YAML config: %v", err)
 		return
 	}
+	config.Password = getEnvOrDefault("SSH_PASSWORD", "password")
 
 	fmt.Printf("Loaded config: %s@%s:%d -> localhost:%d -> %s:%d (timeout: %v)\n",
 		config.User, config.Host, config.Port,
@@ -254,12 +257,12 @@ func errorHandlingExample() {
 
 	// This would normally fail with connection errors
 	/*
-		err := tunnel.Start()
+		err := tunnel.Start(ctx)
 		if err != nil {
 			if strings.Contains(err.Error(), "connection refused") {
 				log.Println("Error: SSH server is not accessible")
 				log.Println("Solution: Check SSH server address and port")
-			} else if strings.Contains(err.Error(), "authentication failed") {
+			} else if strings.Contains(err.Error(), "unable to authenticate") {
 				log.Println("Error: Invalid SSH credentials")
 				log.Println("Solution: Verify username and password")
 			} else if strings.Contains(err.Error(), "timeout") {
