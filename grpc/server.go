@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -218,21 +219,50 @@ func (s *Server) Start() error {
 		s.mu.Unlock()
 		return fmt.Errorf("server is already running")
 	}
-	s.running = true
+	// On restart after a completed Stop the previous gRPC server is spent
+	// (Serve returns grpc.ErrServerStopped after GracefulStop) and
+	// shutdownOnce has been consumed; rebuild both so Start/Stop cycles work.
+	if s.grpcServer == nil {
+		s.setupGRPCServer()
+		s.shutdownOnce = sync.Once{}
+	}
 	s.mu.Unlock()
 
 	if err := s.setupEchoServer(); err != nil {
 		return fmt.Errorf("failed to setup Echo server: %w", err)
 	}
 
+	// All setup succeeded; only now mark the server as running so a failed
+	// Start never leaves IsRunning()==true behind.
+	s.mu.Lock()
+	s.running = true
+	s.mu.Unlock()
+
+	var err error
 	switch s.config.mode {
 	case SeparateMode:
-		return s.startSeparateMode()
+		err = s.startSeparateMode()
 	case H2CMode:
-		return s.startH2CMode()
+		err = s.startH2CMode()
 	default:
-		return fmt.Errorf("unsupported server mode: %s", s.config.mode)
+		err = fmt.Errorf("unsupported server mode: %s", s.config.mode)
 	}
+
+	if err != nil {
+		// Roll back: the server is not running, and the gRPC server may have
+		// been started (SeparateMode) or be in an unknown state — stop it and
+		// mark it spent so a subsequent Start rebuilds it.
+		s.mu.Lock()
+		s.running = false
+		if s.grpcServer != nil {
+			s.grpcServer.Stop()
+			s.grpcServer = nil
+		}
+		s.mu.Unlock()
+		return err
+	}
+
+	return nil
 }
 
 // startSeparateMode starts gRPC and HTTP servers on separate ports
@@ -268,7 +298,10 @@ func (s *Server) startSeparateMode() error {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath))
 	}
 
-	return s.echo.Start(s.config.getHTTPAddress())
+	if err := s.echo.Start(s.config.getHTTPAddress()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // startH2CMode starts a mixed gRPC/HTTP server on a single port
@@ -304,7 +337,10 @@ func (s *Server) startH2CMode() error {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath))
 	}
 
-	return s.httpServer.ListenAndServe()
+	if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // Stop gracefully stops the server
@@ -348,9 +384,10 @@ func (s *Server) Stop() error {
 
 		// Stop gRPC server
 		if s.grpcServer != nil {
+			grpcServer := s.grpcServer
 			done := make(chan struct{})
 			go func() {
-				s.grpcServer.GracefulStop()
+				grpcServer.GracefulStop()
 				close(done)
 			}()
 
@@ -359,12 +396,15 @@ func (s *Server) Stop() error {
 				log.Println("gRPC server stopped gracefully")
 			case <-ctx.Done():
 				log.Println("gRPC server shutdown timeout, forcing stop")
-				s.grpcServer.Stop()
+				grpcServer.Stop()
 			}
 		}
 
 		s.mu.Lock()
 		s.running = false
+		// The gRPC server cannot be reused after GracefulStop/Stop; clear it
+		// so a subsequent Start rebuilds it via setupGRPCServer.
+		s.grpcServer = nil
 		s.mu.Unlock()
 
 		log.Println("Server stopped")
