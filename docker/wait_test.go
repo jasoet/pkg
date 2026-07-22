@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -103,7 +102,7 @@ func TestWaitStrategy_WaitForFunc(t *testing.T) {
 	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 
-	customWait := docker.WaitForFunc(func(ctx context.Context, cli *client.Client, containerID string) error {
+	customWait := docker.WaitForFunc(func(ctx context.Context, target docker.ContainerTarget) error {
 		// Custom wait logic - just wait 1 second
 		time.Sleep(1 * time.Second)
 		return nil

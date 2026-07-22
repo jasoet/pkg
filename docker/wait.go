@@ -9,15 +9,12 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 )
 
 // WaitStrategy defines how to wait for a container to be ready.
 type WaitStrategy interface {
 	// WaitUntilReady blocks until the container is ready or timeout occurs.
-	WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error
+	WaitUntilReady(ctx context.Context, target ContainerTarget) error
 }
 
 // waitForLog waits for a specific log pattern to appear.
@@ -46,7 +43,7 @@ func (w *waitForLog) WithStartupTimeout(timeout time.Duration) *waitForLog {
 }
 
 // WaitUntilReady implements WaitStrategy.
-func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+func (w *waitForLog) WaitUntilReady(ctx context.Context, target ContainerTarget) error {
 	if w.compileErr != nil {
 		return fmt.Errorf("invalid regex pattern: %w", w.compileErr)
 	}
@@ -54,15 +51,7 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, con
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	// Stream logs and search for pattern
-	options := container.LogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Follow:     true,
-		Timestamps: false,
-	}
-
-	logs, err := cli.ContainerLogs(ctx, containerID, options)
+	logs, err := target.Logs(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get container logs: %w", err)
 	}
@@ -70,7 +59,7 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, cli *client.Client, con
 
 	// Use bufio.Scanner to read complete lines, avoiding chunk-boundary false negatives
 	// where a pattern could be split across two Read calls.
-	// ContainerLogs respects context cancellation, so Scan() will unblock when the timeout fires.
+	// Logs respects context cancellation, so Scan() will unblock when the timeout fires.
 	scanner := bufio.NewScanner(logs)
 	for scanner.Scan() {
 		if w.pattern.MatchString(scanner.Text()) {
@@ -114,7 +103,7 @@ func (w *waitForPort) WithStartupTimeout(timeout time.Duration) *waitForPort {
 }
 
 // WaitUntilReady implements WaitStrategy.
-func (w *waitForPort) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+func (w *waitForPort) WaitUntilReady(ctx context.Context, target ContainerTarget) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
@@ -126,30 +115,23 @@ func (w *waitForPort) WaitUntilReady(ctx context.Context, cli *client.Client, co
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for port %s", w.port)
 		case <-ticker.C:
-			// Get container details
-			inspect, err := cli.ContainerInspect(ctx, containerID)
+			state, err := target.State(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				return err
 			}
 
 			// Check if container is still running
-			if !inspect.State.Running {
+			if !state.Running {
 				return fmt.Errorf("container stopped while waiting for port %s", w.port)
 			}
 
-			// Get mapped port
-			portBindings := inspect.NetworkSettings.Ports
-			for containerPort, bindings := range portBindings {
-				if string(containerPort) == w.port && len(bindings) > 0 {
-					// Try to connect to the port
-					host := "localhost"
-					hostPort := bindings[0].HostPort
-
-					conn, err := (&net.Dialer{Timeout: 1 * time.Second}).DialContext(ctx, "tcp", fmt.Sprintf("%s:%s", host, hostPort))
-					if err == nil {
-						_ = conn.Close()
-						return nil // Port is ready
-					}
+			// Try to connect to the mapped port
+			if hostPorts := state.Ports[w.port]; len(hostPorts) > 0 {
+				addr := net.JoinHostPort("localhost", hostPorts[0])
+				conn, err := (&net.Dialer{Timeout: 1 * time.Second}).DialContext(ctx, "tcp", addr)
+				if err == nil {
+					_ = conn.Close()
+					return nil // Port is ready
 				}
 			}
 		}
@@ -192,7 +174,7 @@ func (w *waitForHTTP) WithStartupTimeout(timeout time.Duration) *waitForHTTP {
 }
 
 // WaitUntilReady implements WaitStrategy.
-func (w *waitForHTTP) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+func (w *waitForHTTP) WaitUntilReady(ctx context.Context, target ContainerTarget) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
@@ -208,35 +190,28 @@ func (w *waitForHTTP) WaitUntilReady(ctx context.Context, cli *client.Client, co
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for HTTP %s on port %s", w.path, w.port)
 		case <-ticker.C:
-			// Get container details
-			inspect, err := cli.ContainerInspect(ctx, containerID)
+			state, err := target.State(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				return err
 			}
 
 			// Check if container is still running
-			if !inspect.State.Running {
+			if !state.Running {
 				return fmt.Errorf("container stopped while waiting for HTTP endpoint")
 			}
 
-			// Get mapped port
-			portBindings := inspect.NetworkSettings.Ports
-			for containerPort, bindings := range portBindings {
-				if string(containerPort) == w.port && len(bindings) > 0 {
-					host := "localhost"
-					hostPort := bindings[0].HostPort
-
-					url := fmt.Sprintf("http://%s:%s%s", host, hostPort, w.path)
-					req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-					if err != nil {
-						continue
-					}
-					resp, err := httpClient.Do(req)
-					if err == nil {
-						_ = resp.Body.Close()
-						if resp.StatusCode == w.expectedStatus {
-							return nil // Endpoint is ready
-						}
+			// Probe the endpoint on the mapped port
+			if hostPorts := state.Ports[w.port]; len(hostPorts) > 0 {
+				url := fmt.Sprintf("http://%s%s", net.JoinHostPort("localhost", hostPorts[0]), w.path)
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+				if err != nil {
+					continue
+				}
+				resp, err := httpClient.Do(req)
+				if err == nil {
+					_ = resp.Body.Close()
+					if resp.StatusCode == w.expectedStatus {
+						return nil // Endpoint is ready
 					}
 				}
 			}
@@ -264,7 +239,7 @@ func (w *waitForHealthy) WithStartupTimeout(timeout time.Duration) *waitForHealt
 }
 
 // WaitUntilReady implements WaitStrategy.
-func (w *waitForHealthy) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+func (w *waitForHealthy) WaitUntilReady(ctx context.Context, target ContainerTarget) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
@@ -276,18 +251,18 @@ func (w *waitForHealthy) WaitUntilReady(ctx context.Context, cli *client.Client,
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for container to be healthy")
 		case <-ticker.C:
-			inspect, err := cli.ContainerInspect(ctx, containerID)
+			state, err := target.State(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				return err
 			}
 
 			// Check if container is still running
-			if !inspect.State.Running {
+			if !state.Running {
 				return fmt.Errorf("container stopped before becoming healthy")
 			}
 
 			// Check health status
-			if inspect.State.Health != nil && inspect.State.Health.Status == "healthy" {
+			if state.HealthStatus == "healthy" {
 				return nil
 			}
 		}
@@ -296,13 +271,13 @@ func (w *waitForHealthy) WaitUntilReady(ctx context.Context, cli *client.Client,
 
 // waitFunc wraps a custom wait function.
 type waitFunc struct {
-	fn      func(ctx context.Context, cli *client.Client, containerID string) error
+	fn      func(ctx context.Context, target ContainerTarget) error
 	timeout time.Duration
 }
 
 // WaitForFunc creates a wait strategy from a custom function.
 // This allows users to implement their own wait logic.
-func WaitForFunc(fn func(ctx context.Context, cli *client.Client, containerID string) error) *waitFunc {
+func WaitForFunc(fn func(ctx context.Context, target ContainerTarget) error) *waitFunc {
 	return &waitFunc{
 		fn:      fn,
 		timeout: 60 * time.Second,
@@ -316,11 +291,11 @@ func (w *waitFunc) WithStartupTimeout(timeout time.Duration) *waitFunc {
 }
 
 // WaitUntilReady implements WaitStrategy.
-func (w *waitFunc) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+func (w *waitFunc) WaitUntilReady(ctx context.Context, target ContainerTarget) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	return w.fn(ctx, cli, containerID)
+	return w.fn(ctx, target)
 }
 
 // multiWait combines multiple wait strategies (ALL must pass).
@@ -349,12 +324,12 @@ func (w *multiWait) WithStartupTimeout(timeout time.Duration) *multiWait {
 }
 
 // WaitUntilReady implements WaitStrategy.
-func (w *multiWait) WaitUntilReady(ctx context.Context, cli *client.Client, containerID string) error {
+func (w *multiWait) WaitUntilReady(ctx context.Context, target ContainerTarget) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
 	for i, strategy := range w.strategies {
-		if err := strategy.WaitUntilReady(ctx, cli, containerID); err != nil {
+		if err := strategy.WaitUntilReady(ctx, target); err != nil {
 			return fmt.Errorf("wait strategy %d failed: %w", i, err)
 		}
 	}

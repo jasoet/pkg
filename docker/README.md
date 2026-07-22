@@ -284,7 +284,7 @@ docker.WithWaitStrategy(
 )
 
 docker.WithWaitStrategy(
-    docker.WaitForFunc(func(ctx context.Context, cli *client.Client, id string) error {
+    docker.WaitForFunc(func(ctx context.Context, target docker.ContainerTarget) error {
         // Custom readiness check
         return nil
     }),

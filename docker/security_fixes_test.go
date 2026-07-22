@@ -21,7 +21,7 @@ func TestWaitForLog_InvalidRegex_ReturnsError(t *testing.T) {
 	require.NotNil(t, w)
 
 	// WaitUntilReady must return an error, not panic.
-	err := w.WaitUntilReady(context.Background(), nil, "fake-id")
+	err := w.WaitUntilReady(context.Background(), docker.ContainerTarget{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid regex pattern")
 }

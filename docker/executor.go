@@ -154,7 +154,7 @@ func (e *Executor) Start(ctx context.Context) error {
 
 	// Wait for readiness if strategy is configured
 	if e.config.waitStrategy != nil {
-		if err := e.config.waitStrategy.WaitUntilReady(ctx, e.client, containerID); err != nil {
+		if err := e.config.waitStrategy.WaitUntilReady(ctx, newContainerTarget(e.client, containerID)); err != nil {
 			if e.otel != nil {
 				e.otel.recordError(ctx, "wait_strategy_error", err)
 			}
