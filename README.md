@@ -253,15 +253,17 @@ cfg, _ := config.LoadString[AppConfig](yamlContent, "APP")
 PostgreSQL, MySQL, MSSQL support with GORM and migrations.
 
 ```go
-pool, _ := db.ConnectionConfig{
-    DBType:     db.Postgresql,
-    Host:       "localhost",
-    Port:       5432,
-    Username:   "user",
-    Password:   "pass",
-    DBName:     "mydb",
-    OTelConfig: otelConfig,
-}.Pool()
+pool, _ := db.NewPool(
+    db.WithConnectionConfig(db.ConnectionConfig{
+        DBType:   db.Postgresql,
+        Host:     "localhost",
+        Port:     5432,
+        Username: "user",
+        Password: "pass",
+        DBName:   "mydb",
+    }),
+    db.WithOTelConfig(otelConfig),
+)
 
 // Automatic query tracing and metrics
 pool.Find(&users)

@@ -88,8 +88,8 @@ pool, err := db.NewPool(
 )
 
 // All queries are automatically traced
-pool.Find(&users)  // Creates span "db.SELECT"
-pool.Create(&user) // Creates span "db.INSERT"
+pool.Find(&users)  // Creates span "gorm.Query"
+pool.Create(&user) // Creates span "gorm.Create"
 ```
 
 ### Independent Tracing/Metrics Gates
@@ -201,11 +201,11 @@ pool, _ := db.NewPool(
 )
 
 // Each operation creates a span
-pool.Create(&user)           // Span: "db.INSERT"
-pool.Find(&users)            // Span: "db.SELECT"
-pool.Where("age > ?", 18).Find(&users)  // Span: "db.SELECT"
-pool.Update("name", "John")  // Span: "db.UPDATE"
-pool.Delete(&user)           // Span: "db.DELETE"
+pool.Create(&user)           // Span: "gorm.Create"
+pool.Find(&users)            // Span: "gorm.Query"
+pool.Where("age > ?", 18).Find(&users)  // Span: "gorm.Query"
+pool.Update("name", "John")  // Span: "gorm.Update"
+pool.Delete(&user)           // Span: "gorm.Delete"
 ```
 
 ### Span Attributes
@@ -219,6 +219,8 @@ Span Attributes:
   server.address: "localhost"
   server.port: 5432
 ```
+
+> **Security note:** by default otelgorm includes the full SQL statement text — including query variable values — in spans. If your statements may contain sensitive data, configure your own otelgorm plugin with its `excludeQueryVars` option instead of relying on the default.
 
 ### Metrics Collection
 
@@ -669,7 +671,7 @@ err := db.RunPostgresMigrations(
 - **PostgreSQL**: 12+
 - **MySQL**: 8.0+
 - **SQL Server**: 2019+
-- **Go**: 1.25+
+- **Go**: 1.26+
 - **pkg library**: v3.0.0+
 
 ## Examples

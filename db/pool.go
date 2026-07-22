@@ -173,6 +173,7 @@ func (c *ConnectionConfig) RedactedDsn() string {
 type Option func(*ConnectionConfig)
 
 // WithConnectionConfig seeds the pool configuration from cfg.
+// Apply it first — it replaces the whole config.
 func WithConnectionConfig(cfg ConnectionConfig) Option {
 	return func(c *ConnectionConfig) {
 		*c = cfg
