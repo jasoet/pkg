@@ -201,21 +201,27 @@ import (
     "fmt"
     "log"
 
-    "github.com/jasoet/pkg/v2/temporal"
+    "github.com/jasoet/pkg/v3/temporal"
 )
 
 func main() {
-    // Create WorkflowManager
-    config := &temporal.Config{
+    // Create the Temporal client (caller owns it and must close it)
+    cfg := &temporal.Config{
         HostPort:  "localhost:7233",
         Namespace: "default",
     }
 
-    wm, err := temporal.NewWorkflowManager(config)
+    c, err := temporal.NewClient(temporal.WithConfig(*cfg))
+    if err != nil {
+        log.Fatalf("Failed to create Temporal client: %v", err)
+    }
+    defer c.Close()
+
+    // WorkflowManager borrows the client — it has no Close of its own
+    wm, err := temporal.NewWorkflowManagerWithNamespace(c, cfg.Namespace)
     if err != nil {
         log.Fatalf("Failed to create WorkflowManager: %v", err)
     }
-    defer wm.Close()
 
     ctx := context.Background()
 

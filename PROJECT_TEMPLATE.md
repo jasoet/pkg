@@ -2051,8 +2051,8 @@ tasks:
 | REST Client | `rest` | `rest.NewClient(opts...)`, `client.MakeRequestWithTrace(...)` |
 | Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.New(retry.WithName(n), retry.WithOTelConfig(c))` |
 | Concurrency | `concurrent` | `concurrent.ExecuteConcurrently(ctx, funcs)` |
-| Temporal Client | `temporal` | `temporal.NewClient(cfg)` |
-| Temporal Worker | `temporal` | `temporal.NewWorkerManager(cfg)`, `wm.Register(queue, opts)` |
+| Temporal Client | `temporal` | `temporal.NewClient(temporal.WithConfig(cfg))` |
+| Temporal Worker | `temporal` | `temporal.NewWorkerManager(client)`, `wm.Register(queue, opts)` |
 | Temporal Schedule | `temporal` | `temporal.NewScheduleManager(client)`, `sm.CreateWorkflowSchedule(...)` |
 | Temporal Test | `temporal/testcontainer` | `testcontainer.Setup(ctx, cfg, opts)` |
 | Docker | `docker` | `docker.New(opts...)`, `docker.NewFromRequest(req)` |
