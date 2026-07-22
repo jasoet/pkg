@@ -160,7 +160,7 @@ func ActivityWorkflowWithChildWorkflow(ctx workflow.Context, name string) (strin
 //
 // func main() {
 //     // Create a Temporal client
-//     client, err := temporal.NewClient(temporal.DefaultConfig())
+//     client, err := temporal.NewClient()
 //     if err != nil {
 //         log.Fatal().Err(err).Msg("Failed to create Temporal client")
 //     }

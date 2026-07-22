@@ -1217,12 +1217,19 @@ func main() {
     paymentSvc := service.NewPaymentService(orderRepo)
     activities := apptemporal.NewActivities(orderRepo, paymentSvc)
 
-    // Create WorkerManager (owns its own Temporal client)
-    wm, err := temporal.NewWorkerManager(&cfg.Temporal)
+    // Create the Temporal client (caller-owned)
+    temporalClient, err := temporal.NewClient(temporal.WithConfig(cfg.Temporal))
+    if err != nil {
+        log.Fatalf("failed to create temporal client: %v", err)
+    }
+    defer temporalClient.Close()
+
+    // Create WorkerManager (borrows the client; Close does not close it)
+    wm, err := temporal.NewWorkerManager(temporalClient)
     if err != nil {
         log.Fatalf("failed to create worker manager: %v", err)
     }
-    defer wm.Close()
+    defer wm.Close(context.Background())
 
     // Register worker with workflows and activities
     w := wm.Register(taskQueue, worker.Options{})
@@ -1241,7 +1248,7 @@ func main() {
 
 ```go
 // In your handler or service:
-temporalClient, err := temporal.NewClient(&cfg.Temporal)
+temporalClient, err := temporal.NewClient(temporal.WithConfig(cfg.Temporal))
 if err != nil {
     return err
 }
