@@ -118,8 +118,8 @@ func otelConfigExample() {
 
 	// OTel is configured at the middleware level, not on server.Config.
 	// Create an OTel config and use it in Echo middleware:
-	otelCfg := otel.NewConfig("server-example").
-		WithServiceVersion("1.0.0")
+	otelCfg := otel.NewConfig("server-example",
+		otel.WithServiceVersion("1.0.0"))
 
 	config := server.DefaultConfig(8081, operation, shutdown)
 	config.ShutdownTimeout = 15 * time.Second

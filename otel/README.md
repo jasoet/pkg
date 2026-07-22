@@ -17,7 +17,7 @@ The `otel` package provides centralized OpenTelemetry configuration that enables
 - **Unified Configuration**: Single config object for all telemetry pillars
 - **Selective Enablement**: Enable only the telemetry you need
 - **No-op by Default**: Zero overhead when providers are not configured
-- **Method Chaining**: Fluent API for configuration
+- **Functional Options**: Flexible configuration via option functions
 - **Standard Logging Helper**: OTel-aware logging with automatic trace correlation
 - **OTLP Logging Support**: Export logs to OpenTelemetry collectors with flexible options
 - **Granular Log Levels**: Fine-grained control over log verbosity (debug, info, warn, error, none)
@@ -49,10 +49,10 @@ func main() {
     meterProvider := metric.NewMeterProvider(/* ... */)
 
     // Create unified OTel config
-    otelConfig := otel.NewConfig("my-service").
-        WithTracerProvider(tracerProvider).
-        WithMeterProvider(meterProvider).
-        WithServiceVersion("1.0.0")
+    otelConfig := otel.NewConfig("my-service",
+        otel.WithTracerProvider(tracerProvider),
+        otel.WithMeterProvider(meterProvider),
+        otel.WithServiceVersion("1.0.0"))
 
     // Use with library packages
     // server.Start(server.Config{OTelConfig: otelConfig, ...})
@@ -69,20 +69,20 @@ Enable only what you need:
 
 ```go
 // Tracing only
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithoutLogging()  // Disable default logging
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithoutLogging()) // Disable default logging
 
 // Metrics only
-cfg := otel.NewConfig("my-service").
-    WithMeterProvider(meterProvider).
-    WithoutLogging()
+cfg := otel.NewConfig("my-service",
+    otel.WithMeterProvider(meterProvider),
+    otel.WithoutLogging())
 
 // All three pillars
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider).
-    WithLoggerProvider(loggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+    otel.WithLoggerProvider(loggerProvider))
 ```
 
 ### Custom Logger Provider
@@ -98,10 +98,10 @@ import (
 // Production-ready logger with trace correlation
 loggerProvider := logging.NewLoggerProvider("my-service", false)
 
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider).
-    WithLoggerProvider(loggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+    otel.WithLoggerProvider(loggerProvider))
 ```
 
 ### OTLP Logging with Flexible Options
@@ -131,9 +131,9 @@ loggerProvider, err := otel.NewLoggerProviderWithOptions(
 )
 
 // Use with OTel config
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithLoggerProvider(loggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithLoggerProvider(loggerProvider))
 ```
 
 ## Configuration API
@@ -150,15 +150,17 @@ type Config struct {
 }
 ```
 
-### Builder Methods
+### Functional Options
 
-| Method | Description |
+| Option | Description |
 |--------|-------------|
-| `NewConfig(name)` | Create config with service name and default logger |
+| `NewConfig(name, opts...)` | Create config with service name, default logger, and options |
 | `WithTracerProvider(tp)` | Enable distributed tracing |
 | `WithMeterProvider(mp)` | Enable metrics collection |
 | `WithLoggerProvider(lp)` | Set custom logger provider |
 | `WithServiceVersion(v)` | Set service version |
+| `WithoutTracing()` | Disable tracing |
+| `WithoutMetrics()` | Disable metrics |
 | `WithoutLogging()` | Disable default stdout logging |
 
 ### Helper Methods
@@ -336,9 +338,9 @@ import (
     "github.com/jasoet/pkg/v2/server"
 )
 
-otelConfig := otel.NewConfig("my-api").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelConfig := otel.NewConfig("my-api",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
 server.Start(server.Config{
     Port:       8080,
@@ -354,9 +356,9 @@ import (
     "github.com/jasoet/pkg/v2/grpc"
 )
 
-otelConfig := otel.NewConfig("my-grpc-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelConfig := otel.NewConfig("my-grpc-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
 grpcServer := grpc.NewServer(
     grpc.NewConfig("my-service", 9090).
@@ -372,9 +374,9 @@ import (
     "github.com/jasoet/pkg/v2/db"
 )
 
-otelConfig := otel.NewConfig("my-db-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelConfig := otel.NewConfig("my-db-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
 pool, _ := db.ConnectionConfig{
     DBType:     db.Postgresql,
@@ -394,9 +396,9 @@ import (
     "github.com/jasoet/pkg/v2/rest"
 )
 
-otelConfig := otel.NewConfig("my-client").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelConfig := otel.NewConfig("my-client",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
 client := rest.NewClient(rest.ClientConfig{
     BaseURL:    "https://api.example.com",
@@ -435,10 +437,10 @@ import (
 )
 
 func TestMyCode(t *testing.T) {
-    cfg := otel.NewConfig("test-service").
-        WithTracerProvider(noopt.NewTracerProvider()).
-        WithMeterProvider(noopm.NewMeterProvider()).
-        WithoutLogging()
+    cfg := otel.NewConfig("test-service",
+        otel.WithTracerProvider(noopt.NewTracerProvider()),
+        otel.WithMeterProvider(noopm.NewMeterProvider()),
+        otel.WithoutLogging())
 
     // Test your code with cfg
 }
@@ -450,9 +452,9 @@ func TestMyCode(t *testing.T) {
 
 ```go
 // ✅ Good: Single config shared across packages
-otelConfig := otel.NewConfig("my-service").
-    WithTracerProvider(tp).
-    WithMeterProvider(mp)
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tp),
+    otel.WithMeterProvider(mp))
 
 serverCfg := server.Config{OTelConfig: otelConfig}
 dbCfg := db.Config{OTelConfig: otelConfig}
@@ -501,8 +503,9 @@ logger.Info("Work completed", "duration", elapsed)
 
 ```
 otel/
-├── config.go        # Config struct and builder methods
+├── config.go        # Config struct and functional options
 ├── config_test.go   # Config tests
+├── options_test.go  # Functional options tests
 ├── logging.go       # OTLP logger provider with flexible options
 ├── logging_test.go  # Logger provider tests
 ├── helper.go        # Standard logging helper with OTel integration
@@ -541,11 +544,11 @@ defer cfg.Shutdown(context.Background())
 **Solution**:
 ```go
 // Disable default logger
-cfg := otel.NewConfig("my-service").WithoutLogging()
+cfg := otel.NewConfig("my-service", otel.WithoutLogging())
 
 // Or use custom logger
-cfg := otel.NewConfig("my-service").
-    WithLoggerProvider(myLoggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithLoggerProvider(myLoggerProvider))
 ```
 
 ### Provider Already Registered
@@ -571,7 +574,7 @@ tracer := otel.Tracer("my-scope")
 
 // v2 (OTel v2)
 import "github.com/jasoet/pkg/v2/otel"
-cfg := otel.NewConfig("my-service").WithTracerProvider(tp)
+cfg := otel.NewConfig("my-service", otel.WithTracerProvider(tp))
 tracer := cfg.GetTracer("my-scope")
 ```
 

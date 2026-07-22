@@ -338,16 +338,19 @@ pool, err := cfg.Database.Pool() // OTelConfig injected at runtime, not from YAM
 otelCfg := otel.NewConfig("myapp")
 
 // Optionally attach real providers (nil = no-op, zero overhead)
-otelCfg = otelCfg.
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelCfg = otel.NewConfig("myapp",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
 // For OTel-based logging (replaces zerolog global)
 loggerProvider, err := otel.NewLoggerProviderWithOptions("myapp",
     otel.WithConsoleOutput(true),
     otel.WithLogLevel(otel.LogLevel("info")),
 )
-otelCfg = otelCfg.WithLoggerProvider(loggerProvider)
+otelCfg = otel.NewConfig("myapp",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+    otel.WithLoggerProvider(loggerProvider))
 
 // Store in context for downstream access
 ctx = otel.ContextWithConfig(ctx, otelCfg)

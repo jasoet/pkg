@@ -397,10 +397,10 @@ func TestMultipleOptions(t *testing.T) {
 
 func TestWithOTelConfig(t *testing.T) {
 	t.Run("WithOTelConfig sets config", func(t *testing.T) {
-		otelConfig := pkgotel.NewConfig("grpc-test").
-			WithTracerProvider(noopt.NewTracerProvider()).
-			WithMeterProvider(noopm.NewMeterProvider()).
-			WithLoggerProvider(noopl.NewLoggerProvider())
+		otelConfig := pkgotel.NewConfig("grpc-test",
+			pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+			pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+			pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 		cfg, err := newConfig(WithOTelConfig(otelConfig))
 		require.NoError(t, err)

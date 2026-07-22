@@ -44,7 +44,7 @@ func Example_withOTelConfig() {
 	cfg := otel.NewConfig("my-service")
 
 	// Add TracerProvider here if you have one
-	// cfg = cfg.WithTracerProvider(tracerProvider)
+	// cfg = otel.NewConfig("my-service", otel.WithTracerProvider(tracerProvider))
 
 	// Store config in context for automatic propagation
 	ctx := otel.ContextWithConfig(context.Background(), cfg)
@@ -123,7 +123,7 @@ func Example_gradualOTelAdoption() {
 	// Phase 2: Add OTel config via context
 	cfg := otel.NewConfig("my-service")
 	ctx = otel.ContextWithConfig(ctx, cfg)
-	// Later: cfg = cfg.WithTracerProvider(tp)
+	// Later: cfg = otel.NewConfig("my-service", otel.WithTracerProvider(tp))
 
 	lc2 := otel.Layers.StartService(ctx, "user", "CreateUser")
 	defer lc2.End()

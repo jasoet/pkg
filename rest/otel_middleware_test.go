@@ -35,8 +35,8 @@ func TestNewOTelTracingMiddleware(t *testing.T) {
 	})
 
 	t.Run("creates middleware when tracing is enabled", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 
 		middleware := NewOTelTracingMiddleware(cfg)
 		if middleware == nil {
@@ -64,8 +64,8 @@ func TestOTelTracingMiddleware_BeforeRequest(t *testing.T) {
 	})
 
 	t.Run("starts span and injects trace context into headers", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 		middleware := NewOTelTracingMiddleware(cfg)
 
 		ctx := context.Background()
@@ -93,8 +93,8 @@ func TestOTelTracingMiddleware_BeforeRequest(t *testing.T) {
 	})
 
 	t.Run("handles different HTTP methods", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 		middleware := NewOTelTracingMiddleware(cfg)
 
 		methods := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}
@@ -125,8 +125,8 @@ func TestOTelTracingMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("does nothing when span not in context", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 		middleware := NewOTelTracingMiddleware(cfg)
 
 		ctx := context.Background()
@@ -141,8 +141,8 @@ func TestOTelTracingMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("records successful response attributes", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 		middleware := NewOTelTracingMiddleware(cfg)
 
 		ctx := context.Background()
@@ -162,8 +162,8 @@ func TestOTelTracingMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("records error response attributes", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 		middleware := NewOTelTracingMiddleware(cfg)
 
 		ctx := context.Background()
@@ -183,8 +183,8 @@ func TestOTelTracingMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("records 4xx client error status", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 		middleware := NewOTelTracingMiddleware(cfg)
 
 		ctx := context.Background()
@@ -225,8 +225,8 @@ func TestNewOTelMetricsMiddleware(t *testing.T) {
 	})
 
 	t.Run("creates middleware when metrics are enabled", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 
 		middleware := NewOTelMetricsMiddleware(cfg)
 		if middleware == nil {
@@ -266,8 +266,8 @@ func TestOTelMetricsMiddleware_BeforeRequest(t *testing.T) {
 	})
 
 	t.Run("records request size when body is present", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 		middleware := NewOTelMetricsMiddleware(cfg)
 
 		ctx := context.Background()
@@ -281,8 +281,8 @@ func TestOTelMetricsMiddleware_BeforeRequest(t *testing.T) {
 	})
 
 	t.Run("does not record request size when body is empty", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 		middleware := NewOTelMetricsMiddleware(cfg)
 
 		ctx := context.Background()
@@ -310,8 +310,8 @@ func TestOTelMetricsMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("records request metrics", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 		middleware := NewOTelMetricsMiddleware(cfg)
 
 		ctx := context.Background()
@@ -327,8 +327,8 @@ func TestOTelMetricsMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("records response size when response is present", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 		middleware := NewOTelMetricsMiddleware(cfg)
 
 		ctx := context.Background()
@@ -345,8 +345,8 @@ func TestOTelMetricsMiddleware_AfterRequest(t *testing.T) {
 	})
 
 	t.Run("records metrics for different status codes", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 		middleware := NewOTelMetricsMiddleware(cfg)
 
 		statusCodes := []int{200, 201, 400, 404, 500}
@@ -374,8 +374,8 @@ func TestOTelMetricsMiddleware_RecordRetry(t *testing.T) {
 	})
 
 	t.Run("records retry attempt", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(noop.NewMeterProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(noop.NewMeterProvider()))
 		middleware := NewOTelMetricsMiddleware(cfg)
 
 		ctx := context.Background()
@@ -400,7 +400,7 @@ func TestNewOTelLoggingMiddleware(t *testing.T) {
 	})
 
 	t.Run("returns nil when logging is not enabled", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").WithoutLogging()
+		cfg := otel.NewConfig("test-service", otel.WithoutLogging())
 		middleware := NewOTelLoggingMiddleware(cfg)
 		if middleware != nil {
 			t.Error("Expected nil middleware when logging is disabled")

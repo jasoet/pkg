@@ -214,12 +214,14 @@ import (
 
 func main() {
     // Create OTel config with logging (traces and metrics optional)
-    otelCfg := otel.NewConfig("my-grpc-service").
-        WithServiceVersion("1.0.0")
+    otelCfg := otel.NewConfig("my-grpc-service",
+        otel.WithServiceVersion("1.0.0"))
 
     // Or use logging package for better log-span correlation
     loggerProvider := logging.NewLoggerProvider("my-grpc-service", false)
-    otelCfg.WithLoggerProvider(loggerProvider)
+    otelCfg = otel.NewConfig("my-grpc-service",
+        otel.WithServiceVersion("1.0.0"),
+        otel.WithLoggerProvider(loggerProvider))
 
     // Start server with OTel
     server, err := grpcserver.New(

@@ -119,7 +119,8 @@ func example3WithOTel(ctx context.Context) error {
 	// Create OTel config
 	otelConfig := otel.NewConfig("workflow-builder-example")
 	// In production, you would add TracerProvider and MeterProvider here:
-	// otelConfig.WithTracerProvider(tp).WithMeterProvider(mp)
+	// otelConfig = otel.NewConfig("workflow-builder-example",
+	//     otel.WithTracerProvider(tp), otel.WithMeterProvider(mp))
 
 	// Create Argo client with OTel
 	ctx, client, err := argo.NewClientWithOptions(ctx,

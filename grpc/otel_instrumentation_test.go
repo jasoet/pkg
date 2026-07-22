@@ -134,8 +134,8 @@ func TestCreateGRPCMetricsInterceptor(t *testing.T) {
 	})
 
 	t.Run("metrics enabled records requests", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithMeterProvider(metricnoop.NewMeterProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithMeterProvider(metricnoop.NewMeterProvider()))
 
 		interceptor := createGRPCMetricsInterceptor(config)
 		require.NotNil(t, interceptor)
@@ -148,8 +148,8 @@ func TestCreateGRPCMetricsInterceptor(t *testing.T) {
 	})
 
 	t.Run("records failed requests", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithMeterProvider(metricnoop.NewMeterProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithMeterProvider(metricnoop.NewMeterProvider()))
 
 		interceptor := createGRPCMetricsInterceptor(config)
 
@@ -204,8 +204,8 @@ func TestCreateGRPCTracingInterceptor(t *testing.T) {
 	})
 
 	t.Run("tracing enabled creates spans", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithTracerProvider(tracenoop.NewTracerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithTracerProvider(tracenoop.NewTracerProvider()))
 
 		interceptor := createGRPCTracingInterceptor(config)
 		require.NotNil(t, interceptor)
@@ -218,8 +218,8 @@ func TestCreateGRPCTracingInterceptor(t *testing.T) {
 	})
 
 	t.Run("records error in span", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithTracerProvider(tracenoop.NewTracerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithTracerProvider(tracenoop.NewTracerProvider()))
 
 		interceptor := createGRPCTracingInterceptor(config)
 
@@ -258,8 +258,8 @@ func TestCreateGRPCLoggingInterceptor(t *testing.T) {
 	t.Run("logging disabled returns passthrough interceptor", func(t *testing.T) {
 		// Config without logger provider means logging disabled (or default stdout)
 		// Use WithoutLogging() to explicitly disable
-		config := pkgotel.NewConfig("test-service").
-			WithoutLogging()
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithoutLogging())
 
 		interceptor := createGRPCLoggingInterceptor(config)
 		require.NotNil(t, interceptor)
@@ -277,8 +277,8 @@ func TestCreateGRPCLoggingInterceptor(t *testing.T) {
 	})
 
 	t.Run("logging enabled creates log records", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithLoggerProvider(noop.NewLoggerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithLoggerProvider(noop.NewLoggerProvider()))
 
 		interceptor := createGRPCLoggingInterceptor(config)
 		require.NotNil(t, interceptor)
@@ -291,8 +291,8 @@ func TestCreateGRPCLoggingInterceptor(t *testing.T) {
 	})
 
 	t.Run("logs failed requests with error", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithLoggerProvider(noop.NewLoggerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithLoggerProvider(noop.NewLoggerProvider()))
 
 		interceptor := createGRPCLoggingInterceptor(config)
 
@@ -334,8 +334,8 @@ func TestCreateHTTPGatewayMetricsMiddleware(t *testing.T) {
 	})
 
 	t.Run("metrics enabled records metrics", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithMeterProvider(metricnoop.NewMeterProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithMeterProvider(metricnoop.NewMeterProvider()))
 
 		middleware := createHTTPGatewayMetricsMiddleware(config)
 		require.NotNil(t, middleware)
@@ -358,8 +358,8 @@ func TestCreateHTTPGatewayMetricsMiddleware(t *testing.T) {
 	})
 
 	t.Run("records error responses", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithMeterProvider(metricnoop.NewMeterProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithMeterProvider(metricnoop.NewMeterProvider()))
 
 		middleware := createHTTPGatewayMetricsMiddleware(config)
 
@@ -408,8 +408,8 @@ func TestCreateHTTPGatewayTracingMiddleware(t *testing.T) {
 	})
 
 	t.Run("tracing enabled creates spans", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithTracerProvider(tracenoop.NewTracerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithTracerProvider(tracenoop.NewTracerProvider()))
 
 		middleware := createHTTPGatewayTracingMiddleware(config)
 		require.NotNil(t, middleware)
@@ -432,8 +432,8 @@ func TestCreateHTTPGatewayTracingMiddleware(t *testing.T) {
 	})
 
 	t.Run("records error in span", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithTracerProvider(tracenoop.NewTracerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithTracerProvider(tracenoop.NewTracerProvider()))
 
 		middleware := createHTTPGatewayTracingMiddleware(config)
 
@@ -482,8 +482,8 @@ func TestCreateHTTPGatewayLoggingMiddleware(t *testing.T) {
 	})
 
 	t.Run("logging enabled creates log records", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithLoggerProvider(noop.NewLoggerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithLoggerProvider(noop.NewLoggerProvider()))
 
 		middleware := createHTTPGatewayLoggingMiddleware(config)
 		require.NotNil(t, middleware)
@@ -506,8 +506,8 @@ func TestCreateHTTPGatewayLoggingMiddleware(t *testing.T) {
 	})
 
 	t.Run("logs 5xx errors with error severity", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithLoggerProvider(noop.NewLoggerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithLoggerProvider(noop.NewLoggerProvider()))
 
 		middleware := createHTTPGatewayLoggingMiddleware(config)
 
@@ -535,10 +535,10 @@ func TestCreateHTTPGatewayLoggingMiddleware(t *testing.T) {
 
 func TestGRPCInterceptorsCombined(t *testing.T) {
 	t.Run("all interceptors work together", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithMeterProvider(metricnoop.NewMeterProvider()).
-			WithTracerProvider(tracenoop.NewTracerProvider()).
-			WithLoggerProvider(noop.NewLoggerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithMeterProvider(metricnoop.NewMeterProvider()),
+			pkgotel.WithTracerProvider(tracenoop.NewTracerProvider()),
+			pkgotel.WithLoggerProvider(noop.NewLoggerProvider()))
 
 		metricsInterceptor := createGRPCMetricsInterceptor(config)
 		tracingInterceptor := createGRPCTracingInterceptor(config)
@@ -567,10 +567,10 @@ func TestGRPCInterceptorsCombined(t *testing.T) {
 
 func TestHTTPGatewayMiddlewareCombined(t *testing.T) {
 	t.Run("all middleware work together", func(t *testing.T) {
-		config := pkgotel.NewConfig("test-service").
-			WithMeterProvider(metricnoop.NewMeterProvider()).
-			WithTracerProvider(tracenoop.NewTracerProvider()).
-			WithLoggerProvider(noop.NewLoggerProvider())
+		config := pkgotel.NewConfig("test-service",
+			pkgotel.WithMeterProvider(metricnoop.NewMeterProvider()),
+			pkgotel.WithTracerProvider(tracenoop.NewTracerProvider()),
+			pkgotel.WithLoggerProvider(noop.NewLoggerProvider()))
 
 		metricsMiddleware := createHTTPGatewayMetricsMiddleware(config)
 		tracingMiddleware := createHTTPGatewayTracingMiddleware(config)

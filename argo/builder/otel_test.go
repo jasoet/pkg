@@ -29,9 +29,9 @@ func TestNewOTelInstrumentation(t *testing.T) {
 		tracerProvider := noopt.NewTracerProvider()
 		meterProvider := sdkmetric.NewMeterProvider()
 
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(tracerProvider).
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(tracerProvider),
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		require.NotNil(t, inst)
@@ -46,8 +46,8 @@ func TestNewOTelInstrumentation(t *testing.T) {
 
 	t.Run("creates instrumentation with tracer only", func(t *testing.T) {
 		tracerProvider := noopt.NewTracerProvider()
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(tracerProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(tracerProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		require.NotNil(t, inst)
@@ -58,8 +58,8 @@ func TestNewOTelInstrumentation(t *testing.T) {
 
 	t.Run("creates instrumentation with meter only", func(t *testing.T) {
 		meterProvider := sdkmetric.NewMeterProvider()
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		require.NotNil(t, inst)
@@ -95,8 +95,8 @@ func TestStartSpan(t *testing.T) {
 			noopt.WithSyncer(exporter),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(tracerProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(tracerProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -135,9 +135,9 @@ func TestRecordError(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(tracerProvider).
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(tracerProvider),
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -176,8 +176,8 @@ func TestIncrementCounter(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -196,8 +196,8 @@ func TestIncrementCounter(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -215,8 +215,8 @@ func TestIncrementCounter(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -234,8 +234,8 @@ func TestIncrementCounter(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -255,8 +255,8 @@ func TestIncrementCounter(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -281,8 +281,8 @@ func TestRecordDuration(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -301,8 +301,8 @@ func TestRecordDuration(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -322,8 +322,8 @@ func TestRecordDuration(t *testing.T) {
 			sdkmetric.WithReader(reader),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithMeterProvider(meterProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithMeterProvider(meterProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -348,8 +348,8 @@ func TestAddSpanAttributes(t *testing.T) {
 			noopt.WithSyncer(exporter),
 		)
 
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(tracerProvider)
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(tracerProvider))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()
@@ -371,8 +371,8 @@ func TestAddSpanAttributes(t *testing.T) {
 	})
 
 	t.Run("does nothing when no active span", func(t *testing.T) {
-		cfg := otel.NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
+		cfg := otel.NewConfig("test-service",
+			otel.WithTracerProvider(noopt.NewTracerProvider()))
 
 		inst := newOTelInstrumentation(cfg)
 		ctx := context.Background()

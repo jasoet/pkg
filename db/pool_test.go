@@ -230,8 +230,8 @@ func TestConnectionConfig_collectPoolMetrics_NilOTelConfig(t *testing.T) {
 
 func TestConnectionConfig_collectPoolMetrics_MetricsDisabled(t *testing.T) {
 	// OTel config with only tracing enabled (no MeterProvider = metrics disabled)
-	otelConfig := pkgotel.NewConfig("test").
-		WithTracerProvider(noopt.NewTracerProvider())
+	otelConfig := pkgotel.NewConfig("test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:     Postgresql,
@@ -255,8 +255,8 @@ func TestConnectionConfig_collectPoolMetrics_MetricsDisabled(t *testing.T) {
 
 func TestConnectionConfig_collectPoolMetrics_WithValidConfig(t *testing.T) {
 	// OTel config with metrics enabled (using noop MeterProvider for testing)
-	otelConfig := pkgotel.NewConfig("test-metrics").
-		WithMeterProvider(noopm.NewMeterProvider())
+	otelConfig := pkgotel.NewConfig("test-metrics",
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()))
 
 	config := &ConnectionConfig{
 		DBType:     Postgresql,

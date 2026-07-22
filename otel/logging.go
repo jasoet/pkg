@@ -15,6 +15,8 @@ import (
 )
 
 // LogLevel represents the logging level for the console/OTel log pipeline.
+// Trace and Fatal levels are intentionally excluded: Trace is not supported by zerolog natively,
+// and Fatal triggers os.Exit which is unsuitable for library use.
 type LogLevel string
 
 const (

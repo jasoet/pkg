@@ -52,10 +52,10 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 	require.NoError(t, err, "Failed to get port")
 
 	// Create OTel config with noop providers
-	otelConfig := pkgotel.NewConfig("db-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -225,10 +225,10 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 	require.NoError(t, err, "Failed to get port")
 
 	// Create OTel config with noop providers and metrics enabled
-	otelConfig := pkgotel.NewConfig("db-metrics-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-metrics-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -330,9 +330,9 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 
 	// Test with OTel config but tracing disabled
 	t.Run("OTel config without tracer", func(t *testing.T) {
-		otelConfig := pkgotel.NewConfig("db-no-trace-test").
-			WithMeterProvider(noopm.NewMeterProvider()).
-			WithLoggerProvider(noopl.NewLoggerProvider())
+		otelConfig := pkgotel.NewConfig("db-no-trace-test",
+			pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+			pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 		// TracerProvider is nil
 
 		config := &ConnectionConfig{
@@ -374,10 +374,10 @@ func TestMySQLPoolWithOTel(t *testing.T) {
 	}()
 
 	// Add OTel config
-	otelConfig := pkgotel.NewConfig("db-mysql-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-mysql-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config.OTelConfig = otelConfig
 
@@ -424,10 +424,10 @@ func TestMSSQLPoolWithOTel(t *testing.T) {
 	}()
 
 	// Add OTel config
-	otelConfig := pkgotel.NewConfig("db-mssql-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-mssql-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config.OTelConfig = otelConfig
 
@@ -472,10 +472,10 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 	require.NoError(t, err, "Failed to get port")
 
 	// Create OTel config
-	otelConfig := pkgotel.NewConfig("db-no-ctx-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-no-ctx-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -615,10 +615,10 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create OTel config
-	otelConfig := pkgotel.NewConfig("db-table-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-table-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
