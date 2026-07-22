@@ -281,7 +281,7 @@ func TestConnectionConfig_collectPoolMetrics_WithValidConfig(t *testing.T) {
 // TestConnectionConfig_installOTelCallbacks tests removed
 // The uptrace otelgorm plugin is now used instead of custom callbacks
 
-func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
+func TestConnectionConfig_NewPool_InvalidDbType(t *testing.T) {
 	config := &ConnectionConfig{
 		DBType:       "invalid-db-type",
 		Host:         "localhost",
@@ -299,7 +299,7 @@ func TestConnectionConfig_Pool_InvalidDbType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported database type")
 }
 
-func TestConnectionConfig_Pool_ConnectionFailure(t *testing.T) {
+func TestConnectionConfig_NewPool_ConnectionFailure(t *testing.T) {
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
 		Host:         "invalid-host-that-does-not-exist.local",
@@ -317,7 +317,7 @@ func TestConnectionConfig_Pool_ConnectionFailure(t *testing.T) {
 	// The error should be from the connection attempt
 }
 
-func TestConnectionConfig_Pool_EmptyDSN(t *testing.T) {
+func TestConnectionConfig_NewPool_EmptyDSN(t *testing.T) {
 	config := &ConnectionConfig{
 		DBType:       "",
 		Host:         "",
@@ -362,7 +362,7 @@ func TestConnectionConfig_SQLDB_ConnectionFailure(t *testing.T) {
 		MaxOpenConns: 10,
 	}
 
-	// SQLDB() calls Pool() internally, which will fail to connect
+	// SQLDB() calls NewPool() internally, which will fail to connect
 	db, err := config.SQLDB()
 	assert.Error(t, err)
 	assert.Nil(t, db)

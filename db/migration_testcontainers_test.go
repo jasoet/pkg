@@ -221,8 +221,9 @@ func verifyTestTablesDropped(db *sql.DB) error {
 	return nil
 }
 
-// TestPostgresMigrationsWithGorm tests RunPostgresMigrationsWithGorm function
-func TestPostgresMigrationsWithGorm(t *testing.T) {
+// TestPostgresMigrationsFromGormPool tests the GORM call-site pattern:
+// obtain the underlying *sql.DB via gormDB.DB() and run the sql.DB migration variants.
+func TestPostgresMigrationsFromGormPool(t *testing.T) {
 	ctx := context.Background()
 
 	// Start PostgreSQL container
@@ -269,114 +270,103 @@ func TestPostgresMigrationsWithGorm(t *testing.T) {
 		MaxOpenConns: 10,
 	}
 
-	// Connect to the database using Pool (GORM)
+	// Connect to the database using NewPool (GORM)
 	gormDB, err := NewPool(WithConnectionConfig(*config))
 	if err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// Get underlying sql.DB
+	// Get underlying sql.DB — the call-site pattern for GORM users
 	sqlDB, err := gormDB.DB()
 	if err != nil {
 		t.Fatalf("Failed to get sql.DB: %v", err)
 	}
 	defer sqlDB.Close()
 
-	// Run migrations UP with GORM
-	err = RunPostgresMigrationsWithGorm(ctx, gormDB, testMigrationFs, "migrations_test")
+	// Run migrations UP via the sql.DB variant
+	err = RunPostgresMigrations(ctx, sqlDB, testMigrationFs, "migrations_test")
 	if err != nil {
-		t.Fatalf("Failed to run GORM migrations UP: %v", err)
+		t.Fatalf("Failed to run migrations UP: %v", err)
 	}
 
 	// Verify migrations were applied
 	if err := verifyTestMigrations(sqlDB); err != nil {
-		t.Fatalf("GORM migration verification failed after UP: %v", err)
+		t.Fatalf("Migration verification failed after UP: %v", err)
 	}
 
-	// Run migrations DOWN with GORM
-	err = RunPostgresMigrationsDownWithGorm(ctx, gormDB, testMigrationFs, "migrations_test")
+	// Run migrations DOWN via the sql.DB variant
+	err = RunPostgresMigrationsDown(ctx, sqlDB, testMigrationFs, "migrations_test")
 	if err != nil {
-		t.Fatalf("Failed to run GORM migrations DOWN: %v", err)
+		t.Fatalf("Failed to run migrations DOWN: %v", err)
 	}
 
 	// Verify tables were dropped
 	if err := verifyTestTablesDropped(sqlDB); err != nil {
-		t.Fatalf("GORM migration DOWN verification failed: %v", err)
+		t.Fatalf("Migration DOWN verification failed: %v", err)
 	}
 }
 
-// TestPostgresMigrationsWithGormError tests error handling in GORM migration functions
-func TestPostgresMigrationsWithGormError(t *testing.T) {
+// TestPostgresMigrationsInvalidPath tests error handling with an invalid migration path
+func TestPostgresMigrationsInvalidPath(t *testing.T) {
 	ctx := context.Background()
 
-	// Test with invalid GORM DB (closed connection)
-	t.Run("Error getting sql.DB from GORM", func(t *testing.T) {
-		// This test simulates a scenario where gormDB.DB() would fail
-		// In practice, creating such a scenario is difficult without mocking
-		// We'll test with a nil GORM DB which should panic or error
-		// For coverage, we rely on the successful path testing above
-		// This is a limitation of testing GORM's internal behavior
-	})
-
-	// Test with invalid migration filesystem
-	t.Run("Invalid migration filesystem", func(t *testing.T) {
-		// Start PostgreSQL container
-		postgresContainer, err := postgres.Run(ctx,
-			"postgres:18-alpine",
-			postgres.WithDatabase("testdb"),
-			postgres.WithUsername("testuser"),
-			postgres.WithPassword("testpass"),
-			testcontainers.WithWaitStrategy(
-				wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-			),
-		)
-		if err != nil {
-			t.Fatalf("Failed to start PostgreSQL container: %v", err)
+	// Start PostgreSQL container
+	postgresContainer, err := postgres.Run(ctx,
+		"postgres:18-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("testuser"),
+		postgres.WithPassword("testpass"),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("Failed to start PostgreSQL container: %v", err)
+	}
+	defer func() {
+		if err := postgresContainer.Terminate(ctx); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
 		}
-		defer func() {
-			if err := postgresContainer.Terminate(ctx); err != nil {
-				t.Logf("Failed to terminate container: %v", err)
-			}
-		}()
+	}()
 
-		host, err := postgresContainer.Host(ctx)
-		if err != nil {
-			t.Fatalf("Failed to get host: %v", err)
-		}
+	host, err := postgresContainer.Host(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get host: %v", err)
+	}
 
-		port, err := postgresContainer.MappedPort(ctx, "5432")
-		if err != nil {
-			t.Fatalf("Failed to get port: %v", err)
-		}
+	port, err := postgresContainer.MappedPort(ctx, "5432")
+	if err != nil {
+		t.Fatalf("Failed to get port: %v", err)
+	}
 
-		config := &ConnectionConfig{
-			DBType:       Postgresql,
-			Host:         host,
-			Port:         port.Int(),
-			Username:     "testuser",
-			Password:     "testpass",
-			DBName:       "testdb",
-			SSLMode:      "disable", // testcontainer has no TLS
-			Timeout:      10 * time.Second,
-			MaxIdleConns: 5,
-			MaxOpenConns: 10,
-		}
+	config := &ConnectionConfig{
+		DBType:       Postgresql,
+		Host:         host,
+		Port:         port.Int(),
+		Username:     "testuser",
+		Password:     "testpass",
+		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
+		Timeout:      10 * time.Second,
+		MaxIdleConns: 5,
+		MaxOpenConns: 10,
+	}
 
-		gormDB, err := NewPool(WithConnectionConfig(*config))
-		if err != nil {
-			t.Fatalf("Failed to connect to database: %v", err)
-		}
+	sqlDB, err := config.SQLDB()
+	if err != nil {
+		t.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer sqlDB.Close()
 
-		// Try to run migrations with non-existent path
-		err = RunPostgresMigrationsWithGorm(ctx, gormDB, testMigrationFs, "non_existent_path")
-		if err == nil {
-			t.Error("Expected error with invalid migration path")
-		}
+	// Try to run migrations with non-existent path
+	err = RunPostgresMigrations(ctx, sqlDB, testMigrationFs, "non_existent_path")
+	if err == nil {
+		t.Error("Expected error with invalid migration path")
+	}
 
-		// Try to run migrations down with non-existent path
-		err = RunPostgresMigrationsDownWithGorm(ctx, gormDB, testMigrationFs, "non_existent_path")
-		if err == nil {
-			t.Error("Expected error with invalid migration path")
-		}
-	})
+	// Try to run migrations down with non-existent path
+	err = RunPostgresMigrationsDown(ctx, sqlDB, testMigrationFs, "non_existent_path")
+	if err == nil {
+		t.Error("Expected error with invalid migration path")
+	}
 }

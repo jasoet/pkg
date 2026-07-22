@@ -10,96 +10,69 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/jasoet/pkg/v3/otel"
 )
 
-// RunPostgresMigrationsWithGorm applies pending UP migrations using a GORM connection.
-//
-// Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
-func RunPostgresMigrationsWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
-	logger := otel.ContextLogger(ctx, "db.migrations")
-	logger.Debug().Msg("Starting PostgreSQL migrations UP with GORM")
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get SQL DB from GORM: %w", err)
-	}
-	return RunPostgresMigrations(ctx, sqlDB, migrationFs, migrationsPath)
-}
-
-// RunPostgresMigrationsDownWithGorm rolls back migrations using a GORM connection.
-//
-// Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
-func RunPostgresMigrationsDownWithGorm(ctx context.Context, db *gorm.DB, migrationFs embed.FS, migrationsPath string) error {
-	logger := otel.ContextLogger(ctx, "db.migrations")
-	logger.Debug().Msg("Starting PostgreSQL migrations DOWN with GORM")
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get SQL DB from GORM: %w", err)
-	}
-	return RunPostgresMigrationsDown(ctx, sqlDB, migrationFs, migrationsPath)
-}
-
-func setupMigration(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) (*migrate.Migrate, zerolog.Logger, error) {
-	logger := otel.ContextLogger(ctx, "db.migrations")
-
+func setupMigration(db *sql.DB, migrationFs embed.FS, migrationsPath string) (*migrate.Migrate, error) {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
-		return nil, logger, fmt.Errorf("failed to create database driver: %w", err)
+		return nil, fmt.Errorf("failed to create database driver: %w", err)
 	}
-	logger.Debug().Msg("Database driver created successfully")
 
 	d, err := iofs.New(migrationFs, migrationsPath)
 	if err != nil {
-		return nil, logger, fmt.Errorf("failed to create migration source: %w", err)
+		return nil, fmt.Errorf("failed to create migration source: %w", err)
 	}
-	logger.Debug().Msg("Migration source created successfully")
 
 	m, err := migrate.NewWithInstance("iofs", d, "", driver)
 	if err != nil {
-		return nil, logger, fmt.Errorf("failed to create migrate instance: %w", err)
+		return nil, fmt.Errorf("failed to create migrate instance: %w", err)
 	}
-	logger.Debug().Msg("Migrate instance created successfully")
 
-	return m, logger, nil
+	return m, nil
 }
 
 // RunPostgresMigrations applies pending UP migrations using a raw *sql.DB connection.
+// GORM users can obtain a *sql.DB via gormDB.DB().
 //
 // Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrations(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) error {
-	m, logger, err := setupMigration(ctx, db, migrationFs, migrationsPath)
+	lc := otel.Layers.StartOperations(ctx, "db", "RunPostgresMigrations")
+	defer lc.End()
+
+	m, err := setupMigration(db, migrationFs, migrationsPath)
 	if err != nil {
-		return err
+		return lc.Error(err, "failed to set up migration")
 	}
 
-	logger.Debug().Msg("Starting PostgreSQL migrations UP")
+	lc.Logger.Debug("Starting PostgreSQL migrations UP")
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("failed to apply migrations: %w", err)
+		return lc.Error(fmt.Errorf("failed to apply migrations: %w", err), "failed to apply migrations")
 	}
-	logger.Debug().Msg("Migrations applied successfully")
 
+	lc.Success("Migrations applied successfully")
 	return nil
 }
 
 // RunPostgresMigrationsDown rolls back all migrations using a raw *sql.DB connection.
+// GORM users can obtain a *sql.DB via gormDB.DB().
 //
 // Note: only PostgreSQL is supported. For MySQL or MSSQL, use a different migration tool.
 func RunPostgresMigrationsDown(ctx context.Context, db *sql.DB, migrationFs embed.FS, migrationsPath string) error {
-	m, logger, err := setupMigration(ctx, db, migrationFs, migrationsPath)
+	lc := otel.Layers.StartOperations(ctx, "db", "RunPostgresMigrationsDown")
+	defer lc.End()
+
+	m, err := setupMigration(db, migrationFs, migrationsPath)
 	if err != nil {
-		return err
+		return lc.Error(err, "failed to set up migration")
 	}
 
-	logger.Debug().Msg("Starting PostgreSQL migrations DOWN")
+	lc.Logger.Debug("Starting PostgreSQL migrations DOWN")
 	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("failed to roll back migrations: %w", err)
+		return lc.Error(fmt.Errorf("failed to roll back migrations: %w", err), "failed to roll back migrations")
 	}
-	logger.Debug().Msg("Migrations rolled back successfully")
 
+	lc.Success("Migrations rolled back successfully")
 	return nil
 }

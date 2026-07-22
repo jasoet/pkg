@@ -163,9 +163,9 @@ func TestPostgresPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, "dbname=testdb")
 	assert.Contains(t, dsn, "sslmode=disable")
 
-	// Test connection to the database using Pool()
+	// Test connection to the database using NewPool()
 	db, err := NewPool(WithConnectionConfig(*config))
-	require.NoError(t, err, "Failed to connect to database using Pool()")
+	require.NoError(t, err, "Failed to connect to database using NewPool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
 	// Test basic query using GORM
@@ -225,9 +225,9 @@ func TestMySQLPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, fmt.Sprintf("testuser:testpass@tcp(%s:%d)/testdb", config.Host, config.Port))
 	assert.Contains(t, dsn, "parseTime=true")
 
-	// Test connection to the database using Pool()
+	// Test connection to the database using NewPool()
 	db, err := NewPool(WithConnectionConfig(*config))
-	require.NoError(t, err, "Failed to connect to database using Pool()")
+	require.NoError(t, err, "Failed to connect to database using NewPool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
 	// Test basic query using GORM
@@ -288,9 +288,9 @@ func TestMSSQLPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, "database=master")
 	assert.Contains(t, dsn, "encrypt=disable")
 
-	// Test connection to the database using Pool()
+	// Test connection to the database using NewPool()
 	db, err := NewPool(WithConnectionConfig(*config))
-	require.NoError(t, err, "Failed to connect to database using Pool()")
+	require.NoError(t, err, "Failed to connect to database using NewPool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
 	// Test basic connectivity with a simple query

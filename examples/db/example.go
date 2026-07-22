@@ -286,7 +286,8 @@ func migrationExample(ctx context.Context) {
 	fmt.Println("   var migrationFS embed.FS")
 	fmt.Println()
 	fmt.Println("2. Run migrations up:")
-	fmt.Println("   err := db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, \"migrations\")")
+	fmt.Println("   sqlDB, _ := database.DB()")
+	fmt.Println("   err := db.RunPostgresMigrations(ctx, sqlDB, migrationFS, \"migrations\")")
 	fmt.Println()
 	fmt.Println("3. Migration file structure:")
 	fmt.Println("   migrations/")
@@ -297,7 +298,13 @@ func migrationExample(ctx context.Context) {
 
 	// Demonstrate the migration function call (would fail without actual files)
 	logger.Info().Msg("Running database migrations")
-	err = db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, "migrations")
+	sqlDB, err := database.DB()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to get SQL DB")
+		fmt.Printf("✗ Failed to get SQL DB: %v\n", err)
+		return
+	}
+	err = db.RunPostgresMigrations(ctx, sqlDB, migrationFS, "migrations")
 	if err != nil {
 		logger.Error().Err(err).Msg("Migration failed")
 		fmt.Printf("✗ Migration failed: %v\n", err)
