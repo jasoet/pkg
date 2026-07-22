@@ -126,3 +126,9 @@ Enforced mechanically by `internal/archtest` (Phase 1).
 - Implementation healthy; docs layer broken: systematically wrong encoded values in README/doc comments, fabricated checksum example, wrong run instructions, example sections producing empty output (dashed input rejected).
 - Add golden checksum regression tests.
 - `AppendChecksum`/`ValidateChecksum` should normalize input or loudly document caller must.
+
+## Open Process Items (from Phase 1 review)
+
+- **gorelease blocks the next→main v3 merge.** The blocking API check (ci.yml) fires on a `next`→`main` PR (base_ref=main) and will report the intended v3 breaks as incompatibilities; after the module path becomes `/v3`, gorelease has no prior v3 baseline. The final phase must deliberately handle this: add `&& github.head_ref != 'next'` to the blocking condition as part of the v3 merge PR, and decide the gorelease baseline story for `/v3`.
+- **gorelease is unpinned (`@latest`).** A blocking gate floating on latest is non-reproducible. Pin a version or add gorelease to flake.nix and run the flake-provided binary.
+- **`.releaserc.json` headerPartial hardcodes `/v2`** in the `go get` line — must become `/v3` when the module path bumps.
