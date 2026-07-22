@@ -406,7 +406,7 @@ func TestStatus_HealthCheckNotConfigured(t *testing.T) {
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-func TestStatus_WaitForHealthyNotConfigured(t *testing.T) {
+func TestStatus_WaitHealthyNotConfigured(t *testing.T) {
 	skipIfNoContainerRuntime(t)
 	ctx := context.Background()
 

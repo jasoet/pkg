@@ -27,6 +27,8 @@ func postgresExample(ctx context.Context) {
 	req := docker.ContainerRequest{
 		Image:        "postgres:18-alpine",
 		ExposedPorts: []string{"5432/tcp"},
+		// Publish to an auto-assigned host port so Endpoint/ConnectionString work.
+		PortBindings: map[string]string{"5432/tcp": ""},
 		Env: map[string]string{
 			"POSTGRES_USER":     "testuser",
 			"POSTGRES_PASSWORD": "testpass",
@@ -34,7 +36,10 @@ func postgresExample(ctx context.Context) {
 		},
 		Name:       "example-postgres",
 		AutoRemove: true,
-		WaitingFor: docker.WaitForLog("database system is ready to accept connections").
+		// Postgres logs "ready to accept connections" twice: first for the
+		// temporary init server (Unix socket only), then for the real server.
+		// "listening on IPv4" only appears when the real server binds TCP.
+		WaitingFor: docker.WaitForLog(`listening on IPv4`).
 			WithStartupTimeout(60 * time.Second),
 	}
 
@@ -54,12 +59,18 @@ func postgresExample(ctx context.Context) {
 	}()
 
 	// Get connection details
-	endpoint, _ := exec.Endpoint(ctx, "5432/tcp")
+	endpoint, err := exec.Endpoint(ctx, "5432/tcp")
+	if err != nil {
+		log.Fatalf("Failed to resolve endpoint: %v", err)
+	}
 	fmt.Printf("PostgreSQL is running at: %s\n", endpoint)
 
 	// Build connection string
-	connStr, _ := exec.ConnectionString(ctx, "5432/tcp",
-		"postgres://testuser:testpass@%s/testdb?sslmode=disable")
+	connStr, err := exec.ConnectionString(ctx, "5432/tcp",
+		"postgres://testuser:testpass@{{endpoint}}/testdb?sslmode=disable")
+	if err != nil {
+		log.Fatalf("Failed to build connection string: %v", err)
+	}
 	fmt.Printf("Connection String: %s\n\n", connStr)
 
 	// Connect to database
