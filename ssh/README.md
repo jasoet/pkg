@@ -653,7 +653,7 @@ config := ssh.Config{
 1. **TCP Only**: Only TCP port forwarding (no UDP)
 2. **Single SSH Server**: One SSH server per tunnel
 3. **No Auto-Reconnection**: A dropped SSH connection is not re-established; restart the tunnel yourself (see Retry Logic)
-4. **No half-close**: Half-close (CloseWrite) is not implemented and may affect streaming protocols
+4. **Half-close**: propagated via `CloseWrite` when the connection supports it; peers that ignore FIN (half-open TCP, broken clients) can still delay `Close`, since in-flight forwarded connections are torn down, not drained
 
 ## Examples
 
