@@ -330,6 +330,46 @@ func TestTunnel_DoubleStartGuard(t *testing.T) {
 	})
 }
 
+func TestLocalAddr(t *testing.T) {
+	t.Run("returns empty string before Start", func(t *testing.T) {
+		// Zero state: listener is nil, so LocalAddr documents and returns "".
+		tunnel := New(Config{
+			Host:                  "example.com",
+			Port:                  22,
+			User:                  "testuser",
+			Password:              "testpass",
+			InsecureIgnoreHostKey: true,
+		})
+		assert.Empty(t, tunnel.LocalAddr())
+	})
+
+	t.Run("returns bound address when listener is set", func(t *testing.T) {
+		// Simulate a started tunnel by binding a real local listener.
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer listener.Close()
+
+		tunnel := New(Config{Host: "example.com", Port: 22, User: "u", Password: "p"})
+		tunnel.listener = listener
+
+		assert.Equal(t, listener.Addr().String(), tunnel.LocalAddr())
+	})
+
+	t.Run("returns empty string after listener is cleared", func(t *testing.T) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer listener.Close()
+
+		tunnel := New(Config{Host: "example.com", Port: 22, User: "u", Password: "p"})
+		tunnel.listener = listener
+		require.NotEmpty(t, tunnel.LocalAddr())
+
+		// Close() clears the listener; LocalAddr falls back to "".
+		tunnel.listener = nil
+		assert.Empty(t, tunnel.LocalAddr())
+	})
+}
+
 // ============================================================================
 // Helper functions for testing
 // ============================================================================
