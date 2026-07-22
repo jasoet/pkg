@@ -153,3 +153,45 @@ func TestServerCleanShutdownReturnsNil(t *testing.T) {
 		})
 	}
 }
+
+// TestServerFailedStartBusyHTTPPortNoPanic pins the race fix in
+// startSeparateMode: with a free gRPC port but a busy HTTP port, Start must
+// return an error and the already-launched gRPC serve goroutine must not
+// panic on a nil *grpc.Server when the rollback nils s.grpcServer. Run with
+// -race; a goroutine panic would crash the whole test binary.
+func TestServerFailedStartBusyHTTPPortNoPanic(t *testing.T) {
+	grpcPort := freePort(t)
+
+	// Occupy the HTTP port so the Echo bind fails AFTER the gRPC serve
+	// goroutine has been launched.
+	busy, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	httpPort := fmt.Sprintf("%d", busy.Addr().(*net.TCPAddr).Port)
+
+	server, err := New(
+		WithSeparateMode(grpcPort, httpPort),
+		WithShutdownTimeout(2*time.Second),
+	)
+	require.NoError(t, err)
+
+	startErr := make(chan error, 1)
+	go func() { startErr <- server.Start() }()
+
+	err = recvWithTimeout(t, startErr, 5*time.Second)
+	require.Error(t, err, "Start must fail on a busy HTTP port")
+	assert.False(t, server.IsRunning(), "failed Start must not leave the server marked running")
+	assert.Nil(t, server.GetGRPCServer(), "rollback must clear the spent gRPC server")
+
+	// Give the serve goroutine a moment to observe grpcServer.Stop() and exit;
+	// with the race unfixed it would dereference nil here and crash the test.
+	time.Sleep(200 * time.Millisecond)
+
+	// A subsequent Start must succeed: the failed Start rolled everything back.
+	require.NoError(t, busy.Close(), "free the HTTP port for the restart")
+	startErr2 := make(chan error, 1)
+	go func() { startErr2 <- server.Start() }()
+	waitForPort(t, grpcPort, 5*time.Second)
+	require.NoError(t, server.Stop())
+	err = recvWithTimeout(t, startErr2, 10*time.Second)
+	assert.NoError(t, err, "restart after failed Start must work")
+}

@@ -219,6 +219,10 @@ func (s *Server) Start() error {
 		s.mu.Unlock()
 		return fmt.Errorf("server is already running")
 	}
+	// Mark running inside the same critical section as the check so two
+	// concurrent Start calls cannot both pass the guard; every error path
+	// below rolls this back to false.
+	s.running = true
 	// On restart after a completed Stop the previous gRPC server is spent
 	// (Serve returns grpc.ErrServerStopped after GracefulStop) and
 	// shutdownOnce has been consumed; rebuild both so Start/Stop cycles work.
@@ -229,14 +233,11 @@ func (s *Server) Start() error {
 	s.mu.Unlock()
 
 	if err := s.setupEchoServer(); err != nil {
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
 		return fmt.Errorf("failed to setup Echo server: %w", err)
 	}
-
-	// All setup succeeded; only now mark the server as running so a failed
-	// Start never leaves IsRunning()==true behind.
-	s.mu.Lock()
-	s.running = true
-	s.mu.Unlock()
 
 	var err error
 	switch s.config.mode {
@@ -278,13 +279,20 @@ func (s *Server) startSeparateMode() error {
 	// Serve never runs (e.g. on an early return in future code paths).
 	defer grpcListener.Close() //nolint:errcheck
 
+	// Capture the current gRPC server into a local before launching the
+	// goroutine: Stop/rollback may nil the field concurrently, and reading it
+	// unsynchronized inside the goroutine could panic on a nil dereference.
+	s.mu.RLock()
+	grpcServer := s.grpcServer
+	s.mu.RUnlock()
+
 	// Start gRPC server in goroutine; it now owns the listener.
 	go func() {
 		s.logInfo(fmt.Sprintf("gRPC server starting on port %s", s.config.grpcPort))
 		if s.config.enableReflection {
 			s.logInfo("gRPC reflection enabled")
 		}
-		if err := s.grpcServer.Serve(grpcListener); err != nil {
+		if err := grpcServer.Serve(grpcListener); err != nil {
 			log.Printf("gRPC server error: %v", err)
 		}
 	}()
@@ -309,7 +317,18 @@ func (s *Server) startH2CMode() error {
 	// Create mixed handler for H2C that routes between gRPC and Echo
 	mixedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
-			s.grpcServer.ServeHTTP(w, r)
+			// Read the current field per request under the lock: Stop nils it
+			// and restart rebuilds it, so the handler must follow the field,
+			// not a value captured when the handler was created.
+			s.mu.RLock()
+			grpcServer := s.grpcServer
+			s.mu.RUnlock()
+			if grpcServer == nil {
+				// Server is stopped; reject rather than panic on nil.
+				http.Error(w, "gRPC server is not running", http.StatusServiceUnavailable)
+				return
+			}
+			grpcServer.ServeHTTP(w, r)
 		} else {
 			s.echo.ServeHTTP(w, r) // Echo implements http.Handler
 		}
@@ -418,8 +437,11 @@ func (s *Server) GetHealthManager() *HealthManager {
 	return s.healthManager
 }
 
-// GetGRPCServer returns the underlying gRPC server
+// GetGRPCServer returns the underlying gRPC server. It returns nil after Stop
+// until the next Start rebuilds the server.
 func (s *Server) GetGRPCServer() *grpc.Server {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.grpcServer
 }
 
