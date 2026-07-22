@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -33,7 +31,7 @@ type Config struct {
 	// Port specifies the listen port. Use 0 for OS-assigned ephemeral port.
 	Port int `yaml:"port" mapstructure:"port"`
 
-	// Operation is called synchronously before the server starts listening. Panics in Operation will propagate to the caller of StartWithConfig.
+	// Operation is called synchronously before the server starts listening. Panics in Operation will propagate to the caller of Start.
 	Operation Operation
 
 	Shutdown Shutdown
@@ -85,16 +83,6 @@ func WithOTelConfig(cfg *otel.Config) Option {
 	return func(c *Config) { c.OTelConfig = cfg }
 }
 
-// DefaultConfig returns a default server configuration.
-func DefaultConfig(port int, operation Operation, shutdown Shutdown) Config {
-	return Config{
-		Port:            port,
-		Operation:       operation,
-		Shutdown:        shutdown,
-		ShutdownTimeout: 10 * time.Second,
-	}
-}
-
 // NewConfig creates a Config using functional options with sensible defaults.
 func NewConfig(opts ...Option) Config {
 	cfg := Config{
@@ -106,9 +94,109 @@ func NewConfig(opts ...Option) Config {
 	return cfg
 }
 
-type httpServer struct {
-	echo   *echo.Echo
-	config Config
+// Server is a lifecycle-managed HTTP server with programmatic Start/Shutdown.
+// Create one with New, then call Start (blocking) and Shutdown from another
+// goroutine to stop it gracefully.
+type Server struct {
+	config   Config
+	echo     *echo.Echo
+	mu       sync.Mutex
+	listener net.Listener
+	running  bool
+}
+
+// New creates a Server from functional options. It validates the configuration
+// (port must be 0-65535) and prepares the Echo instance, but does not bind or
+// serve — call Start for that.
+func New(opts ...Option) (*Server, error) {
+	cfg := NewConfig(opts...)
+	if cfg.Port < 0 || cfg.Port > 65535 {
+		return nil, fmt.Errorf("invalid port: %d (must be 0-65535)", cfg.Port)
+	}
+	return &Server{
+		config: cfg,
+		echo:   setupEcho(cfg),
+	}, nil
+}
+
+// Echo returns the underlying Echo instance so callers can register routes
+// or adjust settings before Start.
+func (s *Server) Echo() *echo.Echo {
+	return s.echo
+}
+
+// Addr returns the bound listener address (e.g. "[::]:8080"), or an empty
+// string if the server is not listening yet. With Port 0 this is how callers
+// discover the OS-assigned port once Start has bound the listener.
+func (s *Server) Addr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener == nil {
+		return ""
+	}
+	return s.listener.Addr().String()
+}
+
+// Start binds the listener, runs the Operation callback, and serves HTTP,
+// blocking until Shutdown is called or serving fails. It returns nil on a
+// clean Shutdown (http.ErrServerClosed is filtered out). Calling Start while
+// the server is already running returns an error immediately.
+func (s *Server) Start() error {
+	s.mu.Lock()
+	if s.running {
+		s.mu.Unlock()
+		return errors.New("server is already running")
+	}
+	s.running = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+	}()
+
+	if s.config.Operation != nil {
+		s.config.Operation(s.echo)
+	}
+
+	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
+	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "Server.Start")
+
+	// Use a real listener to detect bind errors immediately instead of a racy timer.
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", fmt.Sprintf(":%v", s.config.Port))
+	if err != nil {
+		return fmt.Errorf("failed to listen on port %d: %w", s.config.Port, err)
+	}
+	s.mu.Lock()
+	s.listener = ln
+	s.mu.Unlock()
+	s.echo.Listener = ln
+
+	logger.Info("Starting server", otel.F("address", ln.Addr().String()))
+
+	if err := s.echo.Start(""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// Shutdown gracefully stops the server. It invokes the Shutdown callback and
+// then drains the Echo server, honoring ShutdownTimeout (applied on top of the
+// caller's context, whichever deadline is earlier). Start returns nil once the
+// shutdown completes.
+func (s *Server) Shutdown(ctx context.Context) error {
+	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
+	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "Server.Shutdown")
+	logger.Info("Gracefully shutting down server")
+
+	ctx, cancel := context.WithTimeout(ctx, s.config.ShutdownTimeout)
+	defer cancel()
+
+	if s.config.Shutdown != nil {
+		s.config.Shutdown(s.echo)
+	}
+
+	return s.echo.Shutdown(ctx)
 }
 
 // setupEcho configures the Echo instance with middleware and health routes.
@@ -150,81 +238,4 @@ func setupEcho(config Config) *echo.Echo {
 	}
 
 	return e
-}
-
-func newHTTPServer(config Config) *httpServer {
-	e := setupEcho(config)
-	return &httpServer{
-		echo:   e,
-		config: config,
-	}
-}
-
-func (s *httpServer) start() error {
-	if s.config.Port < 0 || s.config.Port > 65535 {
-		return fmt.Errorf("invalid port: %d (must be 0-65535)", s.config.Port)
-	}
-
-	if s.config.Operation != nil {
-		s.config.Operation(s.echo)
-	}
-
-	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
-	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "httpServer.start")
-
-	// Use a real listener to detect bind errors immediately instead of a racy timer.
-	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", fmt.Sprintf(":%v", s.config.Port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", s.config.Port, err)
-	}
-	s.echo.Listener = ln
-
-	logger.Info("Starting server", otel.F("address", ln.Addr().String()))
-
-	go func() {
-		if err := s.echo.Start(""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error(err, "Server error")
-		}
-	}()
-
-	return nil
-}
-
-func (s *httpServer) stop() error {
-	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
-	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "httpServer.stop")
-	logger.Info("Gracefully shutting down server")
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
-	defer cancel()
-
-	if s.config.Shutdown != nil {
-		s.config.Shutdown(s.echo)
-	}
-
-	return s.echo.Shutdown(ctx)
-}
-
-// StartWithConfig starts the HTTP server with the given configuration and
-// blocks until an OS interrupt signal is received, then shuts down gracefully.
-func StartWithConfig(config Config) error {
-	server := newHTTPServer(config)
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	if err := server.start(); err != nil {
-		return err
-	}
-
-	<-ctx.Done()
-
-	return server.stop()
-}
-
-// Start starts the HTTP server with simplified configuration.
-func Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) error {
-	config := DefaultConfig(port, operation, shutdown)
-	config.Middleware = middleware
-	return StartWithConfig(config)
 }

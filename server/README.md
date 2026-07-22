@@ -2,8 +2,8 @@
 
 A clean, production-ready HTTP server implementation using the Echo framework with built-in health checks and graceful shutdown.
 
-> **Note:** `Start` and `StartWithConfig` return `error` instead of calling `os.Exit(1)`.
-> Callers must handle the returned error. See examples below.
+> **Note:** `srv.Start()` blocks until `srv.Shutdown(ctx)` is called (or serving fails),
+> returning `nil` on a clean shutdown. Signal handling is up to the caller. See examples below.
 
 ## Quick Start
 
@@ -31,8 +31,16 @@ func main() {
         // Cleanup resources here
     }
 
-    // Start server on port 8080
-    if err := server.Start(8080, operation, shutdown); err != nil {
+    // Create the server, then start it (blocks until Shutdown is called)
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
+    }
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -54,9 +62,16 @@ The server can be customized using the `Config` struct:
 Example with custom configuration:
 
 ```go
-config := server.DefaultConfig(8080, operation, shutdown)
-config.ShutdownTimeout = 30 * time.Second
-if err := server.StartWithConfig(config); err != nil {
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithShutdownTimeout(30*time.Second),
+)
+if err != nil {
+    log.Fatal().Err(err).Msg("invalid server config")
+}
+if err := srv.Start(); err != nil {
     log.Fatal().Err(err).Msg("server failed")
 }
 ```
@@ -66,21 +81,27 @@ if err := server.StartWithConfig(config); err != nil {
 The `EchoConfigurer` allows you to configure the Echo instance directly after it's created but before the server starts. This is useful for Echo-specific configurations like custom error handlers, validators, or other Echo settings.
 
 ```go
-config := server.DefaultConfig(8080, operation, shutdown)
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
 
-// Configure Echo instance
-config.EchoConfigurer = func(e *echo.Echo) {
-    // Custom error handler
-    e.HTTPErrorHandler = myCustomErrorHandler
+    // Configure Echo instance
+    server.WithEchoConfigurer(func(e *echo.Echo) {
+        // Custom error handler
+        e.HTTPErrorHandler = myCustomErrorHandler
 
-    // Custom validator
-    e.Validator = myValidator
+        // Custom validator
+        e.Validator = myValidator
 
-    // Other Echo-specific configurations
-    e.Debug = true
+        // Other Echo-specific configurations
+        e.Debug = true
+    }),
+)
+if err != nil {
+    log.Fatal().Err(err).Msg("invalid server config")
 }
-
-if err := server.StartWithConfig(config); err != nil {
+if err := srv.Start(); err != nil {
     log.Fatal().Err(err).Msg("server failed")
 }
 ```
@@ -119,7 +140,16 @@ func main() {
     })
 
     // Start server with middleware
-    if err := server.Start(8080, operation, shutdown, corsMiddleware, rateLimiter); err != nil {
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+        server.WithMiddleware(corsMiddleware, rateLimiter),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
+    }
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -158,10 +188,14 @@ func main() {
     }
 
     // Start server with custom middleware
-    if err := server.Start(8080,
-        func(e *echo.Echo) {},
-        func(e *echo.Echo) {},
-        timingMiddleware); err != nil {
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithMiddleware(timingMiddleware),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
+    }
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -266,10 +300,23 @@ func main() {
     }
 
     // Configure server with longer shutdown timeout
-    config := server.DefaultConfig(8080, func(e *echo.Echo) {}, shutdown)
-    config.ShutdownTimeout = 30 * time.Second
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithShutdown(shutdown),
+        server.WithShutdownTimeout(30*time.Second),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
+    }
 
-    if err := server.StartWithConfig(config); err != nil {
+    // Trigger shutdown however you like; Shutdown(ctx) drains in-flight
+    // requests within ShutdownTimeout.
+    go func() {
+        <-someShutdownSignal
+        _ = srv.Shutdown(context.Background())
+    }()
+
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -324,8 +371,16 @@ func main() {
         db.Close()
     }
 
-    // Start the server
-    if err := server.Start(8080, operation, shutdown); err != nil {
+    // Start the server (blocks until Shutdown is called)
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
+    }
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -385,21 +440,28 @@ func main() {
         // Cleanup resources
     }
 
-    // Create config with EchoConfigurer
-    config := server.DefaultConfig(8080, operation, shutdown)
+    // Create the server with EchoConfigurer
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
 
-    // Set Echo-specific configurations
-    config.EchoConfigurer = func(e *echo.Echo) {
-        // Set custom error handler
-        e.HTTPErrorHandler = customErrorHandler
+        // Set Echo-specific configurations
+        server.WithEchoConfigurer(func(e *echo.Echo) {
+            // Set custom error handler
+            e.HTTPErrorHandler = customErrorHandler
 
-        // Other Echo configurations
-        e.Debug = true
-        e.Validator = myCustomValidator
+            // Other Echo configurations
+            e.Debug = true
+            e.Validator = myCustomValidator
+        }),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
     }
 
     // Start the server
-    if err := server.StartWithConfig(config); err != nil {
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -437,7 +499,15 @@ shutdown := func(e *echo.Echo) {
     db.Close()
 }
 
-if err := server.Start(8080, operation, shutdown); err != nil {
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
+if err != nil {
+    log.Fatal().Err(err).Msg("invalid server config")
+}
+if err := srv.Start(); err != nil {
     log.Fatal().Err(err).Msg("server failed")
 }
 ```
@@ -449,7 +519,16 @@ if err := server.Start(8080, operation, shutdown); err != nil {
 authMiddleware := createAuthMiddleware()
 rateLimiter := middleware.RateLimiterWithConfig(...)
 
-if err := server.Start(8080, operation, shutdown, authMiddleware, rateLimiter); err != nil {
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithMiddleware(authMiddleware, rateLimiter),
+)
+if err != nil {
+    log.Fatal().Err(err).Msg("invalid server config")
+}
+if err := srv.Start(); err != nil {
     log.Fatal().Err(err).Msg("server failed")
 }
 ```
@@ -475,14 +554,25 @@ operation := func(e *echo.Echo) {
 
 ### Functions
 
-#### `Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) error`
-Starts the HTTP server with simplified configuration. Returns an error if the server fails to start or shut down.
+#### `New(opts ...Option) (*Server, error)`
+Creates a server from functional options (`WithPort`, `WithOperation`, `WithShutdown`, `WithMiddleware`, `WithShutdownTimeout`, `WithEchoConfigurer`, `WithOTelConfig`). Validates the configuration and prepares the Echo instance without binding or serving.
 
-#### `StartWithConfig(config Config) error`
-Starts the HTTP server with the given configuration. Returns an error if the server fails to start or shut down.
+#### `NewConfig(opts ...Option) Config`
+Builds a `Config` from functional options with sensible defaults (10s shutdown timeout).
 
-#### `DefaultConfig(port int, operation Operation, shutdown Shutdown) Config`
-Returns a default server configuration.
+### Methods
+
+#### `(s *Server) Start() error`
+Binds the listener (so `Addr()` works with `Port: 0`), runs the `Operation` callback, and serves, blocking until `Shutdown` is called or serving fails. Returns `nil` on a clean shutdown (`http.ErrServerClosed` is filtered). Calling `Start` while already running returns an error.
+
+#### `(s *Server) Shutdown(ctx context.Context) error`
+Invokes the `Shutdown` callback and drains the Echo server, honoring `ShutdownTimeout` on top of the caller's context.
+
+#### `(s *Server) Addr() string`
+Returns the bound listener address, or `""` before the server is listening. This is how callers discover the OS-assigned port when using `Port: 0`.
+
+#### `(s *Server) Echo() *echo.Echo`
+Returns the underlying Echo instance for route registration or customization before `Start`.
 
 ### Types
 

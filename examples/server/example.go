@@ -88,7 +88,11 @@ func basicServerExample() {
 	}
 
 	// Create server with minimal configuration
-	config := server.DefaultConfig(8080, operation, shutdown)
+	config := server.NewConfig(
+		server.WithPort(8080),
+		server.WithOperation(operation),
+		server.WithShutdown(shutdown),
+	)
 
 	fmt.Printf("Server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -96,7 +100,10 @@ func basicServerExample() {
 	fmt.Printf("- OpenTelemetry: disabled (nil)\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown))")
+	fmt.Println("if err != nil { log.Fatal(err) }")
+	fmt.Println("go func() { <-sigChan; srv.Shutdown(ctx) }() // or any shutdown trigger")
+	fmt.Println("if err := srv.Start(); err != nil { log.Fatal(err) } // blocks until Shutdown")
 	fmt.Println("\nNote: Without OTelConfig, no request logging or telemetry is enabled")
 	fmt.Println("Basic server example completed")
 }
@@ -121,7 +128,11 @@ func otelConfigExample() {
 	otelCfg := otel.NewConfig("server-example",
 		otel.WithServiceVersion("1.0.0"))
 
-	config := server.DefaultConfig(8081, operation, shutdown)
+	config := server.NewConfig(
+		server.WithPort(8081),
+		server.WithOperation(operation),
+		server.WithShutdown(shutdown),
+	)
 	config.ShutdownTimeout = 15 * time.Second
 	// OTel middleware can be added via config.Middleware or EchoConfigurer
 	// Example: e.Use(otelecho.Middleware(otelCfg.ServiceName))
@@ -132,7 +143,10 @@ func otelConfigExample() {
 	fmt.Printf("- OTel Config Service: %s\n", otelCfg.ServiceName)
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown))")
+	fmt.Println("if err != nil { log.Fatal(err) }")
+	fmt.Println("go func() { <-sigChan; srv.Shutdown(ctx) }() // or any shutdown trigger")
+	fmt.Println("if err := srv.Start(); err != nil { log.Fatal(err) } // blocks until Shutdown")
 	fmt.Println("\nNote: OTel is configured via Echo middleware, not server.Config")
 	fmt.Println("OpenTelemetry configuration example completed")
 }
@@ -168,7 +182,11 @@ func customRoutesExample() {
 		fmt.Println("Shutting down API server...")
 	}
 
-	config := server.DefaultConfig(8082, operation, shutdown)
+	config := server.NewConfig(
+		server.WithPort(8082),
+		server.WithOperation(operation),
+		server.WithShutdown(shutdown),
+	)
 
 	fmt.Printf("Server with custom routes:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -178,7 +196,10 @@ func customRoutesExample() {
 	fmt.Printf("- Custom Middleware: RequestID, Auth, Logging\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown))")
+	fmt.Println("if err != nil { log.Fatal(err) }")
+	fmt.Println("go func() { <-sigChan; srv.Shutdown(ctx) }() // or any shutdown trigger")
+	fmt.Println("if err := srv.Start(); err != nil { log.Fatal(err) } // blocks until Shutdown")
 	fmt.Println("Custom routes example completed")
 }
 
@@ -220,7 +241,11 @@ func healthChecksExample() {
 		fmt.Println("Closing health check connections...")
 	}
 
-	config := server.DefaultConfig(8083, operation, shutdown)
+	config := server.NewConfig(
+		server.WithPort(8083),
+		server.WithOperation(operation),
+		server.WithShutdown(shutdown),
+	)
 
 	fmt.Printf("Server with custom health checks:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -228,7 +253,10 @@ func healthChecksExample() {
 	fmt.Printf("- Custom health endpoint: /custom-health\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
+	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown))")
+	fmt.Println("if err != nil { log.Fatal(err) }")
+	fmt.Println("go func() { <-sigChan; srv.Shutdown(ctx) }() // or any shutdown trigger")
+	fmt.Println("if err := srv.Start(); err != nil { log.Fatal(err) } // blocks until Shutdown")
 	fmt.Println("Health checks example completed")
 }
 
@@ -250,17 +278,24 @@ func gracefulShutdownExample() {
 		fmt.Println("All requests completed, shutting down gracefully")
 	}
 
-	config := server.DefaultConfig(8084, operation, shutdown)
+	config := server.NewConfig(
+		server.WithPort(8084),
+		server.WithOperation(operation),
+		server.WithShutdown(shutdown),
+	)
 	config.ShutdownTimeout = 10 * time.Second
 
 	fmt.Printf("Server with graceful shutdown:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
 	fmt.Printf("- Shutdown Timeout: %v\n", config.ShutdownTimeout)
-	fmt.Printf("- Automatic signal handling (SIGINT, SIGTERM)\n")
+	fmt.Printf("- Programmatic shutdown via srv.Shutdown(ctx) — wire signals yourself\n")
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("if err := server.StartWithConfig(config); err != nil { log.Fatal(err) }")
-	fmt.Println("\nNote: StartWithConfig() automatically handles graceful shutdown")
+	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown))")
+	fmt.Println("if err != nil { log.Fatal(err) }")
+	fmt.Println("go func() { <-sigChan; srv.Shutdown(ctx) }() // or any shutdown trigger")
+	fmt.Println("if err := srv.Start(); err != nil { log.Fatal(err) } // blocks until Shutdown")
+	fmt.Println("\nNote: Start blocks; Shutdown(ctx) drains in-flight requests within ShutdownTimeout")
 	fmt.Println("Graceful shutdown example completed")
 }
 

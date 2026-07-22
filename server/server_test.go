@@ -29,18 +29,18 @@ func TestNewHTTPServer(t *testing.T) {
 		shutdownCalled = true
 	}
 
-	config := DefaultConfig(8080, operation, shutdown)
-	server := newHTTPServer(config)
+	srv, err := New(WithPort(8080), WithOperation(operation), WithShutdown(shutdown))
+	require.NoError(t, err)
 
-	assert.NotNil(t, server)
-	assert.NotNil(t, server.echo)
-	assert.Equal(t, config.Port, server.config.Port)
+	assert.NotNil(t, srv)
+	assert.NotNil(t, srv.Echo())
+	assert.Equal(t, 8080, srv.config.Port)
 	assert.False(t, operationCalled, "Operation should not be called during initialization")
 	assert.False(t, shutdownCalled, "Shutdown should not be called during initialization")
 }
 
 func TestHealthEndpoints(t *testing.T) {
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	config := NewConfig(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
 	e := setupEcho(config)
 
 	// Test /health endpoint
@@ -74,11 +74,11 @@ func TestOperationExecution(t *testing.T) {
 		operationCh <- true
 	}
 
-	config := DefaultConfig(0, operation, func(e *echo.Echo) {})
-	server := newHTTPServer(config)
-
-	err := server.start()
+	srv, err := New(WithPort(0), WithOperation(operation), WithShutdown(func(e *echo.Echo) {}))
 	require.NoError(t, err)
+
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
 
 	select {
 	case <-operationCh:
@@ -87,7 +87,8 @@ func TestOperationExecution(t *testing.T) {
 		t.Fatal("Operation was not called within timeout")
 	}
 
-	_ = server.stop()
+	require.NoError(t, srv.Shutdown(context.Background()))
+	assert.NoError(t, <-startErr)
 }
 
 func TestShutdownExecution(t *testing.T) {
@@ -96,13 +97,15 @@ func TestShutdownExecution(t *testing.T) {
 		shutdownCh <- true
 	}
 
-	config := DefaultConfig(0, func(e *echo.Echo) {}, shutdown)
-	server := newHTTPServer(config)
-
-	err := server.start()
+	srv, err := New(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(shutdown))
 	require.NoError(t, err)
 
-	_ = server.stop()
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
+	waitForAddr(t, srv)
+
+	require.NoError(t, srv.Shutdown(context.Background()))
+	assert.NoError(t, <-startErr)
 
 	select {
 	case <-shutdownCh:
@@ -114,44 +117,40 @@ func TestShutdownExecution(t *testing.T) {
 
 func TestNilCallbacks(t *testing.T) {
 	// C9: nil Operation and Shutdown must not panic
-	config := Config{
-		Port:            0,
-		ShutdownTimeout: 5 * time.Second,
-	}
-	server := newHTTPServer(config)
-
-	err := server.start()
+	srv, err := New(WithPort(0), WithShutdownTimeout(5*time.Second))
 	require.NoError(t, err)
 
-	err = server.stop()
-	assert.NoError(t, err)
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
+	waitForAddr(t, srv)
+
+	assert.NoError(t, srv.Shutdown(context.Background()))
+	assert.NoError(t, <-startErr)
 }
 
 func TestBindErrorDetection(t *testing.T) {
 	// C10: bind errors are now detected immediately via net.Listen
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	s1 := newHTTPServer(config)
-	err := s1.start()
+	s1, err := New(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
 	require.NoError(t, err)
 
+	startErr := make(chan error, 1)
+	go func() { startErr <- s1.Start() }()
+	addr := waitForAddr(t, s1)
+
 	// Get the actual port that s1 bound to
-	addr := s1.echo.Listener.Addr().String()
-	parts := strings.Split(addr, ":")
-	port := parts[len(parts)-1]
+	var portInt int
+	_, _ = fmt.Sscanf(addrPort(addr), "%d", &portInt)
 
 	// Try to bind a second server on the same port — should fail immediately
-	config2 := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-	// Parse port string to int
-	var portInt int
-	_, _ = fmt.Sscanf(port, "%d", &portInt)
-	config2.Port = portInt
-	s2 := newHTTPServer(config2)
+	s2, err := New(WithPort(portInt), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
+	require.NoError(t, err)
 
-	err = s2.start()
+	err = s2.Start()
 	assert.Error(t, err, "Second server should fail to bind on occupied port")
 	assert.Contains(t, err.Error(), "failed to listen")
 
-	_ = s1.stop()
+	require.NoError(t, s1.Shutdown(context.Background()))
+	assert.NoError(t, <-startErr)
 }
 
 func TestCustomMiddleware(t *testing.T) {
@@ -163,7 +162,7 @@ func TestCustomMiddleware(t *testing.T) {
 		}
 	}
 
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	config := NewConfig(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
 	config.Middleware = []echo.MiddlewareFunc{middleware}
 	e := setupEcho(config)
 
@@ -176,7 +175,7 @@ func TestCustomMiddleware(t *testing.T) {
 
 func TestNoHomeEndpoint(t *testing.T) {
 	// I7: "/" handler was removed — library should not register opinionated routes
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	config := NewConfig(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
 	e := setupEcho(config)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -199,21 +198,19 @@ func TestIntegration(t *testing.T) {
 		shutdownCalled.Store(true)
 	}
 
-	config := DefaultConfig(0, operation, shutdown)
-	server := newHTTPServer(config)
-
-	err := server.start()
+	srv, err := New(WithPort(0), WithOperation(operation), WithShutdown(shutdown))
 	require.NoError(t, err)
 
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
+
+	// Operation runs before the listener is bound, so once Addr is non-empty
+	// the Operation callback has completed and the address is safe to read.
+	addr := waitForAddr(t, srv)
 	assert.True(t, operationCalled.Load(), "Operation should be called after server start")
 
-	// The listener is set immediately so we can read the address without polling.
-	addr := server.echo.Listener.Addr().String()
-
 	client := &http.Client{Timeout: 1 * time.Second}
-	parts := strings.Split(addr, ":")
-	port := parts[len(parts)-1]
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost:"+port+"/health", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost:"+addrPort(addr)+"/health", nil)
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
@@ -222,9 +219,10 @@ func TestIntegration(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, `{"status":"UP"}`, strings.TrimSpace(string(body)))
 
-	err = server.stop()
+	err = srv.Shutdown(context.Background())
 	assert.NoError(t, err)
-	assert.True(t, shutdownCalled.Load(), "Shutdown should be called after server stop")
+	assert.True(t, shutdownCalled.Load(), "Shutdown should be called after server shutdown")
+	assert.NoError(t, <-startErr)
 }
 
 func TestServerStartStop(t *testing.T) {
@@ -242,18 +240,19 @@ func TestServerStartStop(t *testing.T) {
 		shutdownWg.Done()
 	}
 
-	config := DefaultConfig(0, operation, shutdown)
-	server := newHTTPServer(config)
-
-	err := server.start()
+	srv, err := New(WithPort(0), WithOperation(operation), WithShutdown(shutdown))
 	require.NoError(t, err)
+
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
 
 	operationWg.Wait()
 
-	err = server.stop()
+	err = srv.Shutdown(context.Background())
 	assert.NoError(t, err)
 
 	shutdownWg.Wait()
+	assert.NoError(t, <-startErr)
 }
 
 func TestEchoConfigurer(t *testing.T) {
@@ -270,7 +269,7 @@ func TestEchoConfigurer(t *testing.T) {
 		e.HTTPErrorHandler = customErrorHandler
 	}
 
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	config := NewConfig(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
 	config.EchoConfigurer = configurer
 
 	e := setupEcho(config)
@@ -286,8 +285,8 @@ func TestEchoConfigurer(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "error")
 }
 
-func TestStartFunction(t *testing.T) {
-	t.Run("Start function with default config", func(t *testing.T) {
+func TestNewServerLifecycle(t *testing.T) {
+	t.Run("New with options and full lifecycle", func(t *testing.T) {
 		var operationCalled atomic.Bool
 		operation := func(e *echo.Echo) {
 			operationCalled.Store(true)
@@ -304,59 +303,32 @@ func TestStartFunction(t *testing.T) {
 			}
 		}
 
-		config := DefaultConfig(0, operation, shutdown)
-		config.Middleware = []echo.MiddlewareFunc{middleware}
-
-		server := newHTTPServer(config)
-		assert.NotNil(t, server)
-		assert.Equal(t, 0, server.config.Port)
-		assert.Len(t, server.config.Middleware, 1)
-
-		err := server.start()
+		srv, err := New(
+			WithPort(0),
+			WithOperation(operation),
+			WithShutdown(shutdown),
+			WithMiddleware(middleware),
+		)
 		require.NoError(t, err)
+		assert.NotNil(t, srv)
+		assert.Equal(t, 0, srv.config.Port)
+		assert.Len(t, srv.config.Middleware, 1)
+
+		startErr := make(chan error, 1)
+		go func() { startErr <- srv.Start() }()
+		waitForAddr(t, srv)
 		assert.True(t, operationCalled.Load(), "Operation should be called")
 
-		_ = server.stop()
+		assert.NoError(t, srv.Shutdown(context.Background()))
 		assert.True(t, shutdownCalled.Load(), "Shutdown should be called")
-	})
-}
-
-func TestStartWithConfigFunction(t *testing.T) {
-	t.Run("StartWithConfig creates server correctly", func(t *testing.T) {
-		var operationCalled atomic.Bool
-		operation := func(e *echo.Echo) {
-			operationCalled.Store(true)
-		}
-
-		var shutdownCalled atomic.Bool
-		shutdown := func(e *echo.Echo) {
-			shutdownCalled.Store(true)
-		}
-
-		config := DefaultConfig(0, operation, shutdown)
-		config.ShutdownTimeout = 5 * time.Second
-
-		server := newHTTPServer(config)
-		assert.NotNil(t, server)
-		assert.Equal(t, 0, server.config.Port)
-		assert.Equal(t, 5*time.Second, server.config.ShutdownTimeout)
-
-		err := server.start()
-		require.NoError(t, err)
-		assert.True(t, operationCalled.Load(), "Operation should be called during start")
-
-		err = server.stop()
-		assert.NoError(t, err, "Stop should not error")
-		assert.True(t, shutdownCalled.Load(), "Shutdown should be called during stop")
+		assert.NoError(t, <-startErr)
 	})
 
-	t.Run("StartWithConfig with custom shutdown timeout", func(t *testing.T) {
+	t.Run("New with custom shutdown timeout", func(t *testing.T) {
 		customTimeout := 15 * time.Second
-		config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
-		config.ShutdownTimeout = customTimeout
-
-		server := newHTTPServer(config)
-		assert.Equal(t, customTimeout, server.config.ShutdownTimeout)
+		srv, err := New(WithPort(0), WithShutdownTimeout(customTimeout))
+		require.NoError(t, err)
+		assert.Equal(t, customTimeout, srv.config.ShutdownTimeout)
 	})
 }
 
@@ -391,7 +363,7 @@ func TestWithOptions(t *testing.T) {
 }
 
 func TestSetupEcho_HasTimeouts(t *testing.T) {
-	config := DefaultConfig(0, func(e *echo.Echo) {}, func(e *echo.Echo) {})
+	config := NewConfig(WithPort(0), WithOperation(func(e *echo.Echo) {}), WithShutdown(func(e *echo.Echo) {}))
 	e := setupEcho(config)
 
 	assert.Equal(t, 5*time.Second, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout should be 5s")

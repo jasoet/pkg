@@ -919,31 +919,42 @@ func (s *Service) ReportWithAudit(ctx context.Context, req ReportRequest) (*mode
 ### Starting the Server
 
 ```go
-serverCfg := server.Config{
-    Port: cfg.Server.Port,
-    ShutdownTimeout: cfg.Server.ShutdownTimeout,
-    Middleware: []echo.MiddlewareFunc{
+srv, err := server.New(
+    server.WithPort(cfg.Server.Port),
+    server.WithShutdownTimeout(cfg.Server.ShutdownTimeout),
+    server.WithMiddleware(
         middleware.Recover(),
         middleware.Logger(),
-    },
-    EchoConfigurer: func(e *echo.Echo) {
+    ),
+    server.WithEchoConfigurer(func(e *echo.Echo) {
         // Register all routes here
         e.GET("/swagger/*", echoSwagger.WrapHandler)
 
         apiV1 := e.Group("/api/v1")
         userHandler.RegisterRoutes(apiV1.Group("/users"))
-    },
-    Operation: func(e *echo.Echo) {
+    }),
+    server.WithOperation(func(e *echo.Echo) {
         // Additional startup operations
-    },
-    Shutdown: func(e *echo.Echo) {
+    }),
+    server.WithShutdown(func(e *echo.Echo) {
         // Cleanup: close DB pools, flush telemetry, etc.
         sqlDB, _ := pool.DB()
         _ = sqlDB.Close()
-    },
+    }),
+)
+if err != nil {
+    log.Fatal(err)
 }
 
-server.StartWithConfig(serverCfg)
+// Wire your own shutdown trigger (e.g. SIGTERM), then Start blocks until it fires.
+go func() {
+    <-shutdownSignal
+    _ = srv.Shutdown(context.Background())
+}()
+
+if err := srv.Start(); err != nil {
+    log.Fatal(err)
+}
 ```
 
 ### Built-in Health Endpoints
@@ -2028,7 +2039,7 @@ tasks:
 | Global Logger | `otel` | `otel.Initialize(name, debug)`, `otel.ContextLogger(ctx, component)` |
 | Database Pool | `db` | `db.ConnectionConfig{...}.Pool()` |
 | Migrations | `db` | `db.RunPostgresMigrationsWithGorm(ctx, pool, fs, path)` |
-| HTTP Server | `server` | `server.StartWithConfig(cfg)`, `server.DefaultConfig(port, op, shut)` |
+| HTTP Server | `server` | `server.New(opts...)`, `srv.Start()`, `srv.Shutdown(ctx)` |
 | gRPC Server | `grpc` | `grpc.New(opts...)`, `grpc.Start(port, registrar, opts...)` |
 | REST Client | `rest` | `rest.NewClient(opts...)`, `client.MakeRequestWithTrace(...)` |
 | Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.New(retry.WithName(n), retry.WithOTelConfig(c))` |
@@ -2123,29 +2134,41 @@ func main() {
     dashboardHandler := dashboardmod.NewHandler(dashboardSvc)
 
     // --- Server ---
-    server.StartWithConfig(server.Config{
-        Port:            cfg.Server.Port,
-        ShutdownTimeout: cfg.Server.ShutdownTimeout,
-        Middleware: []echo.MiddlewareFunc{
+    srv, err := server.New(
+        server.WithPort(cfg.Server.Port),
+        server.WithShutdownTimeout(cfg.Server.ShutdownTimeout),
+        server.WithMiddleware(
             middleware.Recover(),
             middleware.Logger(),
-        },
-        EchoConfigurer: func(e *echo.Echo) {
+        ),
+        server.WithEchoConfigurer(func(e *echo.Echo) {
             e.GET("/swagger/*", echoSwagger.WrapHandler)
 
             apiV1 := e.Group("/api/v1")
             userHandler.RegisterRoutes(apiV1.Group("/users"))
             dashboardHandler.RegisterRoutes(apiV1.Group("/dashboard"))
-        },
-        Operation: func(e *echo.Echo) {},
-        Shutdown: func(e *echo.Echo) {
+        }),
+        server.WithOperation(func(e *echo.Echo) {}),
+        server.WithShutdown(func(e *echo.Echo) {
             log.Println("Shutting down...")
             if sqlDB, err := pool.DB(); err == nil {
                 _ = sqlDB.Close()
             }
             _ = otelCfg.Shutdown(context.Background())
-        },
-    })
+        }),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    go func() {
+        <-shutdownSignal // e.g. from signal.NotifyContext
+        _ = srv.Shutdown(context.Background())
+    }()
+
+    if err := srv.Start(); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 

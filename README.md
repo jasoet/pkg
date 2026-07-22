@@ -94,9 +94,21 @@ func main() {
         // cleanup
     }
 
-    // Start HTTP server
-    serverCfg := server.DefaultConfig(cfg.Port, operation, shutdown)
-    if err := server.StartWithConfig(serverCfg); err != nil {
+    // Start HTTP server (blocks until Shutdown is called)
+    srv, err := server.New(
+        server.WithPort(cfg.Port),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+    )
+    if err != nil {
+        log.Fatal().Err(err).Msg("invalid server config")
+    }
+    go func() {
+        // trigger shutdown however you like, e.g. on SIGTERM
+        <-signalChan
+        _ = srv.Shutdown(context.Background())
+    }()
+    if err := srv.Start(); err != nil {
         log.Fatal().Err(err).Msg("server failed")
     }
 }
@@ -393,8 +405,15 @@ shutdown := func(e *echo.Echo) {
     // cleanup
 }
 
-config := server.DefaultConfig(8080, operation, shutdown)
-if err := server.StartWithConfig(config); err != nil {
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
+if err != nil {
+    log.Fatal().Err(err).Msg("invalid server config")
+}
+if err := srv.Start(); err != nil { // blocks until srv.Shutdown(ctx)
     log.Fatal().Err(err).Msg("server failed")
 }
 ```

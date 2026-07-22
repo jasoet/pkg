@@ -111,8 +111,13 @@ pool, _ := db.ConnectionConfig{
 ### Start an HTTP Server
 
 ```go
-cfg := server.DefaultConfig(8080, operation, shutdown)
-server.StartWithConfig(cfg)
+srv, _ := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
+go func() { <-shutdownSignal; _ = srv.Shutdown(context.Background()) }()
+err := srv.Start() // blocks until Shutdown
 ```
 
 > [server/README.md](server/README.md) for health checks, middleware, EchoConfigurer.

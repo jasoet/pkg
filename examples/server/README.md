@@ -23,21 +23,35 @@ operation := func(e *echo.Echo) {
 shutdown := func(e *echo.Echo) {
     // Cleanup
 }
-server.Start(8080, operation, shutdown)
+srv, _ := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
+srv.Start() // blocks until srv.Shutdown(ctx) is called
 
 // Option 2: With OpenTelemetry (logging only)
 otelCfg := otel.NewConfig("my-service")  // Default logging to stdout
-config := server.DefaultConfig(8080, operation, shutdown)
-config.OTelConfig = otelCfg
-server.StartWithConfig(config)
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
+srv.Start()
 
 // Option 3: Full OpenTelemetry (traces + metrics + logs)
-otelCfg := otel.NewConfig("my-service").
+otelCfg = otel.NewConfig("my-service").
     WithTracerProvider(tracerProvider).
     WithMeterProvider(meterProvider).
     WithServiceVersion("1.0.0")
-config.OTelConfig = otelCfg
-server.StartWithConfig(config)
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
+srv.Start()
 ```
 
 **Built-in endpoints:**
@@ -128,17 +142,31 @@ config := server.Config{
 **After (v2):**
 ```go
 // Without telemetry
-config := server.DefaultConfig(8080, operation, shutdown)
+srv, _ := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
 
 // With OpenTelemetry logging
 otelCfg := otel.NewConfig("my-service")
-config.OTelConfig = otelCfg
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
 
 // With full telemetry (traces + metrics + logs)
-otelCfg := otel.NewConfig("my-service").
+otelCfg = otel.NewConfig("my-service").
     WithTracerProvider(tp).
     WithMeterProvider(mp)
-config.OTelConfig = otelCfg
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
 ```
 
 ## Integration with Other Packages
