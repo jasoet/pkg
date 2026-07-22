@@ -4,7 +4,7 @@ This directory contains examples demonstrating how to use the `rest` package for
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/rest/examples/example.go](https://github.com/jasoet/pkg/blob/main/rest/examples/example.go)
+**Full example implementation:** [example.go](./example.go) (built with the `example` build tag)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
@@ -12,7 +12,7 @@ This directory contains examples demonstrating how to use the `rest` package for
 // Basic usage pattern
 import (
     "net/http"
-    "github.com/jasoet/pkg/rest"
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 // Create client with defaults
@@ -63,17 +63,99 @@ The `rest` package provides utilities for:
 
 ## Running the Examples
 
-To run the examples, use the following command from the `rest/examples` directory:
+The example program lives in `example.go` behind the `example` build tag. From the repository root:
 
 ```bash
-go run example.go
+go run -tags=example ./examples/rest
 ```
 
-**Note**: Some examples make actual HTTP requests to public APIs. Ensure you have internet connectivity for full demonstration.
+**Note**: The examples run against local `httptest` mock servers, except one error-handling case that intentionally targets a nonexistent domain to demonstrate network failure handling.
+
+### Expected Output
+
+The program prints ten sections. Durations, timestamps, ports, and the ordering of the configuration map in section 2 vary between runs; the stable skeleton looks like this (verified against `go run -tags=example ./examples/rest`):
+
+```
+REST Package Examples
+====================
+
+1. Basic HTTP Client
+Creating basic HTTP client with default configuration:
+- Retry Count: 1
+- Timeout: 30s
+- Retry Wait Time: 2s
+
+Making GET request to mock server...
+   Mock server received: GET /users
+✓ Request successful:
+  - Status Code: 200
+  - Response Length: 101 bytes
+  - Content: [{"id":1,"name":"Alice","email":"alice@example.com"},{"id":2,"name":"Bob","email":"bob@example.com"}
+
+2. Client with Custom Configuration
+... (development / production / high-performance blocks, order varies;
+     each ends with "✓ Request completed in <duration> (Status: 200)")
+
+3. Middleware Integration
+✓ Request with logging middleware completed
+✓ Request with auth middleware completed
+✓ Request 1 completed
+✓ Request 2 completed
+✓ Request 3 completed
+Metrics: 3 requests, average time: <duration>
+
+4. Error Handling
+✗ Authentication Error: Status 401 - unauthorized (HTTP 401): Unauthorized access
+✗ Authentication Error: Status 403 - unauthorized (HTTP 403): Unauthorized access
+✗ Not Found Error: Status 404 - Resource not found: {"error": "not found"}
+✗ Server Error: Status 500 - Server error: {"error": "internal server error"}
+✗ Execution Error: Failed to make request   (timeout case)
+✗ Execution Error: Failed to make request   (nonexistent-domain case)
+
+5. JSON API Interactions
+✓ Retrieved 2 users:
+  - Alice (alice@example.com)
+  - Bob (bob@example.com)
+✓ Created user: John Doe (ID: 3)
+✓ User updated successfully (Status: 200)
+
+6. Retry and Timeout Patterns
+✓ Request succeeded after <duration> (Status: 200)   (/flaky)
+✓ Request succeeded after <duration> (Status: 200)   (/slow)
+✓ Request succeeded after <duration> (Status: 200)   (/eventually-success)
+✓ Request properly timed out after <duration>: Failed to make request
+
+7. Request Tracing and Performance Monitoring
+✓ Request completed successfully:   (DNS/TCP/TLS/Server/Response timings per endpoint)
+✓ 10 requests completed in <duration> (avg: <duration> per request)
+
+8. Advanced Resty Client Usage
+✓ Retrieved 2 users via automatic unmarshaling
+✓ Request with query params completed (Status: 200)
+✓ Form data submitted successfully (Status: 201)
+✓ File upload completed (Status: 200)
+
+9. Integration with Other Packages
+   Mock server received: GET /users
+   Mock server received: POST /users
+
+10. Production Patterns
+- development: Timeout=10s, Retries=1
+- staging: Timeout=30s, Retries=2
+- production: Timeout=1m0s, Retries=3
+  Request 1 failed, circuit breaker state: CLOSED
+  Request 2 succeeded
+  Request 3 failed, circuit breaker state: CLOSED
+  Request 4 succeeded
+  Request 5 failed, circuit breaker state: CLOSED
+  Result: Fallback service responded
+```
+
+Interleaved zerolog log lines (from `LoggingMiddleware`) and resty retry warnings appear on stderr; the `/very-slow` timeout case can also print an `httptest.Server blocked in Close` shutdown warning. The program exits with code 0.
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/rest/examples/example.go) file demonstrates several use cases:
+The [example.go](./example.go) file demonstrates several use cases:
 
 ### 1. Basic HTTP Client
 
@@ -180,7 +262,7 @@ Work with JSON APIs using built-in JSON support:
 response, err := client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
 if err == nil {
     var users []User
-    json.Unmarshal(response.Body(), &users)
+    json.Unmarshal([]byte(response.Body), &users)
 }
 
 // POST request with JSON body
@@ -221,20 +303,35 @@ response, err := client.MakeRequest(ctx, http.MethodGet, unreliableAPI, "", nil)
 
 ### 7. Request Tracing and Performance Monitoring
 
-Monitor request performance with built-in tracing:
+Monitor request performance with built-in tracing. `MakeRequestWithTrace` populates `RequestInfo.TraceInfo`, which middleware can read in `AfterRequest`:
 
 ```go
-client := rest.NewClient(rest.WithMiddleware(rest.NewLoggingMiddleware()))
+// Capture middleware that reads the trace timings
+type TraceCaptureMiddleware struct {
+    lastInfo rest.RequestInfo
+}
+
+func (m *TraceCaptureMiddleware) BeforeRequest(ctx context.Context, method, url, body string, headers map[string]string) context.Context {
+    return ctx
+}
+
+func (m *TraceCaptureMiddleware) AfterRequest(ctx context.Context, info rest.RequestInfo) {
+    m.lastInfo = info
+}
+
+traceMiddleware := &TraceCaptureMiddleware{}
+client := rest.NewClient(rest.WithMiddlewares(rest.NewLoggingMiddleware(), traceMiddleware))
 
 // Request will be automatically traced and logged
-response, err := client.MakeRequest(ctx, http.MethodGet, url, "", nil)
+response, err := client.MakeRequestWithTrace(ctx, http.MethodGet, url, "", nil)
 
-// Access trace information
-if response != nil {
-    traceInfo := response.Request.TraceInfo()
+// Access trace information captured by the middleware
+if err == nil {
+    traceInfo := traceMiddleware.lastInfo.TraceInfo
     fmt.Printf("DNS lookup: %v\n", traceInfo.DNSLookup)
     fmt.Printf("TCP connection: %v\n", traceInfo.TCPConnTime)
     fmt.Printf("TLS handshake: %v\n", traceInfo.TLSHandshake)
+    fmt.Printf("Status code: %d\n", response.StatusCode)
 }
 ```
 
@@ -261,9 +358,10 @@ The `Config` struct supports the following options:
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | `RetryCount` | int | Number of retry attempts | 1 |
-| `RetryWaitTime` | time.Duration | Initial wait time between retries | 20s |
-| `RetryMaxWaitTime` | time.Duration | Maximum wait time between retries | 30s |
-| `Timeout` | time.Duration | Request timeout | 50s |
+| `RetryWaitTime` | time.Duration | Initial wait time between retries | 2s |
+| `RetryMaxWaitTime` | time.Duration | Maximum wait time between retries | 10s |
+| `Timeout` | time.Duration | Request timeout | 30s |
+| `MaxResponseBodyLog` | int | Max response body bytes kept in logs/errors (0 = unlimited) | 1024 |
 
 ### Configuration Examples
 
@@ -313,13 +411,6 @@ Does nothing - useful for testing:
 
 ```go
 client := rest.NewClient(rest.WithMiddleware(rest.NewNoOpMiddleware()))
-```
-
-#### DatabaseLoggingMiddleware
-Example middleware for database logging:
-
-```go
-client := rest.NewClient(rest.WithMiddleware(rest.NewDatabaseLoggingMiddleware()))
 ```
 
 ### Custom Middleware
@@ -492,28 +583,28 @@ if err != nil {
 
 ## Integration with Other Packages
 
-### With Logging Package
+### With the otel Package (Logging)
 
 ```go
 import (
-    "github.com/jasoet/pkg/logging"
-    "github.com/jasoet/pkg/rest"
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 func makeAPICall(ctx context.Context) {
-    logger := logging.ContextLogger(ctx, "api-client")
-    
+    logger := otel.ContextLogger(ctx, "api-client")
+
     client := rest.NewClient(rest.WithMiddleware(rest.NewLoggingMiddleware()))
-    
+
     logger.Info().Str("endpoint", "/users").Msg("Making API call")
-    
+
     response, err := client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
     if err != nil {
         logger.Error().Err(err).Msg("API call failed")
         return
     }
-    
-    logger.Info().Int("status", response.StatusCode()).Msg("API call successful")
+
+    logger.Info().Int("status", response.StatusCode).Msg("API call successful")
 }
 ```
 
@@ -521,22 +612,22 @@ func makeAPICall(ctx context.Context) {
 
 ```go
 import (
-    "github.com/jasoet/pkg/concurrent"
-    "github.com/jasoet/pkg/rest"
+    "github.com/jasoet/pkg/v3/concurrent"
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 func makeParallelAPICalls(ctx context.Context) {
     client := rest.NewClient()
-    
-    apiFunctions := map[string]concurrent.Func[*resty.Response]{
-        "users": func(ctx context.Context) (*resty.Response, error) {
+
+    apiFunctions := map[string]concurrent.Func[*rest.Response]{
+        "users": func(ctx context.Context) (*rest.Response, error) {
             return client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/users", "", nil)
         },
-        "posts": func(ctx context.Context) (*resty.Response, error) {
+        "posts": func(ctx context.Context) (*rest.Response, error) {
             return client.MakeRequest(ctx, http.MethodGet, "https://api.example.com/posts", "", nil)
         },
     }
-    
+
     results, err := concurrent.ExecuteConcurrently(ctx, apiFunctions)
     // Handle results...
 }
@@ -636,7 +727,7 @@ func TestAPICall(t *testing.T) {
     
     response, err := client.MakeRequest(context.Background(), http.MethodGet, server.URL, "", nil)
     assert.NoError(t, err)
-    assert.Equal(t, 200, response.StatusCode())
+    assert.Equal(t, 200, response.StatusCode)
 }
 ```
 

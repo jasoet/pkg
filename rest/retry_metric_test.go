@@ -14,6 +14,8 @@ import (
 	"github.com/jasoet/pkg/v3/otel"
 )
 
+// This test covers status-based retries (5xx responses). Note the resty retry
+// hook also fires on the final failed attempt, not just on intermediate ones.
 // TestRetryMetricWiring verifies that the http.client.retry.count counter is
 // actually incremented when resty retries a failed request. The server fails
 // with 500 twice, then succeeds; with RetryCount=2 the counter must be 2.
