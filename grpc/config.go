@@ -178,16 +178,6 @@ func (c *config) getHTTPAddress() string {
 	return ":" + c.httpPort
 }
 
-// isH2CMode returns true if server is running in H2C mode
-func (c *config) isH2CMode() bool {
-	return c.mode == H2CMode
-}
-
-// isSeparateMode returns true if server is running in separate mode
-func (c *config) isSeparateMode() bool {
-	return c.mode == SeparateMode
-}
-
 // ============================================================================
 // Server Mode & Port Options
 // ============================================================================

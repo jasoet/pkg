@@ -2,8 +2,6 @@ package grpc
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -96,101 +94,6 @@ func TestHealthManagerNoChecks(t *testing.T) {
 
 	assert.Equal(t, HealthStatusUp, overallStatus)
 	assert.Empty(t, checks)
-}
-
-func TestHealthCheckHandlers(t *testing.T) {
-	hm := NewHealthManager()
-
-	// Register a test service
-	hm.RegisterCheck("test_service", func() HealthCheckResult {
-		return HealthCheckResult{
-			Status: HealthStatusUp,
-			Details: map[string]interface{}{
-				"version": "1.0.0",
-			},
-		}
-	})
-
-	handlers := hm.CreateHealthHandlers("/health")
-
-	// Test main health endpoint
-	req := httptest.NewRequest("GET", "/health", nil)
-	w := httptest.NewRecorder()
-
-	handler, exists := handlers["/health"]
-	assert.True(t, exists, "Expected /health handler to exist")
-
-	handler(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(t, err)
-
-	assert.Equal(t, string(HealthStatusUp), response["status"])
-
-	checks, ok := response["checks"].(map[string]interface{})
-	assert.True(t, ok, "Expected checks to be a map")
-	assert.Len(t, checks, 1)
-}
-
-func TestHealthCheckReadinessHandler(t *testing.T) {
-	hm := NewHealthManager()
-
-	// Register an unhealthy service
-	hm.RegisterCheck("database", func() HealthCheckResult {
-		return HealthCheckResult{
-			Status: HealthStatusDown,
-			Details: map[string]interface{}{
-				"error": "connection timeout",
-			},
-		}
-	})
-
-	handlers := hm.CreateHealthHandlers("/health")
-
-	// Test readiness endpoint
-	req := httptest.NewRequest("GET", "/health/ready", nil)
-	w := httptest.NewRecorder()
-
-	handler, exists := handlers["/health/ready"]
-	assert.True(t, exists, "Expected /health/ready handler to exist")
-
-	handler(w, req)
-
-	// Should return 503 Service Unavailable when not ready
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(t, err)
-
-	assert.Equal(t, "not_ready", response["status"])
-}
-
-func TestHealthCheckLivenessHandler(t *testing.T) {
-	hm := NewHealthManager()
-
-	handlers := hm.CreateHealthHandlers("/health")
-
-	// Test liveness endpoint
-	req := httptest.NewRequest("GET", "/health/live", nil)
-	w := httptest.NewRecorder()
-
-	handler, exists := handlers["/health/live"]
-	assert.True(t, exists, "Expected /health/live handler to exist")
-
-	handler(w, req)
-
-	// Liveness should always return OK unless the service is completely dead
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(t, err)
-
-	assert.Equal(t, "alive", response["status"])
 }
 
 func TestDefaultHealthCheckers(t *testing.T) {

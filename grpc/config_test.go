@@ -353,22 +353,6 @@ func TestConfigAddresses(t *testing.T) {
 	}
 }
 
-func TestConfigModeChecks(t *testing.T) {
-	t.Run("H2C mode", func(t *testing.T) {
-		cfg, err := newConfig(WithH2CMode())
-		require.NoError(t, err)
-		assert.True(t, cfg.isH2CMode())
-		assert.False(t, cfg.isSeparateMode())
-	})
-
-	t.Run("Separate mode", func(t *testing.T) {
-		cfg, err := newConfig(WithSeparateMode("9090", "9091"))
-		require.NoError(t, err)
-		assert.False(t, cfg.isH2CMode())
-		assert.True(t, cfg.isSeparateMode())
-	})
-}
-
 func TestMultipleOptions(t *testing.T) {
 	cfg, err := newConfig(
 		WithGRPCPort("9000"),
