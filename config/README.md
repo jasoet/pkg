@@ -1,6 +1,6 @@
 # Configuration Management
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/config.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/config)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/config.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/config)
 
 Type-safe YAML configuration with environment variable overrides using Viper and Go generics.
 
@@ -12,18 +12,19 @@ The `config` package provides a simple, type-safe way to load configuration from
 
 - **Type-Safe**: Generic functions ensure compile-time type checking
 - **Environment Overrides**: Automatic environment variable support with configurable prefix
-- **Nested Configuration**: Support for complex nested structures
-- **Custom Processing**: Hook into Viper for advanced configuration
-- **Zero Dependencies**: Only requires Viper (already used in most Go projects)
+- **Functional Options**: `LoadStringWithOptions` accepts `Option` values (`WithEnvPrefix`, `WithDefaults`, `WithNestedEnvVars`) for advanced configuration
+- **Nested Configuration**: Map environment variables onto map-typed config sections with `WithNestedEnvVars`
 - **Simple API**: Load configuration in one function call
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/config
+go get github.com/jasoet/pkg/v3/config
 ```
 
 ## Quick Start
+
+Compile-checked versions of these snippets live in [`example_test.go`](example_test.go); a runnable end-to-end program lives in [`examples/config/`](../examples/config/).
 
 ### Basic Usage
 
@@ -31,15 +32,17 @@ go get github.com/jasoet/pkg/v2/config
 package main
 
 import (
-    "github.com/jasoet/pkg/v2/config"
+    "fmt"
+
+    "github.com/jasoet/pkg/v3/config"
 )
 
 type AppConfig struct {
     Name    string `yaml:"name"`
     Version string `yaml:"version"`
     Server  struct {
-        Port int    `yaml:"port"`
         Host string `yaml:"host"`
+        Port int    `yaml:"port"`
     } `yaml:"server"`
 }
 
@@ -48,8 +51,8 @@ func main() {
 name: my-app
 version: 1.0.0
 server:
-  port: 8080
   host: localhost
+  port: 8080
 `
 
     cfg, err := config.LoadString[AppConfig](yamlConfig)
@@ -57,464 +60,117 @@ server:
         panic(err)
     }
 
-    fmt.Printf("Starting %s v%s on %s:%d\n",
+    fmt.Printf("%s v%s on %s:%d\n",
         cfg.Name, cfg.Version, cfg.Server.Host, cfg.Server.Port)
 }
 ```
 
 ### Environment Variable Overrides
 
-By default, environment variables with `ENV_` prefix override YAML values:
+By default, environment variables with the `ENV_` prefix override YAML values. Dots in nested keys become underscores (`server.port` → `ENV_SERVER_PORT`):
 
 ```go
-// YAML config
-yamlConfig := `
-name: my-app
-version: 1.0.0
-`
-
-// Environment variables
-// ENV_NAME=prod-app
-// ENV_VERSION=2.0.0
+os.Setenv("ENV_SERVER_PORT", "9090")
 
 cfg, err := config.LoadString[AppConfig](yamlConfig)
-// cfg.Name = "prod-app" (from env)
-// cfg.Version = "2.0.0" (from env)
-```
-
-**Nested keys** use underscores:
-```bash
-# Override server.port
-export ENV_SERVER_PORT=9090
-
-# Override database.host
-export ENV_DATABASE_HOST=prod-db.example.com
+// cfg.Server.Port == 9090 (from env), other fields from YAML
 ```
 
 ### Custom Environment Prefix
 
+Pass a prefix as the second argument to `LoadString` (only the first value is used; additional values are ignored):
+
 ```go
-// Use custom prefix
 cfg, err := config.LoadString[AppConfig](yamlConfig, "MYAPP")
-
-// Now use MYAPP_* environment variables
-// MYAPP_NAME=prod-app
-// MYAPP_SERVER_PORT=9090
+// Now MYAPP_* environment variables apply, e.g. MYAPP_SERVER_PORT=9090
 ```
 
-## API Reference
+## Options API
 
-### LoadString
-
-Load configuration from YAML string with environment variable support:
+`LoadStringWithOptions` applies functional options after the YAML has been parsed and before unmarshaling:
 
 ```go
-func LoadString[T any](configString string, envPrefix ...string) (*T, error)
+func LoadStringWithOptions[T any](configString string, opts ...Option) (*T, error)
 ```
 
-**Parameters:**
-- `configString`: YAML configuration string
-- `envPrefix`: Optional environment variable prefix (default: `"ENV"`)
+An `Option` is a `func(*viper.Viper)`, so besides the provided constructors you can pass any custom function that mutates the underlying Viper instance (see `examples/config/` for a custom-option example).
 
-**Returns:**
-- `*T`: Pointer to populated configuration struct
-- `error`: Error if parsing or unmarshaling fails
+### WithDefaults
 
-**Example:**
-```go
-cfg, err := config.LoadString[AppConfig](yamlString)
-cfg, err := config.LoadString[AppConfig](yamlString, "CUSTOM")
-```
-
-### LoadStringWithConfig
-
-Advanced loading with custom Viper configuration:
+Sets default values for keys absent from the YAML:
 
 ```go
-func LoadStringWithConfig[T any](
-    configString string,
-    configFn func(*viper.Viper),
-    envPrefix ...string,
-) (*T, error)
-```
-
-**Parameters:**
-- `configString`: YAML configuration string
-- `configFn`: Custom function to modify Viper before unmarshaling
-- `envPrefix`: Optional environment variable prefix (default: `"ENV"`)
-
-**Example:**
-```go
-customFn := func(v *viper.Viper) {
-    v.Set("defaults.timeout", 30)
-    v.SetDefault("debug", false)
-}
-
-cfg, err := config.LoadStringWithConfig[AppConfig](yamlString, customFn)
-```
-
-### NestedEnvVars
-
-Process nested environment variables for dynamic configuration:
-
-```go
-func NestedEnvVars(
-    prefix string,
-    keyDepth int,
-    configPath string,
-    viperConfig *viper.Viper,
+cfg, err := config.LoadStringWithOptions[AppConfig](`server: {port: 8080}`,
+    config.WithDefaults(map[string]any{"debug": true}),
+    config.WithEnvPrefix("APP"),
 )
+// cfg.Debug == true (default), cfg.Server.Port == 8080 (YAML),
+// or 9090 if APP_SERVER_PORT=9090 is set (env override)
 ```
 
-**Use Case**: Load entity-specific configuration from environment variables.
+### WithNestedEnvVars
 
-**Example:**
+Maps prefixed environment variables onto a map-typed config section:
+
 ```go
-// Environment variables:
-// TEST_GOERS_ACCOUNTS_USER_NAME=john
-// TEST_GOERS_ACCOUNTS_USER_EMAIL=john@example.com
-// TEST_GOERS_ACCOUNTS_ADMIN_NAME=admin
-// TEST_GOERS_ACCOUNTS_ADMIN_EMAIL=admin@example.com
+func WithNestedEnvVars(prefix string, keyDepth int, configPath string) Option
+```
 
-customFn := func(v *viper.Viper) {
-    config.NestedEnvVars("TEST_GOERS_ACCOUNTS_", 3, "goers.accounts", v)
-}
+- `prefix`: prefix of the environment variables to process (e.g. `"APP"`).
+- `keyDepth`: **prefix-relative** — the prefix is stripped first, then `keyDepth` indexes the remaining underscore-split tokens to locate the entity name; everything after it forms the field name.
+- `configPath`: base path in the configuration where values are set.
 
+```go
 type Config struct {
-    Goers struct {
-        Accounts map[string]map[string]string `yaml:"accounts"`
-    } `yaml:"goers"`
+    Users map[string]map[string]string `yaml:"users"`
 }
 
-cfg, _ := config.LoadStringWithConfig[Config](yamlString, customFn)
+// APP_USERS_ADMIN_NAME: strip "APP" -> ["USERS", "ADMIN", "NAME"];
+// keyDepth 1 -> entity "admin", field "name" under path "users".
+os.Setenv("APP_USERS_ADMIN_NAME", "alice")
 
-// Access nested values
-userName := cfg.Goers.Accounts["user"]["name"]  // "john"
-adminEmail := cfg.Goers.Accounts["admin"]["email"]  // "admin@example.com"
-```
-
-## Advanced Examples
-
-### Database Configuration
-
-```go
-type DatabaseConfig struct {
-    Type     string `yaml:"type"`
-    Host     string `yaml:"host"`
-    Port     int    `yaml:"port"`
-    Username string `yaml:"username"`
-    Password string `yaml:"password"`
-    Database string `yaml:"database"`
-}
-
-yamlConfig := `
-type: postgresql
-host: localhost
-port: 5432
-username: admin
-database: myapp
-`
-
-// Override sensitive data via env vars
-// ENV_PASSWORD=secret123
-// ENV_HOST=prod-db.example.com
-
-cfg, err := config.LoadString[DatabaseConfig](yamlConfig)
-// cfg.Host = "prod-db.example.com"
-// cfg.Password = "secret123"
-```
-
-### Multi-Environment Setup
-
-```go
-type Environment struct {
-    Name     string
-    Database DatabaseConfig
-    Server   ServerConfig
-}
-
-// Development
-devYaml := `
-name: development
-database:
-  host: localhost
-server:
-  port: 8080
-`
-
-// Production (override with env vars)
-// ENV_DATABASE_HOST=prod-db.example.com
-// ENV_SERVER_PORT=443
-
-cfg, err := config.LoadString[Environment](devYaml)
-```
-
-### Slice Configuration
-
-```go
-type FeatureConfig struct {
-    Name     string   `yaml:"name" mapstructure:"name"`
-    Tags     []string `yaml:"tags" mapstructure:"tags"`
-    Features []string `yaml:"features" mapstructure:"features"`
-}
-
-yamlConfig := `
-name: my-service
-tags:
-  - api
-  - grpc
-  - rest
-features:
-  - auth
-  - logging
-`
-
-cfg, err := config.LoadString[FeatureConfig](yamlConfig)
-// cfg.Tags = []string{"api", "grpc", "rest"}
-
-// Override with env (comma-separated)
-// ENV_TAGS=production,kubernetes,ha
-// cfg.Tags = []string{"production", "kubernetes", "ha"}
-```
-
-### Integration with OTel Config
-
-```go
-import (
-    "github.com/jasoet/pkg/v2/config"
-    "github.com/jasoet/pkg/v2/otel"
+cfg, err := config.LoadStringWithOptions[Config](``,
+    config.WithNestedEnvVars("APP", 1, "users"),
 )
-
-type AppConfig struct {
-    Service struct {
-        Name    string `yaml:"name"`
-        Version string `yaml:"version"`
-    } `yaml:"service"`
-    OTel struct {
-        Endpoint string `yaml:"endpoint"`
-        Insecure bool   `yaml:"insecure"`
-    } `yaml:"otel"`
-}
-
-yamlConfig := `
-service:
-  name: my-service
-  version: 1.0.0
-otel:
-  endpoint: localhost:4317
-  insecure: true
-`
-
-cfg, _ := config.LoadString[AppConfig](yamlConfig)
-
-// Use in OTel setup
-otelConfig := otel.NewConfig(cfg.Service.Name).
-    WithServiceVersion(cfg.Service.Version)
+// cfg.Users["admin"]["name"] == "alice"
 ```
 
-## Best Practices
-
-### 1. Define Struct Tags
+**Precedence contract:** nested env vars fill only keys that are *absent* from the YAML. If the YAML already sets a key, the environment variable is ignored:
 
 ```go
-// ✅ Good: Use both yaml and mapstructure tags
-type Config struct {
-    Port int `yaml:"port" mapstructure:"port"`
-}
+os.Setenv("APP_USERS_ADMIN_NAME", "alice")
+os.Setenv("APP_USERS_ADMIN_EMAIL", "alice@example.com")
 
-// ⚠️ May cause issues with env override
-type Config struct {
-    Port int `yaml:"port"` // missing mapstructure
-}
+cfg, _ := config.LoadStringWithOptions[Config](`users: {admin: {name: bob}}`,
+    config.WithNestedEnvVars("APP", 1, "users"),
+)
+// cfg.Users["admin"]["name"]  == "bob"              (YAML wins)
+// cfg.Users["admin"]["email"] == "alice@example.com" (filled from env)
 ```
 
-### 2. Use Pointers for Optional Fields
+Note: unlike the flat `ENV_` override mechanism (which overrides YAML), `WithNestedEnvVars` never overrides YAML keys.
 
-```go
-// ✅ Good: Optional fields are pointers
-type Config struct {
-    Required string  `yaml:"required"`
-    Optional *string `yaml:"optional"`
-}
+## Struct Tags
 
-// Check before using
-if cfg.Optional != nil {
-    fmt.Println(*cfg.Optional)
-}
-```
-
-### 3. Validate After Loading
-
-```go
-import "github.com/go-playground/validator/v10"
-
-type Config struct {
-    Port int    `yaml:"port" validate:"required,min=1,max=65535"`
-    Host string `yaml:"host" validate:"required,hostname"`
-}
-
-cfg, err := config.LoadString[Config](yamlString)
-if err != nil {
-    return err
-}
-
-validate := validator.New()
-if err := validate.Struct(cfg); err != nil {
-    return fmt.Errorf("invalid config: %w", err)
-}
-```
-
-### 4. Environment-Specific Defaults
-
-```go
-customFn := func(v *viper.Viper) {
-    // Set defaults for production
-    if os.Getenv("APP_ENV") == "production" {
-        v.SetDefault("server.timeout", 30)
-        v.SetDefault("logging.level", "info")
-    } else {
-        v.SetDefault("server.timeout", 60)
-        v.SetDefault("logging.level", "debug")
-    }
-}
-
-cfg, _ := config.LoadStringWithConfig[AppConfig](yamlString, customFn)
-```
-
-### 5. Secrets Management
-
-```go
-// ✅ Good: Never commit secrets to YAML
-yamlConfig := `
-database:
-  host: localhost
-  port: 5432
-  # username and password from env vars only
-`
-
-// Set via environment
-// ENV_DATABASE_USERNAME=admin
-// ENV_DATABASE_PASSWORD=secret123
-
-cfg, _ := config.LoadString[DatabaseConfig](yamlConfig)
-```
+Decoding is case-insensitive via mapstructure, so plain `yaml` tags (as used throughout these examples) are sufficient. Adding matching `mapstructure` tags is harmless but not required.
 
 ## Testing
 
-The package includes comprehensive tests with 94.7% coverage:
-
 ```bash
-# Run tests
-go test ./config -v
-
-# With coverage
-go test ./config -cover
+go test ./config/ -v
 ```
 
-### Test Utilities
-
-```go
-func TestMyConfig(t *testing.T) {
-    yamlConfig := `
-    name: test-app
-    version: 1.0.0
-    `
-
-    // Set test env vars
-    t.Setenv("ENV_NAME", "test-override")
-
-    cfg, err := config.LoadString[TestConfig](yamlConfig)
-    assert.NoError(t, err)
-    assert.Equal(t, "test-override", cfg.Name)
-}
-```
-
-## Troubleshooting
-
-### Environment Variables Not Working
-
-**Problem**: Env vars not overriding YAML values
-
-**Solution**:
-```go
-// 1. Check the prefix
-cfg, _ := config.LoadString[T](yaml, "MYAPP")  // Use MYAPP_*
-
-// 2. Check the key format (dots become underscores)
-// YAML: server.port -> ENV: ENV_SERVER_PORT
-
-// 3. Ensure mapstructure tags exist
-type Config struct {
-    Port int `yaml:"port" mapstructure:"port"`  // Both tags needed
-}
-```
-
-### Nested Config Not Loading
-
-**Problem**: Nested environment variables not working
-
-**Solution**:
-```go
-// Use NestedEnvVars for dynamic nested structures
-customFn := func(v *viper.Viper) {
-    config.NestedEnvVars("PREFIX_", keyDepth, "config.path", v)
-}
-
-cfg, _ := config.LoadStringWithConfig[T](yaml, customFn)
-```
-
-### Type Mismatch Errors
-
-**Problem**: Viper can't unmarshal to struct
-
-**Solution**:
-```go
-// Ensure types match YAML values
-type Config struct {
-    Port int `yaml:"port"`  // ✅ Use int for numbers
-    // Port string `yaml:"port"`  // ❌ Will fail if YAML has number
-}
-```
-
-## Performance
-
-- **Lightweight**: Minimal overhead over direct Viper usage
-- **Type-Safe**: No reflection at runtime (only during unmarshal)
-- **Efficient**: Viper caches parsed values
-
-Benchmark (typical config load):
-```
-BenchmarkLoadString-8    50000    ~30 µs/op
-```
-
-## Version Compatibility
-
-- **Viper**: v1.21.0+
-- **Go**: 1.25+ (generics required)
-- **pkg library**: v2.0.0+
-
-## Migration from Direct Viper
-
-```go
-// Before (direct Viper)
-v := viper.New()
-v.SetConfigType("yaml")
-v.ReadConfig(strings.NewReader(yamlString))
-var cfg AppConfig
-v.Unmarshal(&cfg)
-
-// After (this package)
-cfg, err := config.LoadString[AppConfig](yamlString)
-```
+The package's tests use `t.Setenv` to isolate environment variable fixtures.
 
 ## Examples
 
-See [examples/](.../examples/config/config/) directory for:
+See [`examples/config/`](../examples/config/) for a runnable program covering:
+
 - Basic configuration loading
 - Environment variable overrides
-- Custom Viper configuration
-- Nested configuration handling
-- Integration with other packages
+- Custom environment prefix
+- Custom `Option` functions
+- Nested environment variables with `WithNestedEnvVars`
 
 ## Related Packages
 

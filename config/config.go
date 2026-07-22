@@ -30,7 +30,14 @@ func WithDefaults(defaults map[string]any) Option {
 
 // WithNestedEnvVars processes environment variables with the given prefix and sets
 // them under configPath, filling only keys absent from the loaded configuration.
-// See nestedEnvVars for the meaning of prefix, keyDepth and configPath.
+// Parameters:
+//   - prefix: The prefix of environment variables to process (e.g. "MY_APP_").
+//   - keyDepth: The zero-based index into the underscore-split key after the prefix
+//     has been removed, at which the entity name token is located. For example, given
+//     the env var MY_APP_USER_NAME with prefix "MY_APP_", the remaining parts are
+//     ["USER", "NAME"]. With keyDepth=0, "USER" is treated as the entity name and
+//     "NAME" becomes the field name.
+//   - configPath: The base path in the configuration where values should be set.
 func WithNestedEnvVars(prefix string, keyDepth int, configPath string) Option {
 	return func(v *viper.Viper) {
 		nestedEnvVars(prefix, keyDepth, configPath, v)
@@ -106,7 +113,7 @@ func nestedEnvVars(prefix string, keyDepth int, configPath string, viperConfig *
 		return
 	}
 
-	nestedEnvVars := make(map[string]map[string]string)
+	collected := make(map[string]map[string]string)
 
 	for _, env := range os.Environ() {
 		if strings.HasPrefix(env, prefix) {
@@ -123,16 +130,16 @@ func nestedEnvVars(prefix string, keyDepth int, configPath string, viperConfig *
 					entityName := strings.ToLower(keyParts[keyDepth])
 					fieldName := strings.ToLower(strings.Join(keyParts[keyDepth+1:], "_"))
 
-					if _, ok := nestedEnvVars[entityName]; !ok {
-						nestedEnvVars[entityName] = make(map[string]string)
+					if _, ok := collected[entityName]; !ok {
+						collected[entityName] = make(map[string]string)
 					}
-					nestedEnvVars[entityName][fieldName] = envValue
+					collected[entityName][fieldName] = envValue
 				}
 			}
 		}
 	}
 
-	for entityName, fields := range nestedEnvVars {
+	for entityName, fields := range collected {
 		entityKey := configPath + "." + entityName
 
 		for fieldName, fieldValue := range fields {
