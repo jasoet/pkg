@@ -1,6 +1,6 @@
-# HTTP Server Package (v2)
+# HTTP Server Package (v3)
 
-A clean, production-ready HTTP server implementation using the Echo framework with built-in health checks and graceful shutdown.
+A clean, production-ready HTTP server implementation using the Echo framework with built-in health checks, graceful shutdown, and optional OpenTelemetry instrumentation.
 
 > **Note:** `srv.Start()` blocks until `srv.Shutdown(ctx)` is called (or serving fails),
 > returning `nil` on a clean shutdown. Signal handling is up to the caller. See examples below.
@@ -13,7 +13,7 @@ Get your server up and running with minimal configuration:
 package main
 
 import (
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
     "github.com/labstack/echo/v4"
 )
 
@@ -48,16 +48,17 @@ func main() {
 
 ## Configuration Options
 
-The server can be customized using the `Config` struct:
+The server is configured with functional options, which populate a `Config`:
 
-| Field | Type | Description | Default |
-|-------|------|-------------|---------|
-| Port | int | The port number to listen on | - |
-| Operation | func(e *echo.Echo) | Function to run when server starts | - |
-| Shutdown | func(e *echo.Echo) | Function to run when server stops | - |
-| Middleware | []echo.MiddlewareFunc | Custom middleware to apply | [] |
-| ShutdownTimeout | time.Duration | Timeout for graceful shutdown | 10s |
-| EchoConfigurer | func(e *echo.Echo) | Function to configure Echo instance | nil |
+| Field | Option | Type | Description | Default |
+|-------|--------|------|-------------|---------|
+| Port | `WithPort` | int | The port number to listen on (`0` = OS-assigned ephemeral port) | 0 |
+| Operation | `WithOperation` | func(e *echo.Echo) | Runs after Echo is configured, before listening | nil |
+| Shutdown | `WithShutdown` | func(e *echo.Echo) | Runs during graceful shutdown, before Echo drains | nil |
+| Middleware | `WithMiddleware` | ...echo.MiddlewareFunc | Custom middleware to apply | none |
+| ShutdownTimeout | `WithShutdownTimeout` | time.Duration | Deadline for graceful shutdown | 10s |
+| EchoConfigurer | `WithEchoConfigurer` | func(e *echo.Echo) | Customizes the Echo instance during setup | nil |
+| OTelConfig | `WithOTelConfig` | *otel.Config | OpenTelemetry configuration (see below) | nil |
 
 Example with custom configuration:
 
@@ -106,6 +107,46 @@ if err := srv.Start(); err != nil {
 }
 ```
 
+## OpenTelemetry Instrumentation
+
+Pass an `*otel.Config` via `WithOTelConfig` and the server auto-installs request instrumentation middleware (before your own middleware). All instrumentation uses the scope name `http.server`.
+
+### Tracing (when tracing is enabled on the config)
+
+One server span per request, named `{method} {route}` (e.g. `GET /users/:id`), with attributes:
+
+- `http.request.method`
+- `url.full`
+- `http.response.status_code`
+- `http.route`
+
+### Metrics (when metrics is enabled on the config)
+
+- `http.server.request.count` — counter of total HTTP requests, unit `{request}`
+- `http.server.request.duration` — histogram of request duration, unit `ms`
+
+Both are attributed by `http.request.method` and `http.response.status_code`.
+
+```go
+import (
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/server"
+)
+
+otelCfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+)
+
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithOTelConfig(otelCfg),
+)
+```
+
+With no `OTelConfig` (the default), no spans or metrics are emitted.
+
 ## Middleware Examples
 
 ### Adding Custom Middleware
@@ -116,7 +157,7 @@ package main
 import (
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
 )
 
 func main() {
@@ -163,7 +204,7 @@ package main
 import (
     "fmt"
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
     "time"
 )
 
@@ -211,24 +252,35 @@ The server includes built-in health check endpoints:
 | `/health/ready` | Readiness check | `{"status":"READY"}` |
 | `/health/live` | Liveness check | `{"status":"ALIVE"}` |
 
+> **Note:** Health routes are registered **after** user middleware, so any middleware you add via
+> `WithMiddleware` (including auth) also applies to them. If you need unauthenticated Kubernetes
+> probes, don't register global auth middleware, or exempt the health paths in your middleware
+> (e.g. with a skipper).
+
 ### Customizing Health Checks
 
-You can customize the health check endpoints in your operation function:
+You can replace the health check endpoints in your operation function:
 
 ```go
 operation := func(e *echo.Echo) {
     // Override the default health endpoint
     e.GET("/health", func(c echo.Context) error {
         // Check your application's health
-        dbHealthy := checkDatabaseConnection()
-        cacheHealthy := checkCacheConnection()
+        dbStatus := "UP"
+        if !checkDatabaseConnection() {
+            dbStatus = "DOWN"
+        }
+        cacheStatus := "UP"
+        if !checkCacheConnection() {
+            cacheStatus = "DOWN"
+        }
 
-        if !dbHealthy || !cacheHealthy {
+        if dbStatus != "UP" || cacheStatus != "UP" {
             return c.JSON(500, map[string]interface{}{
                 "status": "DOWN",
                 "components": map[string]string{
-                    "database": dbHealthy ? "UP" : "DOWN",
-                    "cache": cacheHealthy ? "UP" : "DOWN",
+                    "database": dbStatus,
+                    "cache":    cacheStatus,
                 },
             })
         }
@@ -237,7 +289,7 @@ operation := func(e *echo.Echo) {
             "status": "UP",
             "components": map[string]string{
                 "database": "UP",
-                "cache": "UP",
+                "cache":    "UP",
             },
         })
     })
@@ -246,7 +298,7 @@ operation := func(e *echo.Echo) {
 
 ## Graceful Shutdown
 
-The server supports graceful shutdown, allowing in-flight requests to complete before shutting down.
+The server supports graceful shutdown, allowing in-flight requests to complete before shutting down. Call `Shutdown(ctx)` from another goroutine — for example from your own signal handler — and `Start` returns `nil` once draining completes.
 
 ### Basic Shutdown Handler
 
@@ -271,7 +323,7 @@ import (
     "context"
     "fmt"
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
     "time"
 )
 
@@ -331,7 +383,7 @@ package main
 
 import (
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
     "your-module/auth"
     "your-module/database"
 )
@@ -398,7 +450,7 @@ import (
     "github.com/labstack/echo/v4"
     "net/http"
     "time"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
 )
 
 func main() {
@@ -469,7 +521,7 @@ func main() {
 
 ## Examples
 
-For complete, runnable examples, see the [examples directory](../examples/server/).
+For complete, runnable examples, see the [examples/server directory](../examples/server/).
 
 The examples demonstrate:
 - Basic server setup
@@ -477,10 +529,9 @@ The examples demonstrate:
 - Health check implementations
 - Graceful shutdown patterns
 
-Run the examples:
+Run the examples from the repository root:
 ```bash
-cd examples
-go run -tags example example.go
+go run -tags=example ./examples/server
 ```
 
 ## Best Practices
@@ -555,7 +606,7 @@ operation := func(e *echo.Echo) {
 ### Functions
 
 #### `New(opts ...Option) (*Server, error)`
-Creates a server from functional options (`WithPort`, `WithOperation`, `WithShutdown`, `WithMiddleware`, `WithShutdownTimeout`, `WithEchoConfigurer`, `WithOTelConfig`). Validates the configuration and prepares the Echo instance without binding or serving.
+Creates a server from functional options (`WithPort`, `WithOperation`, `WithShutdown`, `WithMiddleware`, `WithShutdownTimeout`, `WithEchoConfigurer`, `WithOTelConfig`). Validates the configuration (port must be 0-65535) and prepares the Echo instance without binding or serving.
 
 #### `NewConfig(opts ...Option) Config`
 Builds a `Config` from functional options with sensible defaults (10s shutdown timeout).
@@ -563,13 +614,13 @@ Builds a `Config` from functional options with sensible defaults (10s shutdown t
 ### Methods
 
 #### `(s *Server) Start() error`
-Binds the listener (so `Addr()` works with `Port: 0`), runs the `Operation` callback, and serves, blocking until `Shutdown` is called or serving fails. Returns `nil` on a clean shutdown (`http.ErrServerClosed` is filtered). Calling `Start` while already running returns an error.
+Binds the listener (so `Addr()` works with `Port: 0`), runs the `Operation` callback, and serves, blocking until `Shutdown` is called or serving fails. Returns `nil` on a clean shutdown (`http.ErrServerClosed` is filtered). Calling `Start` while already running returns an error. A stopped `Server` cannot be restarted — `Start` returns an error; create a new one with `New`.
 
 #### `(s *Server) Shutdown(ctx context.Context) error`
-Invokes the `Shutdown` callback and drains the Echo server, honoring `ShutdownTimeout` on top of the caller's context.
+Invokes the `Shutdown` callback and drains the Echo server, honoring `ShutdownTimeout` on top of the caller's context (whichever deadline is earlier). Idempotent: the callback and drain run exactly once.
 
 #### `(s *Server) Addr() string`
-Returns the bound listener address, or `""` before the server is listening. This is how callers discover the OS-assigned port when using `Port: 0`.
+Returns the bound listener address (e.g. `[::]:8080`), or `""` before the server is listening (and after shutdown). This is how callers discover the OS-assigned port when using `Port: 0`.
 
 #### `(s *Server) Echo() *echo.Echo`
 Returns the underlying Echo instance for route registration or customization before `Start`.
@@ -593,10 +644,10 @@ Function to configure the Echo instance directly.
 - Check for panics in route handlers
 
 ### Graceful shutdown timeout
-- Increase `ShutdownTimeout` in config
+- Increase `ShutdownTimeout` via `WithShutdownTimeout`
 - Check for long-running operations in handlers
-- Ensure Shutdown function completes quickly
+- Ensure the Shutdown function completes quickly
 
 ## License
 
-This package is part of github.com/jasoet/pkg and follows the repository's license.
+This package is part of github.com/jasoet/pkg/v3 and follows the repository's license.

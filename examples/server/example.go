@@ -45,7 +45,7 @@ func (c *CustomHealthChecker) CheckHealth() map[string]string {
 }
 
 func main() {
-	fmt.Println("Server Package Examples (v2 with OpenTelemetry)")
+	fmt.Println("Server Package Examples (v3 with OpenTelemetry)")
 	fmt.Println("===============================================")
 
 	// Run different server examples in sequence
@@ -123,8 +123,8 @@ func otelConfigExample() {
 		fmt.Println("Cleaning up resources...")
 	}
 
-	// OTel is configured at the middleware level, not on server.Config.
-	// Create an OTel config and use it in Echo middleware:
+	// Create an OTel config; WithOTelConfig auto-installs tracing and metrics
+	// middleware on the server.
 	otelCfg := otel.NewConfig("server-example",
 		otel.WithServiceVersion("1.0.0"))
 
@@ -132,10 +132,9 @@ func otelConfigExample() {
 		server.WithPort(8081),
 		server.WithOperation(operation),
 		server.WithShutdown(shutdown),
+		server.WithOTelConfig(otelCfg),
 	)
 	config.ShutdownTimeout = 15 * time.Second
-	// OTel middleware can be added via config.Middleware or EchoConfigurer
-	// Example: e.Use(otelecho.Middleware(otelCfg.ServiceName))
 
 	fmt.Printf("Server configuration:\n")
 	fmt.Printf("- Port: %d\n", config.Port)
@@ -143,11 +142,11 @@ func otelConfigExample() {
 	fmt.Printf("- OTel Config Service: %s\n", otelCfg.ServiceName)
 
 	fmt.Println("\nTo start this server, you would call:")
-	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown))")
+	fmt.Println("srv, err := server.New(server.WithPort(port), server.WithOperation(operation), server.WithShutdown(shutdown), server.WithOTelConfig(otelCfg))")
 	fmt.Println("if err != nil { log.Fatal(err) }")
 	fmt.Println("go func() { <-sigChan; srv.Shutdown(ctx) }() // or any shutdown trigger")
 	fmt.Println("if err := srv.Start(); err != nil { log.Fatal(err) } // blocks until Shutdown")
-	fmt.Println("\nNote: OTel is configured via Echo middleware, not server.Config")
+	fmt.Println("\nNote: WithOTelConfig auto-installs OTel request tracing and metrics middleware")
 	fmt.Println("OpenTelemetry configuration example completed")
 }
 

@@ -244,8 +244,10 @@ func setupEcho(config Config) *echo.Echo {
 		e.Use(m)
 	}
 
-	// Health check endpoints are registered before user middleware. They are intentionally unauthenticated for Kubernetes probe compatibility.
-	// Register health-check routes (no generic "/" handler — library callers add their own routes)
+	// Register health-check routes (no generic "/" handler — library callers add their own routes).
+	// These routes are registered AFTER the user middleware above, so user middleware (including
+	// auth) applies to them. Callers that need unauthenticated Kubernetes probes must not register
+	// global auth middleware, or must exempt these paths themselves.
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "UP"})
 	})
