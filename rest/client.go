@@ -167,7 +167,7 @@ func (c *Client) GetMiddlewares() []Middleware {
 //
 // The body parameter is a string; for binary payloads, use GetRestClient()
 // and build the request directly with resty's SetBody(interface{}).
-func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url string, body string, headers map[string]string) (*resty.Response, error) {
+func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url string, body string, headers map[string]string) (*Response, error) {
 	return c.doRequest(ctx, method, url, body, headers, true)
 }
 
@@ -175,7 +175,7 @@ func (c *Client) MakeRequestWithTrace(ctx context.Context, method string, url st
 //
 // The body parameter is a string; for binary payloads, use GetRestClient()
 // and build the request directly with resty's SetBody(interface{}).
-func (c *Client) MakeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) (*resty.Response, error) {
+func (c *Client) MakeRequest(ctx context.Context, method string, url string, body string, headers map[string]string) (*Response, error) {
 	return c.doRequest(ctx, method, url, body, headers, false)
 }
 
@@ -189,7 +189,7 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 //
 // The full response body is buffered in memory intentionally so that middleware in
 // AfterRequest can inspect the response content.
-func (c *Client) doRequest(ctx context.Context, method string, url string, body string, headers map[string]string, enableTrace bool) (*resty.Response, error) {
+func (c *Client) doRequest(ctx context.Context, method string, url string, body string, headers map[string]string, enableTrace bool) (*Response, error) {
 	var otelConfig *otel.Config
 	if c.restConfig != nil {
 		otelConfig = c.restConfig.OTelConfig
@@ -270,7 +270,7 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 		}
 		requestInfo.Response = truncateBody(response.String(), maxLog)
 		if enableTrace && response.Request != nil {
-			requestInfo.TraceInfo = response.Request.TraceInfo()
+			requestInfo.TraceInfo = traceInfoFromResty(response.Request.TraceInfo())
 		}
 	}
 
@@ -278,67 +278,46 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 		middleware.AfterRequest(ctx, requestInfo)
 	}
 
+	result := fromResty(response)
+
 	if err != nil {
 		logger.Error(err, "Failed to make request")
-		return response, NewExecutionError("Failed to make request", err)
+		return result, NewExecutionError("Failed to make request", err)
 	}
 
-	err = c.HandleResponse(response)
+	err = c.handleResponse(result)
 	if err != nil {
-		return response, err
+		return result, err
 	}
 
-	return response, nil
+	return result, nil
 }
 
-// HandleResponse checks the HTTP status code and returns a typed error for
+// handleResponse checks the HTTP status code and returns a typed error for
 // non-success responses. Checks are ordered from most specific to least:
 // 401/403 -> 404 -> 5xx -> other 4xx.
-func (c *Client) HandleResponse(response *resty.Response) error {
+func (c *Client) handleResponse(response *Response) error {
 	maxLog := 0
 	if c.restConfig != nil {
 		maxLog = c.restConfig.MaxResponseBodyLog
 	}
-	body := truncateBody(response.String(), maxLog)
+	body := truncateBody(response.Body, maxLog)
 
-	if IsUnauthorized(response) {
-		return NewUnauthorizedError(response.StatusCode(), "Unauthorized access", body)
+	if response.IsAuthError() {
+		return NewUnauthorizedError(response.StatusCode, "Unauthorized access", body)
 	}
 
-	if IsNotFound(response) {
-		return NewResourceNotFoundError(response.StatusCode(), "Resource not found", body)
+	if response.IsNotFound() {
+		return NewResourceNotFoundError(response.StatusCode, "Resource not found", body)
 	}
 
-	if IsServerError(response) {
-		return NewServerError(response.StatusCode(), "Server error", body)
+	if response.IsServerError() {
+		return NewServerError(response.StatusCode, "Server error", body)
 	}
 
-	if IsClientError(response) {
-		return NewResponseError(response.StatusCode(), "Client error", body)
+	if response.IsClientError() {
+		return NewResponseError(response.StatusCode, "Client error", body)
 	}
 
 	return nil
-}
-
-// IsServerError returns true for HTTP 5xx status codes.
-func IsServerError(response *resty.Response) bool {
-	return response.StatusCode() >= 500
-}
-
-// IsUnauthorized returns true for HTTP 401 (Unauthorized) and 403 (Forbidden).
-// Both indicate an access control failure; use response.StatusCode() to distinguish them.
-func IsUnauthorized(response *resty.Response) bool {
-	return response.StatusCode() == http.StatusUnauthorized || response.StatusCode() == http.StatusForbidden
-}
-
-// IsNotFound returns true for HTTP 404 (Not Found).
-func IsNotFound(response *resty.Response) bool {
-	return response.StatusCode() == http.StatusNotFound
-}
-
-// IsClientError returns true for any HTTP 4xx status code.
-// Note: this overlaps with IsUnauthorized and IsNotFound; in HandleResponse,
-// those are checked first so IsClientError only catches remaining 4xx codes.
-func IsClientError(response *resty.Response) bool {
-	return response.StatusCode() >= 400 && response.StatusCode() < 500
 }

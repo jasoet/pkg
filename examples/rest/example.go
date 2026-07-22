@@ -77,6 +77,20 @@ func (m *MetricsMiddleware) GetStats() (int, time.Duration) {
 	return m.requestCount, m.totalTime
 }
 
+// TraceCaptureMiddleware captures the last RequestInfo so the example can
+// inspect the trace timings populated by MakeRequestWithTrace.
+type TraceCaptureMiddleware struct {
+	lastInfo rest.RequestInfo
+}
+
+func (m *TraceCaptureMiddleware) BeforeRequest(ctx context.Context, method, url, body string, headers map[string]string) context.Context {
+	return ctx
+}
+
+func (m *TraceCaptureMiddleware) AfterRequest(ctx context.Context, info rest.RequestInfo) {
+	m.lastInfo = info
+}
+
 func main() {
 	// Initialize logging
 	if err := otel.Initialize("rest-examples", true); err != nil {
@@ -153,9 +167,9 @@ func basicHTTPClientExample() {
 	}
 
 	fmt.Printf("✓ Request successful:\n")
-	fmt.Printf("  - Status Code: %d\n", response.StatusCode())
-	fmt.Printf("  - Response Length: %d bytes\n", len(response.Body()))
-	fmt.Printf("  - Content: %s\n", string(response.Body()[:min(100, len(response.Body()))]))
+	fmt.Printf("  - Status Code: %d\n", response.StatusCode)
+	fmt.Printf("  - Response Length: %d bytes\n", len(response.Body))
+	fmt.Printf("  - Content: %s\n", response.Body[:min(100, len(response.Body))])
 }
 
 func customConfigurationExample() {
@@ -201,7 +215,7 @@ func customConfigurationExample() {
 		if err != nil {
 			fmt.Printf("✗ Request failed: %v\n", err)
 		} else {
-			fmt.Printf("✓ Request completed in %v (Status: %d)\n", duration, response.StatusCode())
+			fmt.Printf("✓ Request completed in %v (Status: %d)\n", duration, response.StatusCode)
 		}
 	}
 }
@@ -365,7 +379,7 @@ func jsonAPIExample() {
 	}
 
 	var users []User
-	if err := json.Unmarshal(response.Body(), &users); err != nil {
+	if err := json.Unmarshal([]byte(response.Body), &users); err != nil {
 		fmt.Printf("✗ JSON parsing failed: %v\n", err)
 		return
 	}
@@ -390,7 +404,7 @@ func jsonAPIExample() {
 	}
 
 	var createdUser User
-	if err := json.Unmarshal(response.Body(), &createdUser); err != nil {
+	if err := json.Unmarshal([]byte(response.Body), &createdUser); err != nil {
 		fmt.Printf("✗ JSON parsing failed: %v\n", err)
 		return
 	}
@@ -408,7 +422,7 @@ func jsonAPIExample() {
 		return
 	}
 
-	fmt.Printf("✓ User updated successfully (Status: %d)\n", response.StatusCode())
+	fmt.Printf("✓ User updated successfully (Status: %d)\n", response.StatusCode)
 }
 
 func retryTimeoutExample() {
@@ -443,7 +457,7 @@ func retryTimeoutExample() {
 		if err != nil {
 			fmt.Printf("✗ Request failed after %v: %v\n", duration, err)
 		} else {
-			fmt.Printf("✓ Request succeeded after %v (Status: %d)\n", duration, response.StatusCode())
+			fmt.Printf("✓ Request succeeded after %v (Status: %d)\n", duration, response.StatusCode)
 		}
 	}
 
@@ -470,7 +484,8 @@ func tracingPerformanceExample() {
 
 	fmt.Println("Demonstrating request tracing and performance monitoring:")
 
-	client := rest.NewClient(rest.WithMiddleware(rest.NewLoggingMiddleware()))
+	traceMiddleware := &TraceCaptureMiddleware{}
+	client := rest.NewClient(rest.WithMiddlewares(rest.NewLoggingMiddleware(), traceMiddleware))
 
 	// Make requests and analyze trace information
 	endpoints := []string{"/users", "/posts", "/slow"}
@@ -479,7 +494,7 @@ func tracingPerformanceExample() {
 		fmt.Printf("\nTracing request to %s:\n", endpoint)
 
 		start := time.Now()
-		response, err := client.MakeRequest(ctx, http.MethodGet, server.URL+endpoint, "", nil)
+		response, err := client.MakeRequestWithTrace(ctx, http.MethodGet, server.URL+endpoint, "", nil)
 		totalDuration := time.Since(start)
 
 		if err != nil {
@@ -487,20 +502,18 @@ func tracingPerformanceExample() {
 			continue
 		}
 
-		// Access trace information from the underlying Resty response
-		if response != nil && response.Request != nil {
-			traceInfo := response.Request.TraceInfo()
+		// Access trace information captured by the middleware
+		traceInfo := traceMiddleware.lastInfo.TraceInfo
 
-			fmt.Printf("✓ Request completed successfully:\n")
-			fmt.Printf("  - Total Duration: %v\n", totalDuration)
-			fmt.Printf("  - DNS Lookup: %v\n", traceInfo.DNSLookup)
-			fmt.Printf("  - TCP Connection: %v\n", traceInfo.TCPConnTime)
-			fmt.Printf("  - TLS Handshake: %v\n", traceInfo.TLSHandshake)
-			fmt.Printf("  - Server Time: %v\n", traceInfo.ServerTime)
-			fmt.Printf("  - Response Time: %v\n", traceInfo.ResponseTime)
-			fmt.Printf("  - Status Code: %d\n", response.StatusCode())
-			fmt.Printf("  - Response Size: %d bytes\n", len(response.Body()))
-		}
+		fmt.Printf("✓ Request completed successfully:\n")
+		fmt.Printf("  - Total Duration: %v\n", totalDuration)
+		fmt.Printf("  - DNS Lookup: %v\n", traceInfo.DNSLookup)
+		fmt.Printf("  - TCP Connection: %v\n", traceInfo.TCPConnTime)
+		fmt.Printf("  - TLS Handshake: %v\n", traceInfo.TLSHandshake)
+		fmt.Printf("  - Server Time: %v\n", traceInfo.ServerTime)
+		fmt.Printf("  - Response Time: %v\n", traceInfo.ResponseTime)
+		fmt.Printf("  - Status Code: %d\n", response.StatusCode)
+		fmt.Printf("  - Response Size: %d bytes\n", len(response.Body))
 	}
 
 	// Performance benchmark
@@ -527,12 +540,12 @@ func advancedRestyExample() {
 	fmt.Println("Demonstrating advanced Resty client features:")
 
 	client := rest.NewClient()
-	restyClient := client.GetRestClient()
+	rawClient := client.GetRestClient()
 
 	// Example 1: Automatic JSON unmarshaling
 	fmt.Println("\nUsing automatic JSON unmarshaling:")
 	var users []User
-	response, err := restyClient.R().
+	response, err := rawClient.R().
 		SetContext(ctx).
 		SetResult(&users). // Automatic JSON unmarshaling
 		Get(server.URL + "/users")
@@ -545,7 +558,7 @@ func advancedRestyExample() {
 
 	// Example 2: Query parameters and headers
 	fmt.Println("\nUsing query parameters and custom headers:")
-	response, err = restyClient.R().
+	response, err = rawClient.R().
 		SetContext(ctx).
 		SetHeader("User-Agent", "rest-package-example/1.0").
 		SetHeader("Accept", "application/json").
@@ -562,7 +575,7 @@ func advancedRestyExample() {
 
 	// Example 3: Form data submission
 	fmt.Println("\nSubmitting form data:")
-	response, err = restyClient.R().
+	response, err = rawClient.R().
 		SetContext(ctx).
 		SetFormData(map[string]string{
 			"name":  "Form User",
@@ -578,7 +591,7 @@ func advancedRestyExample() {
 
 	// Example 4: File upload simulation
 	fmt.Println("\nSimulating file upload:")
-	response, err = restyClient.R().
+	response, err = rawClient.R().
 		SetContext(ctx).
 		SetFileReader("file", "example.txt", strings.NewReader("This is example file content")).
 		SetFormData(map[string]string{
@@ -698,7 +711,7 @@ func (s *UserService) GetUsers(ctx context.Context) ([]User, error) {
 	}
 
 	var users []User
-	if err := json.Unmarshal(response.Body(), &users); err != nil {
+	if err := json.Unmarshal([]byte(response.Body), &users); err != nil {
 		return nil, err
 	}
 
@@ -717,7 +730,7 @@ func (s *UserService) CreateUser(ctx context.Context, user User) (*User, error) 
 	}
 
 	var createdUser User
-	if err := json.Unmarshal(response.Body(), &createdUser); err != nil {
+	if err := json.Unmarshal([]byte(response.Body), &createdUser); err != nil {
 		return nil, err
 	}
 

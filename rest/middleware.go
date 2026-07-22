@@ -9,6 +9,30 @@ import (
 	"github.com/jasoet/pkg/v3/otel"
 )
 
+// TraceInfo is the library-owned request trace information, populated by
+// MakeRequestWithTrace. It mirrors the duration fields of the underlying
+// transport trace that consumers actually read.
+type TraceInfo struct {
+	DNSLookup    time.Duration
+	TCPConnTime  time.Duration
+	TLSHandshake time.Duration
+	ServerTime   time.Duration
+	ResponseTime time.Duration
+	TotalTime    time.Duration
+}
+
+// traceInfoFromResty converts resty trace information to the library-owned TraceInfo.
+func traceInfoFromResty(ti resty.TraceInfo) TraceInfo {
+	return TraceInfo{
+		DNSLookup:    ti.DNSLookup,
+		TCPConnTime:  ti.TCPConnTime,
+		TLSHandshake: ti.TLSHandshake,
+		ServerTime:   ti.ServerTime,
+		ResponseTime: ti.ResponseTime,
+		TotalTime:    ti.TotalTime,
+	}
+}
+
 type RequestInfo struct {
 	Method     string
 	URL        string
@@ -20,7 +44,7 @@ type RequestInfo struct {
 	StatusCode int
 	Response   string
 	Error      error
-	TraceInfo  resty.TraceInfo
+	TraceInfo  TraceInfo
 }
 
 type Middleware interface {

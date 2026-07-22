@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-resty/resty/v2"
-
 	"github.com/jasoet/pkg/v3/concurrent"
 	"github.com/jasoet/pkg/v3/otel"
 )
@@ -282,10 +280,10 @@ func TestClient_ThreadSafety(t *testing.T) {
 		const numRequests = 20
 
 		// Create concurrent functions for HTTP requests
-		funcs := make(map[string]concurrent.Func[*resty.Response])
+		funcs := make(map[string]concurrent.Func[*Response])
 		for i := 0; i < numRequests; i++ {
 			key := fmt.Sprintf("request-%d", i)
-			funcs[key] = func(ctx context.Context) (*resty.Response, error) {
+			funcs[key] = func(ctx context.Context) (*Response, error) {
 				return client.MakeRequest(ctx, "GET", server.URL, "", nil)
 			}
 		}
@@ -302,8 +300,8 @@ func TestClient_ThreadSafety(t *testing.T) {
 		}
 
 		for key, response := range results {
-			if response.StatusCode() != 200 {
-				t.Errorf("Request %s failed with status %d", key, response.StatusCode())
+			if response.StatusCode != 200 {
+				t.Errorf("Request %s failed with status %d", key, response.StatusCode)
 			}
 		}
 	})
@@ -351,13 +349,13 @@ func TestClient_MakeRequest(t *testing.T) {
 		}
 
 		// Check response status code
-		if response.StatusCode() != http.StatusOK {
-			t.Errorf("Expected status code %d, got %d", http.StatusOK, response.StatusCode())
+		if response.StatusCode != http.StatusOK {
+			t.Errorf("Expected status code %d, got %d", http.StatusOK, response.StatusCode)
 		}
 
 		// Check response body
-		if response.String() != `{"result":"success"}` {
-			t.Errorf("Expected response body %q, got %q", `{"result":"success"}`, response.String())
+		if response.Body != `{"result":"success"}` {
+			t.Errorf("Expected response body %q, got %q", `{"result":"success"}`, response.Body)
 		}
 
 		// Check that middleware methods were called
@@ -433,11 +431,9 @@ func TestClient_HandleResponse(t *testing.T) {
 
 	t.Run("Success case", func(t *testing.T) {
 		// Create a successful response
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusOK}
+		response := &Response{StatusCode: http.StatusOK}
 
-		err := client.HandleResponse(response)
+		err := client.handleResponse(response)
 		if err != nil {
 			t.Errorf("Expected no error for successful response, got %v", err)
 		}
@@ -445,11 +441,9 @@ func TestClient_HandleResponse(t *testing.T) {
 
 	t.Run("Unauthorized case", func(t *testing.T) {
 		// Create an unauthorized response
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusUnauthorized}
+		response := &Response{StatusCode: http.StatusUnauthorized}
 
-		err := client.HandleResponse(response)
+		err := client.handleResponse(response)
 		if err == nil {
 			t.Error("Expected error for unauthorized response, got nil")
 		}
@@ -466,27 +460,22 @@ func TestClient_HandleResponse(t *testing.T) {
 	})
 
 	t.Run("Server error case", func(t *testing.T) {
-		// Create a server error response
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: 0} // Non-HTTP status
+		// Create a response with a non-HTTP status code.
+		// Status code 0 is neither a client nor a server error, so no error
+		// is returned.
+		response := &Response{StatusCode: 0}
 
-		// Due to the implementation of IsNotHttpError (which always returns false),
-		// this case will not trigger a ServerError. Instead, it will check if response.IsError()
-		// which for a status code of 0 will return false, so no error will be returned.
-		err := client.HandleResponse(response)
+		err := client.handleResponse(response)
 		if err != nil {
-			t.Errorf("Expected no error due to implementation, got %v", err)
+			t.Errorf("Expected no error for status code 0, got %v", err)
 		}
 	})
 
 	t.Run("Response error case", func(t *testing.T) {
 		// Create a response error
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusBadRequest}
+		response := &Response{StatusCode: http.StatusBadRequest}
 
-		err := client.HandleResponse(response)
+		err := client.handleResponse(response)
 		if err == nil {
 			t.Error("Expected error for response error, got nil")
 		}
@@ -503,66 +492,54 @@ func TestClient_HandleResponse(t *testing.T) {
 	})
 }
 
-func TestIsServerError(t *testing.T) {
+func TestResponse_IsServerError(t *testing.T) {
 	t.Run("Valid HTTP status", func(t *testing.T) {
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusOK}
+		response := &Response{StatusCode: http.StatusOK}
 
-		if IsServerError(response) {
+		if response.IsServerError() {
 			t.Error("Expected IsServerError to return false for valid HTTP status")
 		}
 	})
 
 	t.Run("Server error status - 500", func(t *testing.T) {
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusInternalServerError}
+		response := &Response{StatusCode: http.StatusInternalServerError}
 
-		if !IsServerError(response) {
+		if !response.IsServerError() {
 			t.Error("Expected IsServerError to return true for status code 500")
 		}
 	})
 
 	t.Run("Client error status - 400", func(t *testing.T) {
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusBadRequest}
+		response := &Response{StatusCode: http.StatusBadRequest}
 
-		if IsServerError(response) {
+		if response.IsServerError() {
 			t.Error("Expected IsServerError to return false for status code 400")
 		}
 	})
 }
 
-func TestIsUnauthorized(t *testing.T) {
+func TestResponse_IsAuthError(t *testing.T) {
 	t.Run("Unauthorized status", func(t *testing.T) {
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusUnauthorized}
+		response := &Response{StatusCode: http.StatusUnauthorized}
 
-		if !IsUnauthorized(response) {
-			t.Error("Expected IsUnauthorized to return true for unauthorized status")
+		if !response.IsAuthError() {
+			t.Error("Expected IsAuthError to return true for unauthorized status")
 		}
 	})
 
 	t.Run("Forbidden status", func(t *testing.T) {
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusForbidden}
+		response := &Response{StatusCode: http.StatusForbidden}
 
-		if !IsUnauthorized(response) {
-			t.Error("Expected IsUnauthorized to return true for forbidden status")
+		if !response.IsAuthError() {
+			t.Error("Expected IsAuthError to return true for forbidden status")
 		}
 	})
 
 	t.Run("OK status", func(t *testing.T) {
-		response := &resty.Response{}
-		response.Request = &resty.Request{}
-		response.RawResponse = &http.Response{StatusCode: http.StatusOK}
+		response := &Response{StatusCode: http.StatusOK}
 
-		if IsUnauthorized(response) {
-			t.Error("Expected IsUnauthorized to return false for OK status")
+		if response.IsAuthError() {
+			t.Error("Expected IsAuthError to return false for OK status")
 		}
 	})
 }
@@ -798,8 +775,8 @@ func TestClient_MakeRequestWithTrace(t *testing.T) {
 		if response == nil {
 			t.Fatal("Expected non-nil response")
 		}
-		if response.StatusCode() != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", response.StatusCode())
+		if response.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", response.StatusCode)
 		}
 	})
 
@@ -822,8 +799,8 @@ func TestClient_MakeRequestWithTrace(t *testing.T) {
 		if response == nil {
 			t.Fatal("Expected non-nil response")
 		}
-		if response.StatusCode() != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", response.StatusCode())
+		if response.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", response.StatusCode)
 		}
 	})
 
@@ -876,8 +853,8 @@ func TestClient_MakeRequestWithTrace(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
-		if response.StatusCode() != http.StatusCreated {
-			t.Errorf("Expected status 201, got %d", response.StatusCode())
+		if response.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status 201, got %d", response.StatusCode)
 		}
 		if bodyReceived != body {
 			t.Errorf("Expected body %q, got %q", body, bodyReceived)
@@ -902,8 +879,8 @@ func TestClient_MakeRequestWithTrace(t *testing.T) {
 		if response == nil {
 			t.Fatal("Expected non-nil response even on error")
 		}
-		if response.StatusCode() != http.StatusInternalServerError {
-			t.Errorf("Expected status 500, got %d", response.StatusCode())
+		if response.StatusCode != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", response.StatusCode)
 		}
 	})
 
@@ -914,6 +891,8 @@ func TestClient_MakeRequestWithTrace(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient()
+		middleware := &mockMiddleware{}
+		client.SetMiddlewares(middleware)
 		ctx := context.Background()
 		headers := make(map[string]string)
 
@@ -924,9 +903,12 @@ func TestClient_MakeRequestWithTrace(t *testing.T) {
 		if response == nil {
 			t.Fatal("Expected non-nil response")
 		}
-		// With trace enabled, TraceInfo should be populated (even if values are zero)
-		if response.Request != nil {
-			_ = response.Request.TraceInfo()
+		// With trace enabled, TraceInfo should be populated on RequestInfo
+		if !middleware.afterRequestCalled {
+			t.Fatal("Expected AfterRequest to be called")
+		}
+		if middleware.requestInfo.TraceInfo.TotalTime <= 0 {
+			t.Error("Expected TraceInfo.TotalTime to be populated when trace is enabled")
 		}
 	})
 }
