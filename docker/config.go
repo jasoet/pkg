@@ -7,7 +7,7 @@ import (
 
 	"github.com/docker/go-connections/nat"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // ContainerRequest represents a declarative container configuration,

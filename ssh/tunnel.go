@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Config holds the configuration for an SSH tunnel
@@ -152,7 +152,7 @@ func (t *Tunnel) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid remote port: %d", t.config.RemotePort)
 	}
 
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.Start")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.Start")
 
 	hostKeyCallback, err := t.getHostKeyCallback()
 	if err != nil {
@@ -247,7 +247,7 @@ func (t *Tunnel) LocalAddr() string {
 // This may affect streaming protocols that rely on half-close semantics.
 func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.forward")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.forward")
 
 	t.mu.Lock()
 	client := t.client

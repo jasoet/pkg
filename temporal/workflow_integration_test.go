@@ -15,7 +15,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
+	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
 // Test workflows for integration testing

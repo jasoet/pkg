@@ -1,7 +1,7 @@
 package temporal
 
 import (
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 type Config struct {

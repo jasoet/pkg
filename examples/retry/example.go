@@ -10,7 +10,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/jasoet/pkg/v2/retry"
+	"github.com/jasoet/pkg/v3/retry"
 )
 
 func main() {

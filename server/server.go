@@ -16,7 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 type (
@@ -170,7 +170,7 @@ func (s *httpServer) start() error {
 	}
 
 	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
-	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v2/server", "httpServer.start")
+	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "httpServer.start")
 
 	// Use a real listener to detect bind errors immediately instead of a racy timer.
 	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", fmt.Sprintf(":%v", s.config.Port))
@@ -192,7 +192,7 @@ func (s *httpServer) start() error {
 
 func (s *httpServer) stop() error {
 	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
-	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v2/server", "httpServer.stop")
+	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "httpServer.stop")
 	logger.Info("Gracefully shutting down server")
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)

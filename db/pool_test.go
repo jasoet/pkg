@@ -12,7 +12,7 @@ import (
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"gorm.io/gorm/logger"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
+	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
 
 func TestDatabaseConfigValidation(t *testing.T) {

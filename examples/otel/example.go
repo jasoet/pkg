@@ -13,7 +13,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -110,7 +110,7 @@ func logHelperUsage() {
 		ServiceVersion: "1.0.0",
 	}
 
-	logger2 := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/example", "example.processData")
+	logger2 := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/example", "example.processData")
 	logger2.Info("Data processed successfully",
 		otel.F("records_processed", 1000),
 		otel.F("duration_ms", 250))

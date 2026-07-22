@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jasoet/pkg/v2/logging"
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/logging"
+	"github.com/jasoet/pkg/v3/otel"
 	"go.opentelemetry.io/otel/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )

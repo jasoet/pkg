@@ -12,7 +12,7 @@ import (
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
+	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
 func TestClientIntegration(t *testing.T) {

@@ -1,7 +1,7 @@
 package argo
 
 import (
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Option is a functional option for configuring Argo client.

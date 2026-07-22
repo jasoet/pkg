@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Client wraps a resty HTTP client with middleware and OTel support.
@@ -194,7 +194,7 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 	if c.restConfig != nil {
 		otelConfig = c.restConfig.OTelConfig
 	}
-	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/rest", "rest.MakeRequest")
+	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v3/rest", "rest.MakeRequest")
 
 	if c.restClient == nil {
 		return nil, errors.New("rest client is nil")

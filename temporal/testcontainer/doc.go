@@ -13,8 +13,8 @@
 //	import (
 //	    "context"
 //	    "testing"
-//	    "github.com/jasoet/pkg/v2/temporal"
-//	    "github.com/jasoet/pkg/v2/temporal/testcontainer"
+//	    "github.com/jasoet/pkg/v3/temporal"
+//	    "github.com/jasoet/pkg/v3/temporal/testcontainer"
 //	)
 //
 //	func TestMyWorkflow(t *testing.T) {
@@ -95,9 +95,9 @@
 //
 // This package is designed to be imported and used in any Go project:
 //
-//	go get github.com/jasoet/pkg/v2/temporal/testcontainer
+//	go get github.com/jasoet/pkg/v3/temporal/testcontainer
 //
 // Then import and use in your tests:
 //
-//	import "github.com/jasoet/pkg/v2/temporal/testcontainer"
+//	import "github.com/jasoet/pkg/v3/temporal/testcontainer"
 package testcontainer

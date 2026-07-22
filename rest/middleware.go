@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 type RequestInfo struct {
@@ -43,7 +43,7 @@ func (m *LoggingMiddleware) BeforeRequest(ctx context.Context, method string, ur
 
 // AfterRequest logs the completion of the request with timing information
 func (m *LoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/rest", "LoggingMiddleware.AfterRequest")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/rest", "LoggingMiddleware.AfterRequest")
 
 	if info.Error != nil {
 		logger.Error(info.Error, "Request failed",

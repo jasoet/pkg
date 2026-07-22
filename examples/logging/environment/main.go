@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jasoet/pkg/v2/logging"
+	"github.com/jasoet/pkg/v3/logging"
 	"github.com/rs/zerolog/log"
 )
 

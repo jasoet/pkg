@@ -1,11 +1,11 @@
 package archtest
 
 import (
-	"github.com/jasoet/pkg/v2/docker"
-	"github.com/jasoet/pkg/v2/grpc"
-	"github.com/jasoet/pkg/v2/otel"
-	"github.com/jasoet/pkg/v2/rest"
-	"github.com/jasoet/pkg/v2/server"
+	"github.com/jasoet/pkg/v3/docker"
+	"github.com/jasoet/pkg/v3/grpc"
+	"github.com/jasoet/pkg/v3/otel"
+	"github.com/jasoet/pkg/v3/rest"
+	"github.com/jasoet/pkg/v3/server"
 )
 
 // Compile-time contract: each compliant package exposes WithOTelConfig.

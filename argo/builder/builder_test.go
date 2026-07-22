@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/jasoet/pkg/v2/argo/builder/template"
+	"github.com/jasoet/pkg/v3/argo/builder/template"
 )
 
 func TestWorkflowBuilder_Build(t *testing.T) {

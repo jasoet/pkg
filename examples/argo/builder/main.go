@@ -6,11 +6,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jasoet/pkg/v2/argo"
-	"github.com/jasoet/pkg/v2/argo/builder"
-	"github.com/jasoet/pkg/v2/argo/builder/template"
-	"github.com/jasoet/pkg/v2/logging"
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/argo"
+	"github.com/jasoet/pkg/v3/argo/builder"
+	"github.com/jasoet/pkg/v3/argo/builder/template"
+	"github.com/jasoet/pkg/v3/logging"
+	"github.com/jasoet/pkg/v3/otel"
 	"github.com/rs/zerolog/log"
 )
 

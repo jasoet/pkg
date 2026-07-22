@@ -13,9 +13,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	"github.com/jasoet/pkg/v2/argo/builder"
-	"github.com/jasoet/pkg/v2/argo/builder/template"
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/argo/builder"
+	"github.com/jasoet/pkg/v3/argo/builder/template"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 func TestIntegration_SubmitWorkflow(t *testing.T) {

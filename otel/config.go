@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/jasoet/pkg/v2/logging"
+	"github.com/jasoet/pkg/v3/logging"
 )
 
 type contextKey string
@@ -66,7 +66,7 @@ type Config struct {
 //
 // For custom logger configuration:
 //
-//	import "github.com/jasoet/pkg/v2/logging"
+//	import "github.com/jasoet/pkg/v3/logging"
 //	cfg := &otel.Config{
 //	    ServiceName:    "my-service",
 //	    LoggerProvider: logging.NewLoggerProvider("my-service", true), // enable debug mode

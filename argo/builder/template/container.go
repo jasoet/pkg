@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Container is a WorkflowSource that creates a container-based workflow step.
@@ -235,7 +235,7 @@ func (c *Container) Steps() ([]v1alpha1.WorkflowStep, error) {
 	ctx := context.Background()
 
 	logger := otel.NewLogHelper(ctx, c.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder/template", "Container.Steps")
+		"github.com/jasoet/pkg/v3/argo/builder/template", "Container.Steps")
 	logger.Debug("Generating container steps",
 		otel.F("name", c.name),
 		otel.F("image", c.image))
@@ -263,7 +263,7 @@ func (c *Container) Templates() ([]v1alpha1.Template, error) {
 	ctx := context.Background()
 
 	logger := otel.NewLogHelper(ctx, c.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder/template", "Container.Templates")
+		"github.com/jasoet/pkg/v3/argo/builder/template", "Container.Templates")
 	logger.Debug("Generating container template",
 		otel.F("name", c.templateName),
 		otel.F("image", c.image))

@@ -13,8 +13,8 @@ import (
 
 	"github.com/go-resty/resty/v2"
 
-	"github.com/jasoet/pkg/v2/concurrent"
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/concurrent"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // testKey is a custom type for the context key to avoid collisions

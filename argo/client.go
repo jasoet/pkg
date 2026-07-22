@@ -10,7 +10,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // NewClient creates a new Argo Workflows client from the given configuration.
@@ -37,7 +37,7 @@ import (
 //	cfg := argo.ServerConfig("https://argo-server:2746", "Bearer token")
 //	ctx, client, err := argo.NewClient(ctx, cfg)
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
-	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.NewClient")
+	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v3/argo", "argo.NewClient")
 
 	logger.Debug("Creating Argo Workflows client",
 		otel.F("inCluster", config.InCluster),
@@ -112,7 +112,7 @@ func NewClientWithOptions(ctx context.Context, opts ...Option) (context.Context,
 func buildClientConfig(config *Config) clientcmd.ClientConfig {
 	// Note: context.Background() used here since we don't have access to the actual context
 	// This is acceptable as buildClientConfig is called from within NewClient which has the context
-	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.buildClientConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v3/argo", "argo.buildClientConfig")
 
 	// For in-cluster mode, use in-cluster config
 	if config.InCluster {
@@ -153,7 +153,7 @@ func (c *inClusterClientConfig) RawConfig() (clientcmdapi.Config, error) {
 }
 
 func (c *inClusterClientConfig) ClientConfig() (*rest.Config, error) {
-	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "inClusterClientConfig.ClientConfig")
+	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v3/argo", "inClusterClientConfig.ClientConfig")
 	logger.Debug("Loading in-cluster config")
 
 	config, err := rest.InClusterConfig()

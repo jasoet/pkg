@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // SubmitWorkflow submits a workflow to Argo with OpenTelemetry tracing.
@@ -37,12 +37,12 @@ func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.W
 	// Start span
 	var span trace.Span
 	if cfg != nil && cfg.TracerProvider != nil {
-		tracer := cfg.TracerProvider.Tracer("github.com/jasoet/pkg/v2/argo")
+		tracer := cfg.TracerProvider.Tracer("github.com/jasoet/pkg/v3/argo")
 		ctx, span = tracer.Start(ctx, "argo.SubmitWorkflow")
 		defer span.End()
 	}
 
-	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/argo", "argo.SubmitWorkflow")
+	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.SubmitWorkflow")
 	logger.Info("Submitting workflow",
 		otel.F("workflow_generate_name", wf.GenerateName),
 		otel.F("namespace", wf.Namespace))
@@ -98,12 +98,12 @@ func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Wo
 	// Start span for entire operation
 	var span trace.Span
 	if cfg != nil && cfg.TracerProvider != nil {
-		tracer := cfg.TracerProvider.Tracer("github.com/jasoet/pkg/v2/argo")
+		tracer := cfg.TracerProvider.Tracer("github.com/jasoet/pkg/v3/argo")
 		ctx, span = tracer.Start(ctx, "argo.SubmitAndWait")
 		defer span.End()
 	}
 
-	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/argo", "argo.SubmitAndWait")
+	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.SubmitAndWait")
 
 	startTime := time.Now()
 
@@ -198,7 +198,7 @@ func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Wo
 //	}
 //	fmt.Printf("Workflow phase: %s\n", status.Phase)
 func GetWorkflowStatus(ctx context.Context, client apiclient.Client, namespace, name string, cfg *otel.Config) (*v1alpha1.WorkflowStatus, error) {
-	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/argo", "argo.GetWorkflowStatus")
+	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.GetWorkflowStatus")
 	logger.Debug("Getting workflow status",
 		otel.F("namespace", namespace),
 		otel.F("name", name))
@@ -232,7 +232,7 @@ func GetWorkflowStatus(ctx context.Context, client apiclient.Client, namespace, 
 //	// List workflows with label
 //	workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp", otelConfig)
 func ListWorkflows(ctx context.Context, client apiclient.Client, namespace, labelSelector string, cfg *otel.Config) ([]v1alpha1.Workflow, error) {
-	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/argo", "argo.ListWorkflows")
+	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.ListWorkflows")
 	logger.Debug("Listing workflows",
 		otel.F("namespace", namespace),
 		otel.F("label_selector", labelSelector))
@@ -270,7 +270,7 @@ func ListWorkflows(ctx context.Context, client apiclient.Client, namespace, labe
 //	    return err
 //	}
 func DeleteWorkflow(ctx context.Context, client apiclient.Client, namespace, name string, cfg *otel.Config) error {
-	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v2/argo", "argo.DeleteWorkflow")
+	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.DeleteWorkflow")
 	logger.Info("Deleting workflow",
 		otel.F("namespace", namespace),
 		otel.F("name", name))

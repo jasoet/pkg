@@ -10,8 +10,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/jasoet/pkg/v2/docker"
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/docker"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 func TestExecutor_ContainerID(t *testing.T) {

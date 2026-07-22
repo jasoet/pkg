@@ -8,7 +8,7 @@ import (
 
 	"go.temporal.io/sdk/client"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 type WorkflowScheduleOptions struct {
@@ -28,7 +28,7 @@ type ScheduleManager struct {
 
 func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewScheduleManager")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewScheduleManager")
 
 	var temporalClient client.Client
 	var ownsClient bool
@@ -66,7 +66,7 @@ func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
 
 func (sm *ScheduleManager) Close() {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.Close")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.Close")
 
 	logger.Debug("Closing Schedule Manager")
 
@@ -79,7 +79,7 @@ func (sm *ScheduleManager) Close() {
 }
 
 func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.CreateSchedule")
 
 	logger.Debug("Creating schedule", otel.F("scheduleID", scheduleID))
 
@@ -104,7 +104,7 @@ func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string
 }
 
 func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, options client.ScheduleOptions) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateScheduleWithOptions")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.CreateScheduleWithOptions")
 
 	logger.Debug("Creating schedule", otel.F("scheduleName", options.ID))
 
@@ -123,7 +123,7 @@ func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, option
 }
 
 func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleName string, options WorkflowScheduleOptions) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateWorkflowSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.CreateWorkflowSchedule")
 
 	logger.Debug("Creating workflow schedule",
 		otel.F("scheduleName", scheduleName),
@@ -163,7 +163,7 @@ func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleN
 }
 
 func (sm *ScheduleManager) DeleteSchedules(ctx context.Context) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.DeleteSchedules")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.DeleteSchedules")
 
 	sm.mu.RLock()
 	scheduleCount := len(sm.scheduleHandlers)
@@ -214,7 +214,7 @@ func (sm *ScheduleManager) GetScheduleHandlers() map[string]client.ScheduleHandl
 
 // GetSchedule retrieves a schedule handle by ID
 func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.GetSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.GetSchedule")
 
 	logger.Debug("Getting schedule", otel.F("scheduleID", scheduleID))
 
@@ -233,7 +233,7 @@ func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (
 
 // ListSchedules lists all schedules with a limit
 func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*client.ScheduleListEntry, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.ListSchedules")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.ListSchedules")
 
 	logger.Debug("Listing schedules", otel.F("limit", limit))
 
@@ -267,7 +267,7 @@ func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*cli
 
 // UpdateSchedule updates an existing schedule
 func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.UpdateSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.UpdateSchedule")
 
 	logger.Debug("Updating schedule", otel.F("scheduleID", scheduleID))
 
@@ -302,7 +302,7 @@ func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string
 
 // DeleteSchedule deletes a specific schedule by ID
 func (sm *ScheduleManager) DeleteSchedule(ctx context.Context, scheduleID string) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.DeleteSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.DeleteSchedule")
 
 	logger.Debug("Deleting schedule", otel.F("scheduleID", scheduleID))
 

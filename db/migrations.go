@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/jasoet/pkg/v2/logging"
+	"github.com/jasoet/pkg/v3/logging"
 )
 
 // RunPostgresMigrationsWithGorm applies pending UP migrations using a GORM connection.

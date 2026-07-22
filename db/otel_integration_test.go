@@ -20,7 +20,7 @@ import (
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"gorm.io/gorm"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
+	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
 
 // TestPostgresPoolWithOTelTracing tests OTel tracing callbacks

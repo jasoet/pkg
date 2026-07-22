@@ -1,7 +1,7 @@
 package argo
 
 import (
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Config represents the configuration for connecting to Argo Workflows.

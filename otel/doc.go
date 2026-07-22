@@ -1,4 +1,4 @@
-// Package otel provides OpenTelemetry instrumentation utilities for github.com/jasoet/pkg/v2.
+// Package otel provides OpenTelemetry instrumentation utilities for github.com/jasoet/pkg/v3.
 //
 // This package offers:
 //   - Centralized configuration for traces, metrics, and logs

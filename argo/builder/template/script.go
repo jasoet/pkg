@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Script is a WorkflowSource that creates a script-based workflow step.
@@ -221,7 +221,7 @@ func (s *Script) Steps() ([]v1alpha1.WorkflowStep, error) {
 	ctx := context.Background()
 
 	logger := otel.NewLogHelper(ctx, s.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder/template", "Script.Steps")
+		"github.com/jasoet/pkg/v3/argo/builder/template", "Script.Steps")
 	logger.Debug("Generating script steps",
 		otel.F("name", s.name),
 		otel.F("image", s.image))
@@ -247,7 +247,7 @@ func (s *Script) Templates() ([]v1alpha1.Template, error) {
 	ctx := context.Background()
 
 	logger := otel.NewLogHelper(ctx, s.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder/template", "Script.Templates")
+		"github.com/jasoet/pkg/v3/argo/builder/template", "Script.Templates")
 	logger.Debug("Generating script template",
 		otel.F("name", s.templateName),
 		otel.F("image", s.image))

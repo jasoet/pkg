@@ -4,11 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/jasoet/pkg/v2/db"
-	"github.com/jasoet/pkg/v2/otel"
-	"github.com/jasoet/pkg/v2/rest"
-	"github.com/jasoet/pkg/v2/server"
-	"github.com/jasoet/pkg/v2/temporal"
+	"github.com/jasoet/pkg/v3/db"
+	"github.com/jasoet/pkg/v3/otel"
+	"github.com/jasoet/pkg/v3/rest"
+	"github.com/jasoet/pkg/v3/server"
+	"github.com/jasoet/pkg/v3/temporal"
 )
 
 // compliantConfigs registers exported config structs that must carry an

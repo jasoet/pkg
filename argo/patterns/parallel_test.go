@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jasoet/pkg/v2/argo/builder"
+	"github.com/jasoet/pkg/v3/argo/builder"
 )
 
 func TestFanOutFanIn(t *testing.T) {

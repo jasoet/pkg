@@ -10,11 +10,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
+	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
 
 // instrumentationName is the OpenTelemetry instrumentation scope for this package.
-const instrumentationName = "github.com/jasoet/pkg/v2/retry"
+const instrumentationName = "github.com/jasoet/pkg/v3/retry"
 
 // Operation is a function that may fail and should be retried.
 // Return nil to indicate success, or an error to trigger a retry.

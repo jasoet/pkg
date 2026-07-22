@@ -9,7 +9,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v3/docker"
 	_ "github.com/lib/pq" // PostgreSQL driver
 )
 

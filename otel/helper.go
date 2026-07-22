@@ -33,7 +33,7 @@ func F(key string, value any) Field {
 // It uses OTel logging when available (with automatic trace_id/span_id injection),
 // otherwise falls back to plain zerolog.
 //
-// This is the standard logging pattern for all packages in github.com/jasoet/pkg/v2:
+// This is the standard logging pattern for all packages in github.com/jasoet/pkg/v3:
 //   - When OTel is configured: uses OTel LoggerProvider for automatic log-span correlation
 //   - When OTel is not configured: falls back to zerolog
 //
@@ -61,13 +61,13 @@ type LogHelper struct {
 // Parameters:
 //   - ctx: Context for trace correlation (captured at construction time)
 //   - config: OTel configuration (can be nil for zerolog-only mode)
-//   - scopeName: OpenTelemetry scope name (e.g., "github.com/jasoet/pkg/v2/argo")
+//   - scopeName: OpenTelemetry scope name (e.g., "github.com/jasoet/pkg/v3/argo")
 //   - function: Function name to include in logs (optional, can be empty string)
 //
 // Example:
 //
 //	// With OTel configured and function name
-//	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
+//	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v3/mypackage", "mypackage.DoWork")
 //	logger.Debug("Starting work", F("workerId", 123))
 //
 //	// Without function name (when used with spans)

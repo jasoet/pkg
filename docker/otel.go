@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // otelInstrumentation holds OpenTelemetry instrumentation components.
@@ -40,7 +40,7 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 	// Get tracer
 	if cfg.TracerProvider != nil {
 		inst.tracer = cfg.TracerProvider.Tracer(
-			"github.com/jasoet/pkg/v2/docker",
+			"github.com/jasoet/pkg/v3/docker",
 			trace.WithInstrumentationVersion("v2.0.0"),
 		)
 	}
@@ -48,7 +48,7 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 	// Get meter and create metrics
 	if cfg.MeterProvider != nil {
 		inst.meter = cfg.MeterProvider.Meter(
-			"github.com/jasoet/pkg/v2/docker",
+			"github.com/jasoet/pkg/v3/docker",
 			metric.WithInstrumentationVersion("v2.0.0"),
 		)
 

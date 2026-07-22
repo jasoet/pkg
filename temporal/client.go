@@ -9,12 +9,12 @@ import (
 	"go.temporal.io/sdk/client"
 	temporalotel "go.temporal.io/sdk/contrib/opentelemetry"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 func NewClient(config *Config) (client.Client, error) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewClient")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewClient")
 
 	logger.Debug("Creating new Temporal client",
 		otel.F("hostPort", config.HostPort),
@@ -53,7 +53,7 @@ func NewClient(config *Config) (client.Client, error) {
 		metricsHandler := temporalotel.NewMetricsHandler(temporalotel.MetricsHandlerOptions{
 			Meter: meter,
 			OnError: func(err error) {
-				errLogger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.otelMetrics.OnError")
+				errLogger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.otelMetrics.OnError")
 				errLogger.Error(err, "Error in OTel metrics handler")
 			},
 		})

@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasoet/pkg/v2/temporal"
+	"github.com/jasoet/pkg/v3/temporal"
 	"go.temporal.io/api/enums/v1"
 )
 

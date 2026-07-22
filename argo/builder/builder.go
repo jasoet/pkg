@@ -12,7 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // WorkflowBuilder provides a fluent API for constructing Argo Workflows.
@@ -123,7 +123,7 @@ func (b *WorkflowBuilder) Add(source WorkflowSource) *WorkflowBuilder {
 	}
 
 	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder", "WorkflowBuilder.Add")
+		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.Add")
 	logger.Debug("Adding workflow source")
 
 	// Get templates from source
@@ -185,7 +185,7 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 	}
 
 	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder", "WorkflowBuilder.AddParallel")
+		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.AddParallel")
 	logger.Debug("Adding parallel workflow source")
 
 	// Get templates from source
@@ -252,7 +252,7 @@ func (b *WorkflowBuilder) AddExitHandler(source WorkflowSource) *WorkflowBuilder
 	}
 
 	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder", "WorkflowBuilder.AddExitHandler")
+		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.AddExitHandler")
 	logger.Debug("Adding exit handler")
 
 	// Get templates from source
@@ -353,7 +353,7 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 	}
 
 	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder", "WorkflowBuilder.Build")
+		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.Build")
 	logger.Debug("Building workflow",
 		otel.F("name", b.namePrefix),
 		otel.F("namespace", b.namespace),
@@ -480,7 +480,7 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 	}
 
 	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder", "WorkflowBuilder.BuildWithEntrypoint")
+		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.BuildWithEntrypoint")
 	logger.Debug("Building workflow with custom entrypoint",
 		otel.F("name", b.namePrefix),
 		otel.F("namespace", b.namespace),

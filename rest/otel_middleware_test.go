@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // ============================================================================

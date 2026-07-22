@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
+	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
 
 // DatabaseType identifies the database backend.
@@ -332,7 +332,7 @@ func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 	if err != nil {
 		// Log error but don't fail
 		logger := pkgotel.NewLogHelper(context.Background(), c.OTelConfig,
-			"github.com/jasoet/pkg/v2/db", "db.collectPoolMetrics")
+			"github.com/jasoet/pkg/v3/db", "db.collectPoolMetrics")
 		logger.Error(err, "Failed to register pool metrics callback")
 	}
 }

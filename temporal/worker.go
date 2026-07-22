@@ -7,7 +7,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 type WorkerManager struct {
@@ -18,7 +18,7 @@ type WorkerManager struct {
 
 func NewWorkerManager(config *Config) (*WorkerManager, error) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewWorkerManager")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewWorkerManager")
 
 	logger.Debug("Creating new Worker Manager",
 		otel.F("hostPort", config.HostPort),
@@ -39,7 +39,7 @@ func NewWorkerManager(config *Config) (*WorkerManager, error) {
 
 func (wm *WorkerManager) Close() {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Close")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkerManager.Close")
 
 	wm.mu.RLock()
 	workerCount := len(wm.workers)
@@ -70,7 +70,7 @@ func (wm *WorkerManager) Close() {
 
 func (wm *WorkerManager) Register(taskQueue string, options worker.Options) worker.Worker {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Register")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkerManager.Register")
 
 	logger.Debug("Registering new Temporal worker", otel.F("taskQueue", taskQueue))
 
@@ -91,7 +91,7 @@ func (wm *WorkerManager) Register(taskQueue string, options worker.Options) work
 // Start starts the given worker. The ctx parameter is used for logging only;
 // the worker's internal lifecycle is managed by the Temporal SDK.
 func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.Start")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkerManager.Start")
 
 	// Try to get the worker index from the registered list for logging purposes.
 	workerIndex := -1
@@ -121,7 +121,7 @@ func (wm *WorkerManager) Start(ctx context.Context, w worker.Worker) error {
 }
 
 func (wm *WorkerManager) StartAll(ctx context.Context) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "WorkerManager.StartAll")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkerManager.StartAll")
 
 	wm.mu.RLock()
 	workerCount := len(wm.workers)

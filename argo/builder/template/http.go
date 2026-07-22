@@ -6,7 +6,7 @@ import (
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // HTTP is a WorkflowSource that creates an HTTP request workflow step.
@@ -139,7 +139,7 @@ func (h *HTTP) Steps() ([]v1alpha1.WorkflowStep, error) {
 	ctx := context.Background()
 
 	logger := otel.NewLogHelper(ctx, h.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder/template", "HTTP.Steps")
+		"github.com/jasoet/pkg/v3/argo/builder/template", "HTTP.Steps")
 	logger.Debug("Generating HTTP steps",
 		otel.F("name", h.name),
 		otel.F("url", h.url),
@@ -172,7 +172,7 @@ func (h *HTTP) Templates() ([]v1alpha1.Template, error) {
 	ctx := context.Background()
 
 	logger := otel.NewLogHelper(ctx, h.otelConfig,
-		"github.com/jasoet/pkg/v2/argo/builder/template", "HTTP.Templates")
+		"github.com/jasoet/pkg/v3/argo/builder/template", "HTTP.Templates")
 	logger.Debug("Generating HTTP template",
 		otel.F("name", h.templateName),
 		otel.F("url", h.url))
