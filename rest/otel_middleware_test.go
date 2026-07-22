@@ -364,13 +364,13 @@ func TestOTelMetricsMiddleware_AfterRequest(t *testing.T) {
 	})
 }
 
-func TestOTelMetricsMiddleware_RecordRetry(t *testing.T) {
+func TestOTelMetricsMiddleware_recordRetry(t *testing.T) {
 	t.Run("does nothing when middleware is nil", func(t *testing.T) {
 		var middleware *OTelMetricsMiddleware
 		ctx := context.Background()
 
 		// Should not panic
-		middleware.RecordRetry(ctx, http.MethodGet, 1)
+		middleware.recordRetry(ctx, http.MethodGet, 1)
 	})
 
 	t.Run("records retry attempt", func(t *testing.T) {
@@ -381,9 +381,9 @@ func TestOTelMetricsMiddleware_RecordRetry(t *testing.T) {
 		ctx := context.Background()
 
 		// Should complete without panic
-		middleware.RecordRetry(ctx, http.MethodPost, 1)
-		middleware.RecordRetry(ctx, http.MethodPost, 2)
-		middleware.RecordRetry(ctx, http.MethodPost, 3)
+		middleware.recordRetry(ctx, http.MethodPost, 1)
+		middleware.recordRetry(ctx, http.MethodPost, 2)
+		middleware.recordRetry(ctx, http.MethodPost, 3)
 	})
 }
 

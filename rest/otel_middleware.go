@@ -223,8 +223,8 @@ func (m *OTelMetricsMiddleware) AfterRequest(ctx context.Context, info RequestIn
 	}
 }
 
-// RecordRetry records a retry attempt (to be called by retry logic)
-func (m *OTelMetricsMiddleware) RecordRetry(ctx context.Context, method string, attempt int) {
+// recordRetry records a retry attempt; wired into the resty retry hook in NewClient.
+func (m *OTelMetricsMiddleware) recordRetry(ctx context.Context, method string, attempt int) {
 	if m == nil {
 		return
 	}

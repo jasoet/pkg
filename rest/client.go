@@ -82,6 +82,7 @@ func NewClient(options ...ClientOption) *Client {
 	}
 
 	// Add OTel middleware if configured (prepend to user middleware)
+	var metricsMW *OTelMetricsMiddleware
 	if client.restConfig.OTelConfig != nil {
 		// Save user-provided middlewares
 		userMiddlewares := make([]Middleware, len(client.middlewares))
@@ -94,8 +95,9 @@ func NewClient(options ...ClientOption) *Client {
 		if tracingMW := NewOTelTracingMiddleware(client.restConfig.OTelConfig); tracingMW != nil {
 			client.middlewares = append(client.middlewares, tracingMW)
 		}
-		if metricsMW := NewOTelMetricsMiddleware(client.restConfig.OTelConfig); metricsMW != nil {
-			client.middlewares = append(client.middlewares, metricsMW)
+		if m := NewOTelMetricsMiddleware(client.restConfig.OTelConfig); m != nil {
+			client.middlewares = append(client.middlewares, m)
+			metricsMW = m
 		}
 		if loggingMW := NewOTelLoggingMiddleware(client.restConfig.OTelConfig); loggingMW != nil {
 			client.middlewares = append(client.middlewares, loggingMW)
@@ -119,6 +121,25 @@ func NewClient(options ...ClientOption) *Client {
 	httpClient.AddRetryCondition(func(r *resty.Response, err error) bool {
 		return err != nil || (r != nil && r.StatusCode() >= 500)
 	})
+
+	// Wire the retry counter into resty's retry hook so it actually increments.
+	// The hook fires on both transport errors and status-based retries; resp is
+	// nil for transport errors before a response was received.
+	if metricsMW != nil {
+		httpClient.AddRetryHook(func(resp *resty.Response, _ error) {
+			ctx := context.Background()
+			method := "UNKNOWN"
+			attempt := 0
+			if resp != nil && resp.Request != nil {
+				method = resp.Request.Method
+				attempt = resp.Request.Attempt
+				if reqCtx := resp.Request.Context(); reqCtx != nil {
+					ctx = reqCtx
+				}
+			}
+			metricsMW.recordRetry(ctx, method, attempt)
+		})
+	}
 
 	client.restClient = httpClient
 
@@ -282,7 +303,7 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 
 	if err != nil {
 		logger.Error(err, "Failed to make request")
-		return result, NewExecutionError("Failed to make request", err)
+		return result, newExecutionError("Failed to make request", err)
 	}
 
 	err = c.handleResponse(result)
@@ -304,19 +325,19 @@ func (c *Client) handleResponse(response *Response) error {
 	body := truncateBody(response.Body, maxLog)
 
 	if response.IsAuthError() {
-		return NewUnauthorizedError(response.StatusCode, "Unauthorized access", body)
+		return newUnauthorizedError(response.StatusCode, "Unauthorized access", body)
 	}
 
 	if response.IsNotFound() {
-		return NewResourceNotFoundError(response.StatusCode, "Resource not found", body)
+		return newResourceNotFoundError(response.StatusCode, "Resource not found", body)
 	}
 
 	if response.IsServerError() {
-		return NewServerError(response.StatusCode, "Server error", body)
+		return newServerError(response.StatusCode, "Server error", body)
 	}
 
 	if response.IsClientError() {
-		return NewResponseError(response.StatusCode, "Client error", body)
+		return newResponseError(response.StatusCode, "Client error", body)
 	}
 
 	return nil

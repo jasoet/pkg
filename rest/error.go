@@ -25,8 +25,8 @@ func (e *UnauthorizedError) Error() string {
 }
 func (e *UnauthorizedError) Unwrap() error { return ErrUnauthorized }
 
-// NewUnauthorizedError creates a new UnauthorizedError
-func NewUnauthorizedError(statusCode int, msg string, respBody string) *UnauthorizedError {
+// newUnauthorizedError creates a new UnauthorizedError
+func newUnauthorizedError(statusCode int, msg string, respBody string) *UnauthorizedError {
 	return &UnauthorizedError{
 		StatusCode: statusCode,
 		Msg:        msg,
@@ -43,7 +43,7 @@ type ExecutionError struct {
 func (e *ExecutionError) Error() string { return e.Msg }
 func (e *ExecutionError) Unwrap() error { return e.Err }
 
-func NewExecutionError(msg string, err error) *ExecutionError {
+func newExecutionError(msg string, err error) *ExecutionError {
 	return &ExecutionError{
 		Msg: msg,
 		Err: err,
@@ -60,8 +60,8 @@ type ServerError struct {
 func (e *ServerError) Error() string { return fmt.Sprintf("%s: %s", e.Msg, e.RespBody) }
 func (e *ServerError) Unwrap() error { return ErrServer }
 
-// NewServerError creates a new ServerError
-func NewServerError(statusCode int, msg string, respBody string) *ServerError {
+// newServerError creates a new ServerError
+func newServerError(statusCode int, msg string, respBody string) *ServerError {
 	return &ServerError{
 		StatusCode: statusCode,
 		Msg:        msg,
@@ -79,7 +79,7 @@ type ResponseError struct {
 func (e *ResponseError) Error() string { return fmt.Sprintf("%s: %s", e.Msg, e.RespBody) }
 func (e *ResponseError) Unwrap() error { return ErrResponse }
 
-func NewResponseError(statusCode int, msg string, respBody string) *ResponseError {
+func newResponseError(statusCode int, msg string, respBody string) *ResponseError {
 	return &ResponseError{
 		StatusCode: statusCode,
 		Msg:        msg,
@@ -97,7 +97,7 @@ type ResourceNotFoundError struct {
 func (e *ResourceNotFoundError) Error() string { return fmt.Sprintf("%s: %s", e.Msg, e.RespBody) }
 func (e *ResourceNotFoundError) Unwrap() error { return ErrResourceNotFound }
 
-func NewResourceNotFoundError(statusCode int, msg string, respBody string) *ResourceNotFoundError {
+func newResourceNotFoundError(statusCode int, msg string, respBody string) *ResourceNotFoundError {
 	return &ResourceNotFoundError{
 		StatusCode: statusCode,
 		Msg:        msg,
