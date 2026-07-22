@@ -501,16 +501,16 @@ v3 absorbs the `logging` package into `otel` and switches `Config` construction 
 ```go
 // v2
 import "github.com/jasoet/pkg/v2/logging"
-loggerProvider := logging.NewLoggerProvider("my-service", false)
+err := logging.Initialize("my-service", false)
 cfg := otel.NewConfig("my-service").WithServiceVersion("1.0.0")
 
 // v3
 import "github.com/jasoet/pkg/v3/otel"
-loggerProvider, err := otel.NewLoggerProviderWithOptions("my-service")
+err := otel.Initialize("my-service", false)
 cfg := otel.NewConfig("my-service", otel.WithServiceVersion("1.0.0"))
 ```
 
-See [VERSIONING_GUIDE.md](../VERSIONING_GUIDE.md) for the complete migration guide.
+See the [v3 audit backlog](../docs/plans/2026-07-22-v3-audit-backlog.md) for the full list of changes; a complete migration guide ships with v3.0.0.
 
 ## Related Packages
 

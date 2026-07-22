@@ -36,7 +36,6 @@ Production-ready components with comprehensive observability, testing, and examp
 |---------|-------------|--------------|
 | **[otel](./otel/)** | OpenTelemetry integration | Tracing, metrics, logging, unified config |
 | **[config](./config/)** | YAML configuration with env overrides | Type-safe, generics, nested env vars |
-| **[logging](./logging/)** | Structured logging with zerolog | Context-aware, OTel integration |
 | **[db](./db/)** | Multi-database support | PostgreSQL, MySQL, MSSQL, migrations, OTel |
 | **[docker](./docker/)** | Docker container executor | Lifecycle management, wait strategies, dual API |
 | **[argo](./argo/)** | Argo Workflows client | Kubernetes API, Argo Server, OTel, flexible config |
@@ -65,8 +64,8 @@ package main
 
 import (
     "github.com/jasoet/pkg/v2/config"
-    "github.com/jasoet/pkg/v2/logging"
     "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/otel"
     "github.com/labstack/echo/v4"
     "github.com/rs/zerolog/log"
 )
@@ -77,7 +76,7 @@ type AppConfig struct {
 
 func main() {
     // Setup logging
-    if err := logging.Initialize("my-service", false); err != nil {
+    if err := otel.Initialize("my-service", false); err != nil {
         log.Fatal().Err(err).Msg("failed to initialize logging")
     }
 
@@ -109,7 +108,6 @@ Each package includes comprehensive examples:
 
 ```bash
 # Run specific package examples
-go run -tags=example ./examples/logging
 go run -tags=example ./examples/db
 go run -tags=example ./examples/server
 
@@ -117,14 +115,14 @@ go run -tags=example ./examples/server
 go build -tags=example ./...
 ```
 
-Examples for all packages live in the top-level `examples/` directory (e.g. `./examples/logging/`).
+Examples for all packages live in the top-level `examples/` directory (e.g. `./examples/otel/`).
 
 ## Test Coverage
 
 **Overall Coverage: 79%** (unit + integration suites; Argo tests require a k8s cluster and are not included)
 
 ### Package Coverage
-- base32 (99%), config (98%), concurrent (95%), logging (95%), rest (93%), argo (91%), otel (85%), docker (83%), compress (82%), temporal (81%), retry (79%), ssh (78%), server (77%), db (77%), grpc (71%)
+- base32 (99%), config (98%), concurrent (95%), rest (93%), argo (91%), otel (85%), docker (83%), compress (82%), temporal (81%), retry (79%), ssh (78%), server (77%), db (77%), grpc (71%)
 
 ### Run Tests
 
@@ -248,27 +246,6 @@ cfg, _ := config.LoadString[AppConfig](yamlContent, "APP")
 
 **Features:** Environment variable overrides, nested env vars, generics-based loading
 **Coverage:** 97.6% | **[Examples](./examples/config/)** | **[Documentation](./config/README.md)**
-
-#### [logging](./logging/) - Structured Logging
-Zerolog-based OTel LoggerProvider with automatic trace correlation.
-
-```go
-// Create LoggerProvider
-loggerProvider := logging.NewLoggerProvider("my-service", false)
-
-// Use with OTel config
-otelCfg := &otel.Config{
-    LoggerProvider: loggerProvider,
-    // ... other config
-}
-
-// Or use legacy zerolog
-_ = logging.Initialize("my-service", false)
-log.Info().Str("user", "john").Msg("User logged in")
-```
-
-**Features:** Context-aware, OTel log provider, performance optimized
-**Coverage:** 94.6% | **[Examples](./examples/logging/)** | **[Documentation](./logging/README.md)**
 
 ### Data Access
 

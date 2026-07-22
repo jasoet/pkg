@@ -131,7 +131,6 @@ import (
 
     "github.com/jasoet/pkg/v2/db"
     "github.com/jasoet/pkg/v2/grpc"
-    "github.com/jasoet/pkg/v2/logging"
     "github.com/jasoet/pkg/v2/otel"
     "github.com/jasoet/pkg/v2/rest"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -180,7 +179,10 @@ func main() {
     )
 
     // LoggerProvider with zerolog backend (automatic trace correlation)
-    loggerProvider := logging.NewLoggerProvider("fullstack-example", true)
+    loggerProvider, err := otel.NewLoggerProviderWithOptions("fullstack-example", otel.WithConsoleOutput(true))
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Create OTel config
     otelCfg := &otel.Config{
@@ -443,7 +445,7 @@ Result: Click any metric/log/trace → Jump to related data
 
 ### Logs missing trace_id
 
-1. Ensure you're using `logging.NewLoggerProvider()`
+1. Ensure you're using `otel.NewLoggerProviderWithOptions()`
 2. Verify context is passed to all functions
 3. Check that TracerProvider is configured
 

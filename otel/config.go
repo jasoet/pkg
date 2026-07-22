@@ -80,12 +80,12 @@ func NewConfig(serviceName string, opts ...Option) *Config {
 	return c
 }
 
-// WithTracerProvider sets the tracer provider (nil-safe; nil keeps the no-op default).
+// WithTracerProvider sets the tracer provider; passing nil disables tracing (falls back to no-op).
 func WithTracerProvider(tp trace.TracerProvider) Option {
 	return func(c *Config) { c.TracerProvider = tp }
 }
 
-// WithMeterProvider sets the meter provider (nil-safe; nil keeps the no-op default).
+// WithMeterProvider sets the meter provider; passing nil disables metrics (falls back to no-op).
 func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(c *Config) { c.MeterProvider = mp }
 }
