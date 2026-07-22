@@ -46,7 +46,7 @@
 //	}
 //	return lc.Success("User created")
 //
-// Available layers: StartHandler, StartOperations, StartService, StartRepository
+// Available layers: StartHandler, StartMiddleware, StartOperations, StartService, StartRepository
 //
 // # Standard Logging Helper
 //
