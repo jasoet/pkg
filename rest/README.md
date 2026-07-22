@@ -260,7 +260,9 @@ cases the wrapper does not cover — custom TLS configuration, binary request
 bodies via `SetBody(interface{})`, automatic result unmarshaling with
 `SetResult`, file uploads, etc. Responses from calls made directly through
 the resty client are resty types and bypass the middleware chain and the
-typed-error mapping above.
+typed-error mapping above. Note that `GetRestClient()` calls still record
+retry metrics (the retry hook lives on the resty client itself) while
+bypassing the other middleware telemetry (tracing, logging, request metrics).
 
 ```go
 client := rest.NewClient()
@@ -397,7 +399,9 @@ Span Attributes:
 
 The span status is `Error` when the request fails or returns a status >= 400,
 `Ok` otherwise. Trace context (W3C TraceContext) is injected into the request
-headers for distributed tracing.
+headers for distributed tracing. Bodies larger than `MaxResponseBodyLog`
+(default 1024 bytes) report the truncated length in the `http.client.response.size`
+metric and the `http.response.body.size` span attribute.
 
 ### Metrics Collection
 
@@ -418,7 +422,10 @@ Metric Attributes:
 
 `http.client.retry.count` is wired into resty's retry hook, so it increments
 on both transport errors and status-based (5xx) retries; it also carries an
-`http.retry.attempt` attribute with the resty attempt number.
+`http.retry.attempt` attribute with the resty attempt number. The counter
+counts failed retryable attempts (retries actually performed), and retries
+triggered by transport errors lose trace-exemplar correlation because they
+fall back to `context.Background()` when no response/request context exists.
 
 ## Advanced Usage
 

@@ -124,9 +124,15 @@ func NewClient(options ...ClientOption) *Client {
 
 	// Wire the retry counter into resty's retry hook so it actually increments.
 	// The hook fires on both transport errors and status-based retries; resp is
-	// nil for transport errors before a response was received.
+	// nil for transport errors before a response was received. resty fires the
+	// hook once more after the final attempt fails (with Attempt > RetryCount);
+	// skip that extra fire so the counter only counts retries actually performed.
+	// Nil-resp transport-error fires cannot be filtered this way and are counted.
 	if metricsMW != nil {
 		httpClient.AddRetryHook(func(resp *resty.Response, _ error) {
+			if resp != nil && resp.Request != nil && resp.Request.Attempt > client.restConfig.RetryCount {
+				return
+			}
 			ctx := context.Background()
 			method := "UNKNOWN"
 			attempt := 0
@@ -304,6 +310,10 @@ func (c *Client) doRequest(ctx context.Context, method string, url string, body 
 	if err != nil {
 		logger.Error(err, "Failed to make request")
 		return result, newExecutionError("Failed to make request", err)
+	}
+
+	if result == nil {
+		return nil, nil
 	}
 
 	err = c.handleResponse(result)
