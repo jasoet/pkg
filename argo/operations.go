@@ -28,12 +28,14 @@ import (
 //	    return err
 //	}
 //
-//	created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+//	created, err := argo.SubmitWorkflow(ctx, client, wf)
 //	if err != nil {
 //	    return err
 //	}
 //	fmt.Printf("Workflow %s submitted\n", created.Name)
-func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.Workflow, cfg *otel.Config) (*v1alpha1.Workflow, error) {
+func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.Workflow) (*v1alpha1.Workflow, error) {
+	cfg := otel.ConfigFromContext(ctx)
+
 	// Start span
 	var span trace.Span
 	if cfg != nil && cfg.TracerProvider != nil {
@@ -87,14 +89,16 @@ func SubmitWorkflow(ctx context.Context, client apiclient.Client, wf *v1alpha1.W
 //	    return err
 //	}
 //
-//	completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+//	completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute)
 //	if err != nil {
 //	    return err
 //	}
 //	if completed.Status.Phase == v1alpha1.WorkflowSucceeded {
 //	    fmt.Println("Workflow completed successfully")
 //	}
-func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Workflow, cfg *otel.Config, timeout time.Duration) (*v1alpha1.Workflow, error) {
+func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Workflow, timeout time.Duration) (*v1alpha1.Workflow, error) {
+	cfg := otel.ConfigFromContext(ctx)
+
 	// Start span for entire operation
 	var span trace.Span
 	if cfg != nil && cfg.TracerProvider != nil {
@@ -108,7 +112,7 @@ func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Wo
 	startTime := time.Now()
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		return nil, err
 	}
@@ -192,12 +196,14 @@ func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Wo
 //
 // Example:
 //
-//	status, err := argo.GetWorkflowStatus(ctx, client, "argo", "my-workflow-abc123", otelConfig)
+//	status, err := argo.GetWorkflowStatus(ctx, client, "argo", "my-workflow-abc123")
 //	if err != nil {
 //	    return err
 //	}
 //	fmt.Printf("Workflow phase: %s\n", status.Phase)
-func GetWorkflowStatus(ctx context.Context, client apiclient.Client, namespace, name string, cfg *otel.Config) (*v1alpha1.WorkflowStatus, error) {
+func GetWorkflowStatus(ctx context.Context, client apiclient.Client, namespace, name string) (*v1alpha1.WorkflowStatus, error) {
+	cfg := otel.ConfigFromContext(ctx)
+
 	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.GetWorkflowStatus")
 	logger.Debug("Getting workflow status",
 		otel.F("namespace", namespace),
@@ -227,11 +233,13 @@ func GetWorkflowStatus(ctx context.Context, client apiclient.Client, namespace, 
 // Example:
 //
 //	// List all workflows
-//	workflows, err := argo.ListWorkflows(ctx, client, "argo", "", otelConfig)
+//	workflows, err := argo.ListWorkflows(ctx, client, "argo", "")
 //
 //	// List workflows with label
-//	workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp", otelConfig)
-func ListWorkflows(ctx context.Context, client apiclient.Client, namespace, labelSelector string, cfg *otel.Config) ([]v1alpha1.Workflow, error) {
+//	workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp")
+func ListWorkflows(ctx context.Context, client apiclient.Client, namespace, labelSelector string) ([]v1alpha1.Workflow, error) {
+	cfg := otel.ConfigFromContext(ctx)
+
 	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.ListWorkflows")
 	logger.Debug("Listing workflows",
 		otel.F("namespace", namespace),
@@ -265,11 +273,13 @@ func ListWorkflows(ctx context.Context, client apiclient.Client, namespace, labe
 //
 // Example:
 //
-//	err := argo.DeleteWorkflow(ctx, client, "argo", "my-workflow-abc123", otelConfig)
+//	err := argo.DeleteWorkflow(ctx, client, "argo", "my-workflow-abc123")
 //	if err != nil {
 //	    return err
 //	}
-func DeleteWorkflow(ctx context.Context, client apiclient.Client, namespace, name string, cfg *otel.Config) error {
+func DeleteWorkflow(ctx context.Context, client apiclient.Client, namespace, name string) error {
+	cfg := otel.ConfigFromContext(ctx)
+
 	logger := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/argo", "argo.DeleteWorkflow")
 	logger.Info("Deleting workflow",
 		otel.F("namespace", namespace),

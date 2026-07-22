@@ -58,7 +58,7 @@ func exampleWorkflowParameters() {
 		},
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -132,7 +132,7 @@ func exampleRetryStrategy() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -215,7 +215,7 @@ func exampleVolumesEmptyDir() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -259,7 +259,7 @@ func exampleVolumesConfigMap() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -351,7 +351,7 @@ func exampleExitHandler() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -389,7 +389,7 @@ func exampleWorkflowTTL() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -423,7 +423,7 @@ func exampleArchiveLogs() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -469,7 +469,7 @@ func exampleLabelsAnnotations() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -510,7 +510,7 @@ func exampleServiceAccount() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -546,7 +546,7 @@ func exampleActiveDeadline() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -591,7 +591,7 @@ func exampleMetrics() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -718,7 +718,7 @@ func exampleCompleteAdvancedWorkflow() {
 		},
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}

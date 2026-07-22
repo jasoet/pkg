@@ -36,7 +36,7 @@ func TestIntegration_SubmitWorkflow(t *testing.T) {
 	require.NoError(t, err, "should build workflow")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow")
 	require.NotNil(t, created)
 	assert.NotEmpty(t, created.Name)
@@ -44,7 +44,7 @@ func TestIntegration_SubmitWorkflow(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow submitted: %s", created.Name)
@@ -68,7 +68,7 @@ func TestIntegration_SubmitAndWait(t *testing.T) {
 	require.NoError(t, err, "should build workflow")
 
 	// Submit and wait
-	completed, err := SubmitAndWait(ctx, client, wf, cfg, 2*time.Minute)
+	completed, err := SubmitAndWait(ctx, client, wf, 2*time.Minute)
 	require.NoError(t, err, "should complete workflow")
 	require.NotNil(t, completed)
 	assert.Contains(t, []v1alpha1.WorkflowPhase{
@@ -78,7 +78,7 @@ func TestIntegration_SubmitAndWait(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", completed.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", completed.Name)
 	}()
 
 	t.Logf("✓ Workflow completed: %s (phase: %s)", completed.Name, completed.Status.Phase)
@@ -101,12 +101,12 @@ func TestIntegration_GetWorkflowStatus(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	// Wait a moment for workflow to initialize.
@@ -115,7 +115,7 @@ func TestIntegration_GetWorkflowStatus(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Get workflow status
-	status, err := GetWorkflowStatus(ctx, client, "argo", created.Name, cfg)
+	status, err := GetWorkflowStatus(ctx, client, "argo", created.Name)
 	require.NoError(t, err, "should get workflow status")
 	require.NotNil(t, status)
 	assert.NotEmpty(t, status.Phase)
@@ -143,21 +143,21 @@ func TestIntegration_ListWorkflows(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	// List all workflows
-	workflows, err := ListWorkflows(ctx, client, "argo", "", cfg)
+	workflows, err := ListWorkflows(ctx, client, "argo", "")
 	require.NoError(t, err, "should list workflows")
 	assert.NotEmpty(t, workflows, "should have at least one workflow")
 
 	// List with label selector
-	filtered, err := ListWorkflows(ctx, client, "argo", "test-type=integration-list", cfg)
+	filtered, err := ListWorkflows(ctx, client, "argo", "test-type=integration-list")
 	require.NoError(t, err, "should list filtered workflows")
 	assert.NotEmpty(t, filtered, "should find workflow with label")
 
@@ -191,7 +191,7 @@ func TestIntegration_DeleteWorkflow(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err)
 
 	// Wait a moment for workflow to be fully created.
@@ -200,13 +200,13 @@ func TestIntegration_DeleteWorkflow(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Delete workflow
-	err = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+	err = DeleteWorkflow(ctx, client, "argo", created.Name)
 	require.NoError(t, err, "should delete workflow")
 
 	// Verify deletion - getting the workflow should fail.
 	// Note: time.Sleep allows the API server cache to propagate the deletion.
 	time.Sleep(1 * time.Second)
-	status, err := GetWorkflowStatus(ctx, client, "argo", created.Name, cfg)
+	status, err := GetWorkflowStatus(ctx, client, "argo", created.Name)
 	if err == nil && status != nil {
 		// Workflow might still exist briefly after deletion
 		t.Logf("Workflow still exists briefly: %s", created.Name)
@@ -240,17 +240,17 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Submit and wait for completion
-	completed, err := SubmitAndWait(ctx, client, wf, cfg, 2*time.Minute)
+	completed, err := SubmitAndWait(ctx, client, wf, 2*time.Minute)
 	require.NoError(t, err, "should complete workflow")
 	require.NotNil(t, completed)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", completed.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", completed.Name)
 	}()
 
 	// Verify completion
-	status, err := GetWorkflowStatus(ctx, client, "argo", completed.Name, cfg)
+	status, err := GetWorkflowStatus(ctx, client, "argo", completed.Name)
 	require.NoError(t, err)
 	assert.Contains(t, []v1alpha1.WorkflowPhase{
 		v1alpha1.WorkflowSucceeded,
@@ -280,13 +280,13 @@ func TestIntegration_WorkflowWithResources(t *testing.T) {
 	require.NoError(t, err)
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	// Verify resource limits were set
@@ -324,13 +324,13 @@ func TestIntegration_WorkflowWithScript(t *testing.T) {
 	require.NoError(t, err)
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with script submitted: %s", created.Name)
@@ -366,14 +366,14 @@ func TestIntegration_WorkflowWithParameters(t *testing.T) {
 	}
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with parameters")
 	require.NotNil(t, created)
 	assert.NotEmpty(t, created.Name)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with parameters submitted: %s", created.Name)
@@ -403,7 +403,7 @@ func TestIntegration_WorkflowWithRetryStrategy(t *testing.T) {
 	require.NoError(t, err, "should build workflow with retry")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with retry strategy")
 	require.NotNil(t, created)
 
@@ -412,7 +412,7 @@ func TestIntegration_WorkflowWithRetryStrategy(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with retry strategy submitted: %s", created.Name)
@@ -446,7 +446,7 @@ func TestIntegration_WorkflowWithVolumes(t *testing.T) {
 	require.NoError(t, err, "should build workflow with volumes")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with volumes")
 	require.NotNil(t, created)
 
@@ -456,7 +456,7 @@ func TestIntegration_WorkflowWithVolumes(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with volumes submitted: %s", created.Name)
@@ -483,7 +483,7 @@ func TestIntegration_WorkflowWithEnvironmentVariables(t *testing.T) {
 	require.NoError(t, err, "should build workflow with env vars")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with env vars")
 	require.NotNil(t, created)
 
@@ -509,7 +509,7 @@ func TestIntegration_WorkflowWithEnvironmentVariables(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with environment variables submitted: %s", created.Name)
@@ -538,13 +538,13 @@ func TestIntegration_WorkflowWithConditionalSteps(t *testing.T) {
 	require.NoError(t, err, "should build workflow with conditional")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with conditional")
 	require.NotNil(t, created)
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with conditional steps submitted: %s", created.Name)
@@ -569,7 +569,7 @@ func TestIntegration_WorkflowWithHTTPTemplate(t *testing.T) {
 	require.NoError(t, err, "should build workflow with HTTP")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with HTTP template")
 	require.NotNil(t, created)
 
@@ -587,7 +587,7 @@ func TestIntegration_WorkflowWithHTTPTemplate(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with HTTP template submitted: %s", created.Name)
@@ -615,7 +615,7 @@ func TestIntegration_WorkflowWithMultipleContainers(t *testing.T) {
 	require.NoError(t, err, "should build workflow with multiple steps")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with multiple containers")
 	require.NotNil(t, created)
 
@@ -624,7 +624,7 @@ func TestIntegration_WorkflowWithMultipleContainers(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with multiple containers submitted: %s", created.Name)
@@ -657,7 +657,7 @@ func TestIntegration_WorkflowWithLabelsAndAnnotations(t *testing.T) {
 	require.NoError(t, err, "should build workflow with metadata")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with metadata")
 	require.NotNil(t, created)
 
@@ -670,7 +670,7 @@ func TestIntegration_WorkflowWithLabelsAndAnnotations(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with labels and annotations submitted: %s", created.Name)
@@ -698,7 +698,7 @@ func TestIntegration_WorkflowWithTTL(t *testing.T) {
 	require.NoError(t, err, "should build workflow with TTL")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with TTL")
 	require.NotNil(t, created)
 
@@ -709,7 +709,7 @@ func TestIntegration_WorkflowWithTTL(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with TTL submitted: %s", created.Name)
@@ -735,7 +735,7 @@ func TestIntegration_WorkflowWithArchiveLogs(t *testing.T) {
 	require.NoError(t, err, "should build workflow with archive logs")
 
 	// Submit workflow
-	created, err := SubmitWorkflow(ctx, client, wf, cfg)
+	created, err := SubmitWorkflow(ctx, client, wf)
 	require.NoError(t, err, "should submit workflow with archive logs")
 	require.NotNil(t, created)
 
@@ -745,7 +745,7 @@ func TestIntegration_WorkflowWithArchiveLogs(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		_ = DeleteWorkflow(ctx, client, "argo", created.Name, cfg)
+		_ = DeleteWorkflow(ctx, client, "argo", created.Name)
 	}()
 
 	t.Logf("✓ Workflow with archive logs submitted: %s", created.Name)

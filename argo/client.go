@@ -82,6 +82,13 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 	}
 
 	logger.Debug("Successfully created Argo Workflows client")
+
+	// Propagate the configured OTel config through the returned context so
+	// operations can resolve it via otel.ConfigFromContext.
+	if config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, config.OTelConfig)
+	}
+
 	return ctx, client, nil
 }
 

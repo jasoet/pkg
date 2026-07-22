@@ -15,6 +15,8 @@ import (
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -138,9 +140,49 @@ func (m *mockArgoClient) NewInfoServiceClient() (info.InfoServiceClient, error) 
 	return nil, errors.New("not implemented")
 }
 
+func TestSubmitWorkflow_EmitsSpanFromContextConfig(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() {
+		assert.NoError(t, tp.Shutdown(context.Background()))
+	})
+
+	cfg := otel.NewConfig("test-service", otel.WithTracerProvider(tp))
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
+
+	testWf := &v1alpha1.Workflow{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "test-",
+			Namespace:    "argo",
+		},
+		Spec: v1alpha1.WorkflowSpec{
+			Entrypoint: "main",
+		},
+	}
+
+	mockWfClient := &mockWorkflowServiceClient{
+		createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+			created := testWf.DeepCopy()
+			created.Name = "test-span"
+			created.UID = "uid-span"
+			return created, nil
+		},
+	}
+	client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+	created, err := SubmitWorkflow(ctx, client, testWf)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1, "expected exactly one ended span")
+	assert.Equal(t, "argo.SubmitWorkflow", spans[0].Name)
+	assert.Equal(t, "github.com/jasoet/pkg/v3/argo", spans[0].InstrumentationScope.Name)
+}
+
 func TestSubmitWorkflow(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	testWf := &v1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{
@@ -164,7 +206,7 @@ func TestSubmitWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		created, err := SubmitWorkflow(ctx, client, testWf, cfg)
+		created, err := SubmitWorkflow(ctx, client, testWf)
 		require.NoError(t, err)
 		require.NotNil(t, created)
 		assert.Equal(t, "test-abc123", created.Name)
@@ -180,7 +222,7 @@ func TestSubmitWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		created, err := SubmitWorkflow(ctx, client, testWf, cfg)
+		created, err := SubmitWorkflow(ctx, client, testWf)
 		require.Error(t, err)
 		assert.Nil(t, created)
 		assert.Contains(t, err.Error(), "failed to submit workflow")
@@ -197,7 +239,7 @@ func TestSubmitWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		created, err := SubmitWorkflow(ctx, client, testWf, nil)
+		created, err := SubmitWorkflow(context.Background(), client, testWf)
 		require.NoError(t, err)
 		require.NotNil(t, created)
 		assert.Equal(t, "test-xyz789", created.Name)
@@ -205,8 +247,8 @@ func TestSubmitWorkflow(t *testing.T) {
 }
 
 func TestSubmitAndWait(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	testWf := &v1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{
@@ -242,7 +284,7 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		completed, err := SubmitAndWait(ctx, client, testWf, cfg, 30*time.Second)
+		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second)
 		require.NoError(t, err)
 		require.NotNil(t, completed)
 		assert.Equal(t, v1alpha1.WorkflowSucceeded, completed.Status.Phase)
@@ -272,7 +314,7 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		completed, err := SubmitAndWait(ctx, client, testWf, cfg, 30*time.Second)
+		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second)
 		require.Error(t, err)
 		require.NotNil(t, completed)
 		assert.Equal(t, v1alpha1.WorkflowFailed, completed.Status.Phase)
@@ -296,15 +338,15 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		_, err := SubmitAndWait(ctx, client, testWf, cfg, 1*time.Second)
+		_, err := SubmitAndWait(ctx, client, testWf, 1*time.Second)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "timeout")
 	})
 }
 
 func TestGetWorkflowStatus(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	t.Run("successful get", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
@@ -324,7 +366,7 @@ func TestGetWorkflowStatus(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		status, err := GetWorkflowStatus(ctx, client, "argo", "test-workflow", cfg)
+		status, err := GetWorkflowStatus(ctx, client, "argo", "test-workflow")
 		require.NoError(t, err)
 		require.NotNil(t, status)
 		assert.Equal(t, v1alpha1.WorkflowSucceeded, status.Phase)
@@ -340,7 +382,7 @@ func TestGetWorkflowStatus(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		status, err := GetWorkflowStatus(ctx, client, "argo", "nonexistent", cfg)
+		status, err := GetWorkflowStatus(ctx, client, "argo", "nonexistent")
 		require.Error(t, err)
 		assert.Nil(t, status)
 		assert.Contains(t, err.Error(), "failed to get workflow")
@@ -359,7 +401,7 @@ func TestGetWorkflowStatus(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		status, err := GetWorkflowStatus(ctx, client, "argo", "test", nil)
+		status, err := GetWorkflowStatus(context.Background(), client, "argo", "test")
 		require.NoError(t, err)
 		require.NotNil(t, status)
 		assert.Equal(t, v1alpha1.WorkflowRunning, status.Phase)
@@ -367,8 +409,8 @@ func TestGetWorkflowStatus(t *testing.T) {
 }
 
 func TestListWorkflows(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	t.Run("list all workflows", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
@@ -384,7 +426,7 @@ func TestListWorkflows(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		workflows, err := ListWorkflows(ctx, client, "argo", "", cfg)
+		workflows, err := ListWorkflows(ctx, client, "argo", "")
 		require.NoError(t, err)
 		require.Len(t, workflows, 2)
 		assert.Equal(t, "wf-1", workflows[0].Name)
@@ -405,7 +447,7 @@ func TestListWorkflows(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		workflows, err := ListWorkflows(ctx, client, "argo", "app=myapp", cfg)
+		workflows, err := ListWorkflows(ctx, client, "argo", "app=myapp")
 		require.NoError(t, err)
 		require.Len(t, workflows, 1)
 	})
@@ -419,7 +461,7 @@ func TestListWorkflows(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		workflows, err := ListWorkflows(ctx, client, "argo", "", cfg)
+		workflows, err := ListWorkflows(ctx, client, "argo", "")
 		require.Error(t, err)
 		assert.Nil(t, workflows)
 		assert.Contains(t, err.Error(), "failed to list workflows")
@@ -427,8 +469,8 @@ func TestListWorkflows(t *testing.T) {
 }
 
 func TestDeleteWorkflow(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	t.Run("successful deletion", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
@@ -441,7 +483,7 @@ func TestDeleteWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		err := DeleteWorkflow(ctx, client, "argo", "test-workflow", cfg)
+		err := DeleteWorkflow(ctx, client, "argo", "test-workflow")
 		require.NoError(t, err)
 	})
 
@@ -454,7 +496,7 @@ func TestDeleteWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		err := DeleteWorkflow(ctx, client, "argo", "test-workflow", cfg)
+		err := DeleteWorkflow(ctx, client, "argo", "test-workflow")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to delete workflow")
 	})
@@ -468,7 +510,7 @@ func TestDeleteWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		err := DeleteWorkflow(ctx, client, "argo", "test-workflow", nil)
+		err := DeleteWorkflow(context.Background(), client, "argo", "test-workflow")
 		require.NoError(t, err)
 	})
 }

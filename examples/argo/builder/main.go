@@ -177,7 +177,7 @@ func example3WithOTel(ctx context.Context) error {
 		Msg("Workflow with OTel instrumentation built successfully")
 
 	// In production, you would submit the workflow:
-	// created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+	// created, err := argo.SubmitWorkflow(ctx, client, wf)
 
 	return nil
 }

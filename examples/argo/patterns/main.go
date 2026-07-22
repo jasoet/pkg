@@ -51,7 +51,7 @@ func exampleSequentialWorkflow() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -149,7 +149,7 @@ func exampleCICDPipeline() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -252,7 +252,7 @@ print(f"✓ Data quality checks passed for {len(data)} records")
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -330,7 +330,7 @@ func exampleMicroservicesDeployment() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -431,7 +431,7 @@ echo "Remaining backups: $REMAINING"
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -549,7 +549,7 @@ with open("/metrics/accuracy.txt", "w") as f:
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -620,7 +620,7 @@ print(json.dumps(metrics, indent=2))
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}

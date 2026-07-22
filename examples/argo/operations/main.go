@@ -48,7 +48,7 @@ func exampleSubmitWorkflow() {
 	}
 
 	// Submit the workflow
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -89,7 +89,7 @@ func exampleSubmitWorkflowWithOTel() {
 	}
 
 	// Submit with OpenTelemetry tracing
-	created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -134,7 +134,7 @@ func exampleSubmitAndWait() {
 	startTime := time.Now()
 
 	// Submit and wait with 5 minute timeout
-	completed, err := argo.SubmitAndWait(ctx, client, wf, nil, 5*time.Minute)
+	completed, err := argo.SubmitAndWait(ctx, client, wf, 5*time.Minute)
 	if err != nil {
 		log.Fatalf("Workflow failed: %v", err)
 	}
@@ -180,7 +180,7 @@ func exampleSubmitAndWaitWithErrorHandling() {
 
 	// Submit and wait with longer timeout for data processing
 	fmt.Println("Starting data processing workflow...")
-	completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+	completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute)
 	if err != nil {
 		// Handle different failure scenarios
 		if completed != nil {
@@ -221,7 +221,7 @@ func exampleGetWorkflowStatus() {
 	namespace := "argo"
 
 	// Get workflow status
-	status, err := argo.GetWorkflowStatus(ctx, client, namespace, workflowName, nil)
+	status, err := argo.GetWorkflowStatus(ctx, client, namespace, workflowName)
 	if err != nil {
 		log.Fatalf("Failed to get workflow status: %v", err)
 	}
@@ -272,7 +272,7 @@ func exampleMonitorWorkflowStatus() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -293,7 +293,7 @@ func exampleMonitorWorkflowStatus() {
 			return
 
 		case <-ticker.C:
-			status, err := argo.GetWorkflowStatus(ctx, client, created.Namespace, created.Name, nil)
+			status, err := argo.GetWorkflowStatus(ctx, client, created.Namespace, created.Name)
 			if err != nil {
 				fmt.Printf("Error getting status: %v\n", err)
 				continue
@@ -331,7 +331,7 @@ func exampleListWorkflows() {
 	namespace := "argo"
 
 	// List all workflows
-	workflows, err := argo.ListWorkflows(ctx, client, namespace, "", nil)
+	workflows, err := argo.ListWorkflows(ctx, client, namespace, "")
 	if err != nil {
 		log.Fatalf("Failed to list workflows: %v", err)
 	}
@@ -372,7 +372,7 @@ func exampleListWorkflowsWithLabels() {
 
 	// Example 1: Filter by single label
 	fmt.Println("=== Workflows with label app=myapp ===")
-	workflows, err := argo.ListWorkflows(ctx, client, namespace, "app=myapp", nil)
+	workflows, err := argo.ListWorkflows(ctx, client, namespace, "app=myapp")
 	if err != nil {
 		log.Fatalf("Failed to list workflows: %v", err)
 	}
@@ -380,7 +380,7 @@ func exampleListWorkflowsWithLabels() {
 
 	// Example 2: Filter by multiple labels
 	fmt.Println("=== Workflows with labels app=myapp,env=production ===")
-	workflows, err = argo.ListWorkflows(ctx, client, namespace, "app=myapp,env=production", nil)
+	workflows, err = argo.ListWorkflows(ctx, client, namespace, "app=myapp,env=production")
 	if err != nil {
 		log.Fatalf("Failed to list workflows: %v", err)
 	}
@@ -388,7 +388,7 @@ func exampleListWorkflowsWithLabels() {
 
 	// Example 3: Filter using label expressions
 	fmt.Println("=== Workflows where app exists ===")
-	workflows, err = argo.ListWorkflows(ctx, client, namespace, "app", nil)
+	workflows, err = argo.ListWorkflows(ctx, client, namespace, "app")
 	if err != nil {
 		log.Fatalf("Failed to list workflows: %v", err)
 	}
@@ -417,7 +417,7 @@ func exampleDeleteWorkflow() {
 	workflowName := "example-workflow-xxxxx" // Replace with actual workflow name
 
 	// Delete the workflow
-	err = argo.DeleteWorkflow(ctx, client, namespace, workflowName, nil)
+	err = argo.DeleteWorkflow(ctx, client, namespace, workflowName)
 	if err != nil {
 		log.Fatalf("Failed to delete workflow: %v", err)
 	}
@@ -459,7 +459,7 @@ func exampleCompleteWorkflowLifecycle() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -467,7 +467,7 @@ func exampleCompleteWorkflowLifecycle() {
 
 	// Step 2: Wait for completion
 	fmt.Println("=== Step 2: Waiting for Completion ===")
-	completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 2*time.Minute)
+	completed, err := argo.SubmitAndWait(ctx, client, wf, 2*time.Minute)
 	if err != nil {
 		log.Fatalf("Workflow failed: %v", err)
 	}
@@ -475,7 +475,7 @@ func exampleCompleteWorkflowLifecycle() {
 
 	// Step 3: Get final status
 	fmt.Println("=== Step 3: Getting Final Status ===")
-	status, err := argo.GetWorkflowStatus(ctx, client, created.Namespace, created.Name, otelConfig)
+	status, err := argo.GetWorkflowStatus(ctx, client, created.Namespace, created.Name)
 	if err != nil {
 		log.Fatalf("Failed to get status: %v", err)
 	}
@@ -484,7 +484,7 @@ func exampleCompleteWorkflowLifecycle() {
 
 	// Step 4: List workflows with our label
 	fmt.Println("=== Step 4: Listing Similar Workflows ===")
-	workflows, err := argo.ListWorkflows(ctx, client, created.Namespace, "app=lifecycle-example", otelConfig)
+	workflows, err := argo.ListWorkflows(ctx, client, created.Namespace, "app=lifecycle-example")
 	if err != nil {
 		log.Fatalf("Failed to list workflows: %v", err)
 	}
@@ -495,7 +495,7 @@ func exampleCompleteWorkflowLifecycle() {
 	fmt.Printf("To delete workflow, run: kubectl delete workflow -n %s %s\n", created.Namespace, created.Name)
 
 	// Uncomment to actually delete:
-	// err = argo.DeleteWorkflow(ctx, client, created.Namespace, created.Name, otelConfig)
+	// err = argo.DeleteWorkflow(ctx, client, created.Namespace, created.Name)
 	// if err != nil {
 	//     log.Fatalf("Failed to delete workflow: %v", err)
 	// }
@@ -537,7 +537,7 @@ func exampleBatchOperations() {
 			log.Fatalf("Failed to build workflow: %v", err)
 		}
 
-		created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+		created, err := argo.SubmitWorkflow(ctx, client, wf)
 		if err != nil {
 			log.Fatalf("Failed to submit workflow: %v", err)
 		}
@@ -551,7 +551,7 @@ func exampleBatchOperations() {
 	time.Sleep(2 * time.Second)
 
 	for _, name := range workflowNames {
-		status, err := argo.GetWorkflowStatus(ctx, client, "argo", name, nil)
+		status, err := argo.GetWorkflowStatus(ctx, client, "argo", name)
 		if err != nil {
 			fmt.Printf("  Error getting status for %s: %v\n", name, err)
 			continue
@@ -561,7 +561,7 @@ func exampleBatchOperations() {
 
 	// List all batch workflows
 	fmt.Println("\nListing all batch workflows...")
-	workflows, err := argo.ListWorkflows(ctx, client, "argo", "batch=true,run=demo", nil)
+	workflows, err := argo.ListWorkflows(ctx, client, "argo", "batch=true,run=demo")
 	if err != nil {
 		log.Fatalf("Failed to list workflows: %v", err)
 	}
@@ -584,14 +584,14 @@ func exampleErrorHandling() {
 	// Example 1: Handle workflow submission errors
 	fmt.Println("=== Example 1: Submission Error Handling ===")
 	invalidWf := &v1alpha1.Workflow{} // Invalid workflow
-	_, err = argo.SubmitWorkflow(ctx, client, invalidWf, nil)
+	_, err = argo.SubmitWorkflow(ctx, client, invalidWf)
 	if err != nil {
 		fmt.Printf("Expected error caught: %v\n\n", err)
 	}
 
 	// Example 2: Handle non-existent workflow
 	fmt.Println("=== Example 2: Non-existent Workflow ===")
-	_, err = argo.GetWorkflowStatus(ctx, client, "argo", "non-existent-workflow", nil)
+	_, err = argo.GetWorkflowStatus(ctx, client, "argo", "non-existent-workflow")
 	if err != nil {
 		fmt.Printf("Expected error caught: %v\n\n", err)
 	}
@@ -610,21 +610,21 @@ func exampleErrorHandling() {
 	}
 
 	// Submit with very short timeout
-	_, err = argo.SubmitAndWait(ctx, client, wf, nil, 5*time.Second)
+	_, err = argo.SubmitAndWait(ctx, client, wf, 5*time.Second)
 	if err != nil {
 		fmt.Printf("Expected timeout error caught: %v\n\n", err)
 	}
 
 	// Example 4: Handle invalid label selectors
 	fmt.Println("=== Example 4: Invalid Label Selector ===")
-	_, err = argo.ListWorkflows(ctx, client, "argo", "invalid==selector", nil)
+	_, err = argo.ListWorkflows(ctx, client, "argo", "invalid==selector")
 	if err != nil {
 		fmt.Printf("Expected error caught: %v\n\n", err)
 	}
 
 	// Example 5: Graceful handling of delete on non-existent workflow
 	fmt.Println("=== Example 5: Delete Non-existent Workflow ===")
-	err = argo.DeleteWorkflow(ctx, client, "argo", "non-existent-workflow", nil)
+	err = argo.DeleteWorkflow(ctx, client, "argo", "non-existent-workflow")
 	if err != nil {
 		fmt.Printf("Expected error caught: %v\n", err)
 	}
