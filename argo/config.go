@@ -28,7 +28,7 @@ type Config struct {
 	ArgoServerOpts ServerOpts `yaml:"argoServer" mapstructure:"argoServer"`
 
 	// OTelConfig enables OpenTelemetry instrumentation (optional).
-	OTelConfig *otel.Config `yaml:"-"`
+	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
 }
 
 // ServerOpts contains Argo Server connection options.

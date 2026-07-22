@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient"
 	"k8s.io/client-go/rest"
@@ -97,9 +98,7 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 func NewClientWithOptions(ctx context.Context, opts ...Option) (context.Context, apiclient.Client, error) {
 	config := DefaultConfig()
 	for _, opt := range opts {
-		if err := opt(config); err != nil {
-			return nil, nil, fmt.Errorf("failed to apply option: %w", err)
-		}
+		opt(config)
 	}
 	return NewClient(ctx, config)
 }
@@ -145,8 +144,15 @@ func buildClientConfig(config *Config) clientcmd.ClientConfig {
 	)
 }
 
+// serviceAccountNamespaceFile is the standard location of the namespace file
+// mounted into Kubernetes pods.
+const serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
 // inClusterClientConfig implements clientcmd.ClientConfig for in-cluster usage.
-type inClusterClientConfig struct{}
+type inClusterClientConfig struct {
+	// namespaceFile overrides the service account namespace file location (test hook).
+	namespaceFile string
+}
 
 func (c *inClusterClientConfig) RawConfig() (clientcmdapi.Config, error) {
 	return clientcmdapi.Config{}, fmt.Errorf("RawConfig not supported for in-cluster config")
@@ -168,11 +174,15 @@ func (c *inClusterClientConfig) ClientConfig() (*rest.Config, error) {
 
 func (c *inClusterClientConfig) Namespace() (string, bool, error) {
 	// Read namespace from the same location that Kubernetes uses
-	namespaceBytes, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	path := c.namespaceFile
+	if path == "" {
+		path = serviceAccountNamespaceFile
+	}
+	namespaceBytes, err := os.ReadFile(path)
 	if err != nil {
 		return "default", false, err
 	}
-	return string(namespaceBytes), true, nil
+	return strings.TrimSpace(string(namespaceBytes)), true, nil
 }
 
 func (c *inClusterClientConfig) ConfigAccess() clientcmd.ConfigAccess {

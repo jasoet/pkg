@@ -5,7 +5,7 @@ import (
 )
 
 // Option is a functional option for configuring Argo client.
-type Option func(*Config) error
+type Option func(*Config)
 
 // WithKubeConfig sets the path to the kubeconfig file.
 // If not set, the default location (~/.kube/config) will be used.
@@ -16,9 +16,8 @@ type Option func(*Config) error
 //	    argo.WithKubeConfig("/custom/path/to/kubeconfig"),
 //	)
 func WithKubeConfig(path string) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.KubeConfigPath = path
-		return nil
 	}
 }
 
@@ -31,9 +30,8 @@ func WithKubeConfig(path string) Option {
 //	    argo.WithContext("production"),
 //	)
 func WithContext(context string) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.Context = context
-		return nil
 	}
 }
 
@@ -47,9 +45,8 @@ func WithContext(context string) Option {
 //	    argo.WithInCluster(true),
 //	)
 func WithInCluster(inCluster bool) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.InCluster = inCluster
-		return nil
 	}
 }
 
@@ -62,10 +59,9 @@ func WithInCluster(inCluster bool) Option {
 //	    argo.WithArgoServer("https://argo-server:2746", "Bearer token"),
 //	)
 func WithArgoServer(url, authToken string) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.ArgoServerOpts.URL = url
 		c.ArgoServerOpts.AuthToken = authToken
-		return nil
 	}
 }
 
@@ -80,9 +76,8 @@ func WithArgoServer(url, authToken string) Option {
 //	    argo.WithArgoServerInsecure(true),
 //	)
 func WithArgoServerInsecure(insecure bool) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.ArgoServerOpts.InsecureSkipVerify = insecure
-		return nil
 	}
 }
 
@@ -96,9 +91,8 @@ func WithArgoServerInsecure(insecure bool) Option {
 //	    argo.WithArgoServerHTTP1(true),
 //	)
 func WithArgoServerHTTP1(http1 bool) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.ArgoServerOpts.HTTP1 = http1
-		return nil
 	}
 }
 
@@ -115,9 +109,8 @@ func WithArgoServerHTTP1(http1 bool) Option {
 //	    argo.WithOTelConfig(otelConfig),
 //	)
 func WithOTelConfig(otelConfig *otel.Config) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.OTelConfig = otelConfig
-		return nil
 	}
 }
 
@@ -137,9 +130,8 @@ func WithOTelConfig(otelConfig *otel.Config) Option {
 //	    argo.WithArgoServerOpts(serverOpts),
 //	)
 func WithArgoServerOpts(opts ServerOpts) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		c.ArgoServerOpts = opts
-		return nil
 	}
 }
 
@@ -161,8 +153,7 @@ func WithArgoServerOpts(opts ServerOpts) Option {
 //	    argo.WithConfig(config),
 //	)
 func WithConfig(config *Config) Option {
-	return func(c *Config) error {
+	return func(c *Config) {
 		*c = *config
-		return nil
 	}
 }

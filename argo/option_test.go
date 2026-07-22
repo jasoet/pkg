@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/jasoet/pkg/v3/otel"
 )
@@ -13,9 +12,8 @@ func TestWithKubeConfig(t *testing.T) {
 	config := &Config{}
 	path := "/custom/path/to/kubeconfig"
 
-	err := WithKubeConfig(path)(config)
+	WithKubeConfig(path)(config)
 
-	require.NoError(t, err)
 	assert.Equal(t, path, config.KubeConfigPath)
 }
 
@@ -23,9 +21,8 @@ func TestWithContext(t *testing.T) {
 	config := &Config{}
 	contextName := "production"
 
-	err := WithContext(contextName)(config)
+	WithContext(contextName)(config)
 
-	require.NoError(t, err)
 	assert.Equal(t, contextName, config.Context)
 }
 
@@ -42,9 +39,8 @@ func TestWithInCluster(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &Config{}
 
-			err := WithInCluster(tt.inCluster)(config)
+			WithInCluster(tt.inCluster)(config)
 
-			require.NoError(t, err)
 			assert.Equal(t, tt.inCluster, config.InCluster)
 		})
 	}
@@ -55,9 +51,8 @@ func TestWithArgoServer(t *testing.T) {
 	url := "https://argo-server:2746"
 	token := "Bearer test-token"
 
-	err := WithArgoServer(url, token)(config)
+	WithArgoServer(url, token)(config)
 
-	require.NoError(t, err)
 	assert.Equal(t, url, config.ArgoServerOpts.URL)
 	assert.Equal(t, token, config.ArgoServerOpts.AuthToken)
 }
@@ -75,9 +70,8 @@ func TestWithArgoServerInsecure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &Config{}
 
-			err := WithArgoServerInsecure(tt.insecure)(config)
+			WithArgoServerInsecure(tt.insecure)(config)
 
-			require.NoError(t, err)
 			assert.Equal(t, tt.insecure, config.ArgoServerOpts.InsecureSkipVerify)
 		})
 	}
@@ -96,9 +90,8 @@ func TestWithArgoServerHTTP1(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &Config{}
 
-			err := WithArgoServerHTTP1(tt.http1)(config)
+			WithArgoServerHTTP1(tt.http1)(config)
 
-			require.NoError(t, err)
 			assert.Equal(t, tt.http1, config.ArgoServerOpts.HTTP1)
 		})
 	}
@@ -108,9 +101,8 @@ func TestWithOTelConfig(t *testing.T) {
 	config := &Config{}
 	otelConfig := otel.NewConfig("test-service")
 
-	err := WithOTelConfig(otelConfig)(config)
+	WithOTelConfig(otelConfig)(config)
 
-	require.NoError(t, err)
 	assert.NotNil(t, config.OTelConfig)
 	assert.Equal(t, otelConfig, config.OTelConfig)
 }
@@ -124,9 +116,8 @@ func TestWithArgoServerOpts(t *testing.T) {
 		HTTP1:              true,
 	}
 
-	err := WithArgoServerOpts(serverOpts)(config)
+	WithArgoServerOpts(serverOpts)(config)
 
-	require.NoError(t, err)
 	assert.Equal(t, serverOpts, config.ArgoServerOpts)
 	assert.Equal(t, serverOpts.URL, config.ArgoServerOpts.URL)
 	assert.Equal(t, serverOpts.AuthToken, config.ArgoServerOpts.AuthToken)
@@ -146,9 +137,8 @@ func TestWithConfig(t *testing.T) {
 		},
 	}
 
-	err := WithConfig(newConfig)(config)
+	WithConfig(newConfig)(config)
 
-	require.NoError(t, err)
 	assert.Equal(t, newConfig.KubeConfigPath, config.KubeConfigPath)
 	assert.Equal(t, newConfig.Context, config.Context)
 	assert.Equal(t, newConfig.InCluster, config.InCluster)
@@ -158,14 +148,9 @@ func TestWithConfig(t *testing.T) {
 func TestMultipleOptions(t *testing.T) {
 	config := &Config{}
 
-	err := WithKubeConfig("/path/to/kubeconfig")(config)
-	require.NoError(t, err)
-
-	err = WithContext("production")(config)
-	require.NoError(t, err)
-
-	err = WithInCluster(false)(config)
-	require.NoError(t, err)
+	WithKubeConfig("/path/to/kubeconfig")(config)
+	WithContext("production")(config)
+	WithInCluster(false)(config)
 
 	assert.Equal(t, "/path/to/kubeconfig", config.KubeConfigPath)
 	assert.Equal(t, "production", config.Context)
@@ -184,8 +169,7 @@ func TestChainingOptions(t *testing.T) {
 	}
 
 	for _, opt := range opts {
-		err := opt(config)
-		require.NoError(t, err)
+		opt(config)
 	}
 
 	assert.Equal(t, "/custom/kubeconfig", config.KubeConfigPath)

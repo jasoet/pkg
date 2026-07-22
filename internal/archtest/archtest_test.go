@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/jasoet/pkg/v3/argo"
 	"github.com/jasoet/pkg/v3/db"
 	"github.com/jasoet/pkg/v3/docker"
 	"github.com/jasoet/pkg/v3/otel"
@@ -18,6 +19,7 @@ import (
 // OTelConfig *otel.Config field tagged `yaml:"-" mapstructure:"-"`.
 // Add a package here when it is unified onto the v3 conventions.
 var compliantConfigs = map[string]reflect.Type{
+	"argo":     reflect.TypeOf(argo.Config{}),
 	"db":       reflect.TypeOf(db.ConnectionConfig{}),
 	"docker":   reflect.TypeOf(docker.ContainerRequest{}),
 	"rest":     reflect.TypeOf(rest.Config{}),
