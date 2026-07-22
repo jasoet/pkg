@@ -402,8 +402,10 @@ func (s *Server) Stop() error {
 		}
 
 		// Stop gRPC server
-		if s.grpcServer != nil {
-			grpcServer := s.grpcServer
+		s.mu.RLock()
+		grpcServer := s.grpcServer
+		s.mu.RUnlock()
+		if grpcServer != nil {
 			done := make(chan struct{})
 			go func() {
 				grpcServer.GracefulStop()
