@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/docker/go-connections/nat"
 )
 
 // Host returns the container host address.
@@ -188,61 +186,4 @@ func (e *Executor) ConnectionString(ctx context.Context, containerPort, template
 	}
 
 	return strings.ReplaceAll(template, "{{endpoint}}", endpoint), nil
-}
-
-// NatPort is a helper to create a nat.Port from a string.
-// Port format: "8080/tcp", "8080/udp", or "8080" (defaults to tcp).
-// This is useful when working with Docker API types directly.
-func NatPort(port string) (nat.Port, error) {
-	if !strings.Contains(port, "/") {
-		port = port + "/tcp"
-	}
-	parts := strings.SplitN(port, "/", 2)
-	return nat.NewPort(parts[1], parts[0])
-}
-
-// PortBindings is a helper to create port bindings from a map.
-// This is useful for programmatically building port configurations.
-//
-// Example:
-//
-//	bindings := docker.PortBindings(map[string]string{
-//	    "80/tcp": "8080",
-//	    "443/tcp": "8443",
-//	})
-func PortBindings(ports map[string]string) (nat.PortMap, error) {
-	portMap := make(nat.PortMap)
-
-	for containerPort, hostPort := range ports {
-		natPort, err := NatPort(containerPort)
-		if err != nil {
-			return nil, fmt.Errorf("invalid container port %s: %w", containerPort, err)
-		}
-
-		portMap[natPort] = []nat.PortBinding{
-			{HostPort: hostPort},
-		}
-	}
-
-	return portMap, nil
-}
-
-// ExposedPorts creates a nat.PortSet from a slice of port strings.
-// This is useful for programmatically building exposed ports.
-//
-// Example:
-//
-//	ports := docker.ExposedPorts([]string{"80/tcp", "443/tcp"})
-func ExposedPorts(ports []string) (nat.PortSet, error) {
-	portSet := make(nat.PortSet)
-
-	for _, port := range ports {
-		natPort, err := NatPort(port)
-		if err != nil {
-			return nil, fmt.Errorf("invalid port %s: %w", port, err)
-		}
-		portSet[natPort] = struct{}{}
-	}
-
-	return portSet, nil
 }

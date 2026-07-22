@@ -437,7 +437,7 @@ stats, err := exec.GetStats(ctx)
 
 ```go
 err := exec.WaitForState(ctx, "running", 30*time.Second)
-err := exec.WaitForHealthy(ctx, 60*time.Second)
+err := exec.WaitHealthy(ctx, 60*time.Second)
 ```
 
 ## Network Helpers

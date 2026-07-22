@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -411,42 +410,4 @@ func TestHybridConfig(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, exec)
-}
-
-func TestNetworkHelpers_NatPort(t *testing.T) {
-	// Port number only — defaults to tcp
-	port, err := docker.NatPort("8080")
-	require.NoError(t, err)
-	assert.Equal(t, nat.Port("8080/tcp"), port)
-
-	// Explicit tcp protocol
-	port, err = docker.NatPort("8080/tcp")
-	require.NoError(t, err)
-	assert.Equal(t, nat.Port("8080/tcp"), port)
-
-	// UDP protocol must be preserved (C5 fix)
-	port, err = docker.NatPort("8080/udp")
-	require.NoError(t, err)
-	assert.Equal(t, nat.Port("8080/udp"), port)
-}
-
-func TestNetworkHelpers_PortBindings(t *testing.T) {
-	bindings, err := docker.PortBindings(map[string]string{
-		"80/tcp":  "8080",
-		"443/tcp": "8443",
-		"9000":    "9000",
-	})
-	require.NoError(t, err)
-	assert.Len(t, bindings, 3)
-}
-
-func TestNetworkHelpers_ExposedPorts(t *testing.T) {
-	ports, err := docker.ExposedPorts([]string{"80/tcp", "443/tcp", "9000"})
-	require.NoError(t, err)
-	assert.Len(t, ports, 3)
-}
-
-func TestNetworkHelpers_InvalidPort(t *testing.T) {
-	_, err := docker.NatPort("invalid")
-	assert.Error(t, err)
 }

@@ -89,7 +89,7 @@ type ContainerRequest struct {
 	Timeout time.Duration
 
 	// OTelConfig enables OpenTelemetry instrumentation (optional)
-	OTelConfig *otel.Config
+	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
 }
 
 // config is the internal configuration used by the executor.

@@ -20,6 +20,10 @@ type ContainerState struct {
 // ContainerTarget is the runtime surface a WaitStrategy can inspect.
 // It wraps the Docker client and container ID internally so that
 // strategies never need to import the docker client.
+//
+// A ContainerTarget is only usable when constructed by the Executor
+// (as passed to WaitStrategy.Wait). The zero value holds a nil client
+// and will panic on Logs and State.
 type ContainerTarget struct {
 	cli         *client.Client
 	containerID string
@@ -47,25 +51,36 @@ func (t ContainerTarget) Logs(ctx context.Context) (io.ReadCloser, error) {
 }
 
 // State inspects the container and projects the result into a ContainerState.
+//
+// A nil inspect.State is treated as an error: it indicates an abnormal
+// inspect response, and strategies polling for Running/HealthStatus would
+// otherwise spin on a meaningless zero state until timeout. A nil
+// NetworkSettings is tolerated (e.g., containers without networking) and
+// yields an empty Ports map.
 func (t ContainerTarget) State(ctx context.Context) (ContainerState, error) {
 	inspect, err := t.cli.ContainerInspect(ctx, t.containerID)
 	if err != nil {
 		return ContainerState{}, fmt.Errorf("failed to inspect container: %w", err)
 	}
+	if inspect.State == nil {
+		return ContainerState{}, fmt.Errorf("container %s: inspect returned no state", t.containerID)
+	}
 
 	state := ContainerState{
 		Running: inspect.State.Running,
-		Ports:   make(map[string][]string, len(inspect.NetworkSettings.Ports)),
+		Ports:   make(map[string][]string),
 	}
 	if inspect.State.Health != nil {
 		state.HealthStatus = inspect.State.Health.Status
 	}
-	for containerPort, bindings := range inspect.NetworkSettings.Ports {
-		hostPorts := make([]string, 0, len(bindings))
-		for _, binding := range bindings {
-			hostPorts = append(hostPorts, binding.HostPort)
+	if inspect.NetworkSettings != nil {
+		for containerPort, bindings := range inspect.NetworkSettings.Ports {
+			hostPorts := make([]string, 0, len(bindings))
+			for _, binding := range bindings {
+				hostPorts = append(hostPorts, binding.HostPort)
+			}
+			state.Ports[string(containerPort)] = hostPorts
 		}
-		state.Ports[string(containerPort)] = hostPorts
 	}
 	return state, nil
 }

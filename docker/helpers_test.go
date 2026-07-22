@@ -420,7 +420,7 @@ func TestStatus_WaitForHealthyNotConfigured(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	err = exec.WaitForHealthy(ctx, 5*time.Second)
+	err = exec.WaitHealthy(ctx, 5*time.Second)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
 }

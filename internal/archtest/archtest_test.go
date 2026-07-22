@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jasoet/pkg/v3/db"
+	"github.com/jasoet/pkg/v3/docker"
 	"github.com/jasoet/pkg/v3/otel"
 	"github.com/jasoet/pkg/v3/rest"
 	"github.com/jasoet/pkg/v3/retry"
@@ -17,6 +18,7 @@ import (
 // Add a package here when it is unified onto the v3 conventions.
 var compliantConfigs = map[string]reflect.Type{
 	"db":       reflect.TypeOf(db.ConnectionConfig{}),
+	"docker":   reflect.TypeOf(docker.ContainerRequest{}),
 	"rest":     reflect.TypeOf(rest.Config{}),
 	"retry":    reflect.TypeOf(retry.Config{}),
 	"server":   reflect.TypeOf(server.Config{}),

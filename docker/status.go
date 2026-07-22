@@ -221,9 +221,9 @@ func (e *Executor) WaitForState(ctx context.Context, targetState string, timeout
 	}
 }
 
-// WaitForHealthy waits for the container to become healthy.
+// WaitHealthy waits for the container to become healthy.
 // Returns an error if the container doesn't have health checks configured.
-func (e *Executor) WaitForHealthy(ctx context.Context, timeout time.Duration) error {
+func (e *Executor) WaitHealthy(ctx context.Context, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
