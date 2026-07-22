@@ -1,6 +1,14 @@
 {
   "branches": [
-    "main"
+    "main",
+    {
+      "name": "next",
+      "prerelease": true
+    },
+    {
+      "name": "release/v2",
+      "range": "2.13.x"
+    }
   ],
   "plugins": [
     [
