@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jasoet/pkg/v3/logging"
+	"github.com/jasoet/pkg/v3/otel"
 	"github.com/jasoet/pkg/v3/rest"
 	"github.com/rs/zerolog"
 )
@@ -79,7 +79,7 @@ func (m *MetricsMiddleware) GetStats() (int, time.Duration) {
 
 func main() {
 	// Initialize logging
-	if err := logging.Initialize("rest-examples", true); err != nil {
+	if err := otel.Initialize("rest-examples", true); err != nil {
 		fmt.Printf("Failed to initialize logging: %v\n", err)
 		return
 	}
@@ -597,7 +597,7 @@ func integrationExample() {
 	ctx := context.Background()
 
 	// Integration with logging package
-	logger := logging.ContextLogger(ctx, "api-integration")
+	logger := otel.ContextLogger(ctx, "api-integration")
 
 	logger.Info().Msg("Starting API integration example")
 

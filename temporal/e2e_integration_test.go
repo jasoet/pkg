@@ -16,7 +16,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/jasoet/pkg/v3/logging"
+	"github.com/jasoet/pkg/v3/otel"
 	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
@@ -256,7 +256,7 @@ type OrderResult struct {
 // E2E Integration Tests
 func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	// Initialize logging for integration tests
-	err := logging.Initialize("temporal-integration-test", true)
+	err := otel.Initialize("temporal-integration-test", true)
 	require.NoError(t, err, "Failed to initialize logging")
 
 	ctx := context.Background()
@@ -459,7 +459,7 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 }
 
 func TestE2ETemporalIntegration(t *testing.T) {
-	err := logging.Initialize("temporal-full-integration", true)
+	err := otel.Initialize("temporal-full-integration", true)
 	require.NoError(t, err, "Failed to initialize logging")
 
 	ctx := context.Background()

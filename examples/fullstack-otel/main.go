@@ -12,7 +12,6 @@ import (
 	"github.com/jasoet/fullstack-otel-example/proto"
 	"github.com/jasoet/pkg/v3/db"
 	grpcserver "github.com/jasoet/pkg/v3/grpc"
-	"github.com/jasoet/pkg/v3/logging"
 	"github.com/jasoet/pkg/v3/otel"
 	"github.com/jasoet/pkg/v3/rest"
 	"go.opentelemetry.io/otel/attribute"
@@ -164,7 +163,12 @@ func main() {
 	)
 
 	// LoggerProvider with zerolog backend (automatic trace correlation)
-	loggerProvider := logging.NewLoggerProvider("fullstack-example", true)
+	loggerProvider, err := otel.NewLoggerProviderWithOptions("fullstack-example",
+		otel.WithLogLevel(otel.LogLevelDebug),
+		otel.WithConsoleOutput(true))
+	if err != nil {
+		log.Fatalf("Failed to create logger provider: %v", err)
+	}
 
 	// Create OTel config
 	otelCfg := &otel.Config{

@@ -9,7 +9,6 @@ import (
 	"github.com/jasoet/pkg/v3/argo"
 	"github.com/jasoet/pkg/v3/argo/builder"
 	"github.com/jasoet/pkg/v3/argo/builder/template"
-	"github.com/jasoet/pkg/v3/logging"
 	"github.com/jasoet/pkg/v3/otel"
 	"github.com/rs/zerolog/log"
 )
@@ -18,7 +17,7 @@ import (
 // Argo Workflows with full OpenTelemetry instrumentation.
 func main() {
 	// Initialize logging
-	if err := logging.Initialize("argo-builder-example", false); err != nil {
+	if err := otel.Initialize("argo-builder-example", false); err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize logging")
 	}
 	log.Info().Msg("Starting Argo Workflow Builder example")

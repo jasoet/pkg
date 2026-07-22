@@ -11,7 +11,6 @@ import (
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient/workflow"
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	"github.com/jasoet/pkg/v3/argo"
-	"github.com/jasoet/pkg/v3/logging"
 	"github.com/jasoet/pkg/v3/otel"
 	"github.com/rs/zerolog/log"
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +19,7 @@ import (
 
 func main() {
 	// Initialize logging
-	if err := logging.Initialize("argo-example", false); err != nil {
+	if err := otel.Initialize("argo-example", false); err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize logging")
 	}
 	log.Info().Msg("Starting Argo Workflows client example")
