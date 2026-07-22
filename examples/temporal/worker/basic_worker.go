@@ -250,7 +250,7 @@ func RunGracefulShutdownWorker() error {
 // package main
 //
 // import (
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal/examples/worker"
+//     "myapp/internal/temporal"
 //     "github.com/rs/zerolog/log"
 // )
 //

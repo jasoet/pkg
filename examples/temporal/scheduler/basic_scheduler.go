@@ -340,7 +340,7 @@ func RunMultiScheduleManager() error {
 // package main
 //
 // import (
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal/examples/scheduler"
+//     "myapp/internal/temporal"
 //     "github.com/rs/zerolog/log"
 // )
 //

@@ -89,7 +89,7 @@ func SimpleWorkflowWithParams(ctx workflow.Context, name string) (string, error)
 // import (
 //     "context"
 //     "github.com/rs/zerolog/log"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal"
+//     "github.com/jasoet/pkg/v3/temporal"
 //     "go.temporal.io/sdk/client"
 // )
 //

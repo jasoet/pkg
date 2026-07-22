@@ -203,8 +203,8 @@ func ScheduledWorkflow(ctx workflow.Context) (string, error) {
 //     "context"
 //     "time"
 //     "github.com/rs/zerolog/log"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal/examples/activities"
+//     "github.com/jasoet/pkg/v3/temporal"
+//     "github.com/jasoet/pkg/v3/temporal"
 //     "go.temporal.io/sdk/client"
 // )
 //
