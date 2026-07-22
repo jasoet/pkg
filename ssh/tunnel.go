@@ -43,6 +43,17 @@ type Config struct {
 
 	// Optional flag to disable host key checking (NOT recommended for production)
 	InsecureIgnoreHostKey bool `yaml:"insecureIgnoreHostKey" mapstructure:"insecureIgnoreHostKey"`
+
+	// OTelConfig enables OpenTelemetry instrumentation (optional)
+	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
+}
+
+// Option configures a Config during construction.
+type Option func(*Config)
+
+// WithOTelConfig sets the OpenTelemetry configuration.
+func WithOTelConfig(cfg *otel.Config) Option {
+	return func(c *Config) { c.OTelConfig = cfg }
 }
 
 // Tunnel represents an SSH tunnel that forwards traffic from a local port to a remote endpoint
@@ -56,10 +67,14 @@ type Tunnel struct {
 }
 
 // New creates a new SSH tunnel with the given configuration
-func New(config Config) *Tunnel {
+func New(config Config, opts ...Option) *Tunnel {
 	// Set default timeout if not specified
 	if config.Timeout == 0 {
 		config.Timeout = 5 * time.Second
+	}
+
+	for _, opt := range opts {
+		opt(&config)
 	}
 
 	return &Tunnel{
@@ -127,41 +142,45 @@ func (t *Tunnel) getAuthMethods() ([]ssh.AuthMethod, error) {
 // Start establishes the SSH connection and begins forwarding traffic.
 // The provided ctx is used for logger creation and SSH dial operations.
 func (t *Tunnel) Start(ctx context.Context) error {
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	lc := otel.Layers.StartOperations(ctx, "ssh", "Start")
+	defer lc.End()
+
 	t.mu.Lock()
 	if t.client != nil {
 		t.mu.Unlock()
-		return fmt.Errorf("tunnel already started")
+		return lc.Error(fmt.Errorf("tunnel already started"), "tunnel already started")
 	}
 	t.stopCh = make(chan struct{})
 	t.mu.Unlock()
 
 	// Input validation
 	if t.config.Host == "" {
-		return fmt.Errorf("SSH host is required")
+		return lc.Error(fmt.Errorf("SSH host is required"), "invalid configuration")
 	}
 	if t.config.Port <= 0 || t.config.Port > 65535 {
-		return fmt.Errorf("invalid SSH port: %d", t.config.Port)
+		return lc.Error(fmt.Errorf("invalid SSH port: %d", t.config.Port), "invalid configuration")
 	}
 	if t.config.User == "" {
-		return fmt.Errorf("SSH user is required")
+		return lc.Error(fmt.Errorf("SSH user is required"), "invalid configuration")
 	}
 	if t.config.RemoteHost == "" {
-		return fmt.Errorf("remote host is required")
+		return lc.Error(fmt.Errorf("remote host is required"), "invalid configuration")
 	}
 	if t.config.RemotePort <= 0 || t.config.RemotePort > 65535 {
-		return fmt.Errorf("invalid remote port: %d", t.config.RemotePort)
+		return lc.Error(fmt.Errorf("invalid remote port: %d", t.config.RemotePort), "invalid configuration")
 	}
-
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.Start")
 
 	hostKeyCallback, err := t.getHostKeyCallback()
 	if err != nil {
-		return fmt.Errorf("host key callback error: %w", err)
+		return lc.Error(fmt.Errorf("host key callback error: %w", err), "host key callback failed")
 	}
 
 	authMethods, err := t.getAuthMethods()
 	if err != nil {
-		return fmt.Errorf("authentication error: %w", err)
+		return lc.Error(fmt.Errorf("authentication error: %w", err), "authentication setup failed")
 	}
 
 	sshConfig := &ssh.ClientConfig{
@@ -172,15 +191,15 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	}
 
 	if t.config.InsecureIgnoreHostKey {
-		logger.Warn("InsecureIgnoreHostKey is enabled - SSH host key verification is disabled")
+		lc.Logger.Warn("InsecureIgnoreHostKey is enabled - SSH host key verification is disabled")
 	}
 
 	serverEndpoint := fmt.Sprintf("%s:%d", t.config.Host, t.config.Port)
-	logger.Debug("Connecting to SSH server", otel.F("endpoint", serverEndpoint))
+	lc.Logger.Debug("Connecting to SSH server", otel.F("endpoint", serverEndpoint))
 
 	client, err := ssh.Dial("tcp", serverEndpoint, sshConfig)
 	if err != nil {
-		return fmt.Errorf("SSH dial error: %w", err)
+		return lc.Error(fmt.Errorf("SSH dial error: %w", err), "SSH dial failed")
 	}
 
 	t.mu.Lock()
@@ -196,14 +215,14 @@ func (t *Tunnel) Start(ctx context.Context) error {
 		t.client = nil
 		t.mu.Unlock()
 		_ = client.Close()
-		return fmt.Errorf("local listen error: %w", err)
+		return lc.Error(fmt.Errorf("local listen error: %w", err), "local listen failed")
 	}
 
 	t.mu.Lock()
 	t.listener = listener
 	t.mu.Unlock()
 
-	logger.Debug("SSH tunnel listening",
+	lc.Logger.Debug("SSH tunnel listening",
 		otel.F("local", localEndpoint),
 		otel.F("remote", remoteEndpoint))
 
@@ -226,6 +245,9 @@ func (t *Tunnel) Start(ctx context.Context) error {
 		}
 	}()
 
+	lc.Success("SSH tunnel ready",
+		otel.F("local", listener.Addr().String()),
+		otel.F("remote", remoteEndpoint))
 	return nil
 }
 
@@ -289,6 +311,13 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 
 // Close terminates the SSH connection and stops the tunnel
 func (t *Tunnel) Close() error {
+	ctx := context.Background()
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	lc := otel.Layers.StartOperations(ctx, "ssh", "Close")
+	defer lc.End()
+
 	t.mu.Lock()
 	if t.client == nil {
 		t.mu.Unlock()
@@ -313,5 +342,10 @@ func (t *Tunnel) Close() error {
 	t.mu.Unlock()
 
 	t.wg.Wait()
-	return client.Close()
+	if err := client.Close(); err != nil {
+		return lc.Error(fmt.Errorf("SSH client close error: %w", err), "failed to close SSH client")
+	}
+
+	lc.Success("SSH tunnel closed")
+	return nil
 }

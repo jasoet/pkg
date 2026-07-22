@@ -7,6 +7,7 @@ import (
 	"github.com/jasoet/pkg/v3/rest"
 	"github.com/jasoet/pkg/v3/retry"
 	"github.com/jasoet/pkg/v3/server"
+	"github.com/jasoet/pkg/v3/ssh"
 )
 
 // Compile-time contract: each compliant package exposes WithOTelConfig.
@@ -21,4 +22,5 @@ var (
 	_ func(*otel.Config) rest.ClientOption = rest.WithOTelConfig
 	_ func(*otel.Config) retry.Option      = retry.WithOTelConfig
 	_ func(*otel.Config) server.Option     = server.WithOTelConfig
+	_ func(*otel.Config) ssh.Option        = ssh.WithOTelConfig
 )

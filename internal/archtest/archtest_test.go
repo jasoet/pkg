@@ -10,6 +10,7 @@ import (
 	"github.com/jasoet/pkg/v3/rest"
 	"github.com/jasoet/pkg/v3/retry"
 	"github.com/jasoet/pkg/v3/server"
+	"github.com/jasoet/pkg/v3/ssh"
 	"github.com/jasoet/pkg/v3/temporal"
 )
 
@@ -22,6 +23,7 @@ var compliantConfigs = map[string]reflect.Type{
 	"rest":     reflect.TypeOf(rest.Config{}),
 	"retry":    reflect.TypeOf(retry.Config{}),
 	"server":   reflect.TypeOf(server.Config{}),
+	"ssh":      reflect.TypeOf(ssh.Config{}),
 	"temporal": reflect.TypeOf(temporal.Config{}),
 }
 
