@@ -230,3 +230,5 @@ temporal.db
 
 # Node.js (semantic-release)
 node_modules/
+# Superpowers workflow scratch (task briefs, reports, review diffs)
+.superpowers/
