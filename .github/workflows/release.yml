@@ -18,6 +18,9 @@ jobs:
       - name: Test
         run: nix develop --command go test -race -count=1 ./... -tags=!examples
 
+      - name: Integration tests
+        run: nix develop --command bash -c "go list ./... | grep -v examples | xargs go test -count=1 -tags=integration -timeout=20m"
+
   release:
     name: Release
     needs: test
