@@ -150,6 +150,8 @@ cfg, _ := config.LoadStringWithOptions[Config](`users: {admin: {name: bob}}`,
 
 Note: unlike the flat `ENV_` override mechanism (which overrides YAML), `WithNestedEnvVars` never overrides YAML keys.
 
+**Migrating from v2 `NestedEnvVars`:** `keyDepth` is now prefix-relative — subtract the number of prefix tokens from your old `keyDepth` value (e.g. old `2` with prefix `"MY_APP_"` becomes `1`; old `1` with prefix `"APP"` becomes `0`).
+
 ## Struct Tags
 
 Decoding is case-insensitive via mapstructure, so plain `yaml` tags (as used throughout these examples) are sufficient. Adding matching `mapstructure` tags is harmless but not required.

@@ -134,3 +134,6 @@ Enforced mechanically by `internal/archtest` (Phase 1).
 - **`.releaserc.json` headerPartial hardcodes `/v2`** in the `go get` line — must become `/v3` when the module path bumps.
 - **Per-commit gate misses build-tagged files.** task check compiles only untagged code; a tagged-only break (example/integration) slipped through Phase 3 Task 1. Remaining phases: include `go build -tags=example,integration ./...` in verification.
 - **Docs phase named checkbox:** sweep `examples/db/README.md` and `examples/rest/README.md` for deleted-logging references (lines ~38, ~392, ~499-504).
+- **Migration guide must note:** retry RandomizationFactor range widened from [0,1) to [0,1] (1.0 now valid); config keyDepth is prefix-relative (see config/README.md migration note).
+- **Post-v3 consideration:** seal config.Option (interface with unexported apply) to fully hide viper from godoc, or explicitly accept the leak; add archtest ratchet for third-party types in public signatures.
+- **Conventions doc:** constructor naming split — otel.NewConfig/server.NewConfig vs retry.New/grpc.New/docker.New. Pick one in the v3 conventions writeup.

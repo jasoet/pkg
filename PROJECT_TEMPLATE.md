@@ -313,10 +313,13 @@ Automatic via Viper: `APP_SERVER_PORT=9090` overrides `server.port`.
 For deeply nested structs, use:
 
 ```go
-// keyDepth is the index of the entity-name token in the underscore-split env key,
-// including prefix tokens. APP_DATABASE_USER_NAME → ["APP","DATABASE","USER","NAME"],
-// so keyDepth=1 treats "DATABASE" as the entity under config path "database".
-config.NestedEnvVars("APP", 1, "database", viperInstance)
+// keyDepth is prefix-relative: the prefix is stripped, then keyDepth indexes the
+// remaining underscore-split tokens. APP_DATABASE_USER_NAME → ["DATABASE","USER","NAME"],
+// so keyDepth=0 treats "DATABASE" as the entity under config path "database".
+cfg, err := config.LoadStringWithOptions[AppConfig](yamlContent,
+    config.WithEnvPrefix("APP"),
+    config.WithNestedEnvVars("APP", 0, "database"),
+)
 ```
 
 ### Layer 3: Runtime Functional Options
