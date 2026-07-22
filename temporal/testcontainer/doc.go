@@ -23,7 +23,7 @@
 //	    // Start container and create client
 //	    container, client, cleanup, err := testcontainer.Setup(
 //	        ctx,
-//	        temporal.DefaultConfig(),
+//	        testcontainer.ClientConfig{Namespace: "default"},
 //	        testcontainer.Options{Logger: t},
 //	    )
 //	    if err != nil {
@@ -54,10 +54,7 @@
 //	    defer container.Terminate(ctx)
 //
 //	    // Create client manually
-//	    config := temporal.DefaultConfig()
-//	    config.HostPort = container.HostPort()
-//
-//	    client, err := temporal.NewClient(config)
+//	    client, err := temporal.NewClient(temporal.WithHostPort(container.HostPort()))
 //	    if err != nil {
 //	        t.Fatalf("Failed to create client: %v", err)
 //	    }

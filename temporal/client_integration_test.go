@@ -29,12 +29,12 @@ func TestClientIntegration(t *testing.T) {
 
 	// Create config using container's address
 	config := &Config{
-		HostPort:             container.HostPort(),
-		Namespace:            "default",
+		HostPort:  container.HostPort(),
+		Namespace: "default",
 	}
 
 	t.Run("NewClient", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err, "Failed to create Temporal client")
 		require.NotNil(t, temporalClient, "Client should not be nil")
 		defer temporalClient.Close()
@@ -58,7 +58,7 @@ func TestClientIntegration(t *testing.T) {
 		}
 
 		// This should fail quickly since the host doesn't exist
-		temporalClient, err := NewClient(invalidConfig)
+		temporalClient, err := NewClient(WithConfig(*invalidConfig))
 		if err == nil && temporalClient != nil {
 			temporalClient.Close()
 		}
@@ -160,12 +160,12 @@ func TestClientConfig(t *testing.T) {
 
 	t.Run("CustomConfig", func(t *testing.T) {
 		config := &Config{
-			HostPort:             "custom-host:1234",
-			Namespace:            "custom-namespace",
+			HostPort:  "custom-host:1234",
+			Namespace: "custom-namespace",
 		}
 
 		// Should be able to create client with custom config (connection may fail)
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		if err == nil && temporalClient != nil {
 			temporalClient.Close()
 		}

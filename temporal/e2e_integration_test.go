@@ -274,11 +274,15 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
 
+	temporalClient, err := NewClient(WithConfig(*config))
+	require.NoError(t, err, "Failed to create Temporal client")
+	defer temporalClient.Close()
+
 	// wm is intentionally shared across subtests in this e2e suite. Each subtest
 	// registers its own task queue so there is no cross-subtest worker conflict.
-	wm, err := NewWorkerManager(config)
+	wm, err := NewWorkerManager(temporalClient)
 	require.NoError(t, err, "Failed to create WorkerManager")
-	defer wm.Close()
+	defer wm.Close(ctx)
 
 	taskQueue := "e2e-order-processing"
 
@@ -481,14 +485,14 @@ func TestE2ETemporalIntegration(t *testing.T) {
 		// Test the full Temporal stack integration
 
 		// 1. Create client
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err, "Failed to create Temporal client")
 		defer temporalClient.Close()
 
 		// 2. Create worker manager
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err, "Failed to create WorkerManager")
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		// 3. Create schedule manager
 		sm, err := NewScheduleManager(temporalClient)

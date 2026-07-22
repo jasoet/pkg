@@ -30,13 +30,19 @@ func RunBasicWorker() error {
 
 	// Step 1: Create a Temporal client
 	logger.Info().Msg("Creating Temporal client")
-	config := temporal.DefaultConfig()
-	workerManager, err := temporal.NewWorkerManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	workerManager, err := temporal.NewWorkerManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create worker manager")
 		return err
 	}
-	defer workerManager.Close()
+	defer workerManager.Close(context.Background())
 
 	// Step 2: Register a worker with the task queue
 	logger.Info().Str("taskQueue", TaskQueue).Msg("Registering worker")
@@ -87,13 +93,19 @@ func RunMultiTaskQueueWorker() error {
 
 	// Step 1: Create a Temporal client
 	logger.Info().Msg("Creating Temporal client")
-	config := temporal.DefaultConfig()
-	workerManager, err := temporal.NewWorkerManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	workerManager, err := temporal.NewWorkerManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create worker manager")
 		return err
 	}
-	defer workerManager.Close()
+	defer workerManager.Close(context.Background())
 
 	// Step 2: Register workers for different task queues
 	// Worker 1: For simple workflows
@@ -150,8 +162,14 @@ func RunGracefulShutdownWorker() error {
 
 	// Step 1: Create a Temporal client
 	logger.Info().Msg("Creating Temporal client")
-	config := temporal.DefaultConfig()
-	workerManager, err := temporal.NewWorkerManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	workerManager, err := temporal.NewWorkerManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create worker manager")
 		return err
@@ -209,7 +227,7 @@ func RunGracefulShutdownWorker() error {
 
 		// Close the worker manager
 		logger.Info().Msg("Closing worker manager")
-		workerManager.Close()
+		workerManager.Close(shutdownCtx)
 
 		// Signal that shutdown is complete
 		close(shutdownComplete)

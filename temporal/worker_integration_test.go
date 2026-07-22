@@ -106,20 +106,24 @@ func TestWorkerManager(t *testing.T) {
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
 
+	temporalClient, err := NewClient(WithConfig(*config))
+	require.NoError(t, err, "Failed to create Temporal client")
+	defer temporalClient.Close()
+
 	t.Run("CreateWorkerManager", func(t *testing.T) {
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err, "Failed to create WorkerManager")
 		require.NotNil(t, wm, "WorkerManager should not be nil")
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		assert.NotNil(t, wm.GetClient(), "Client should not be nil")
 		assert.Empty(t, wm.GetWorkers(), "Workers list should be empty initially")
 	})
 
 	t.Run("RegisterWorker", func(t *testing.T) {
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err)
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		taskQueue := "test-task-queue-register"
 		options := worker.Options{}
@@ -133,9 +137,9 @@ func TestWorkerManager(t *testing.T) {
 	})
 
 	t.Run("RegisterMultipleWorkers", func(t *testing.T) {
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err)
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		// Register multiple workers
 		w1 := wm.Register("queue-1", worker.Options{})
@@ -166,9 +170,13 @@ func TestWorkerWorkflowExecution(t *testing.T) {
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
 
-	wm, err := NewWorkerManager(config)
+	temporalClient, err := NewClient(WithConfig(*config))
 	require.NoError(t, err)
-	defer wm.Close()
+	defer temporalClient.Close()
+
+	wm, err := NewWorkerManager(temporalClient)
+	require.NoError(t, err)
+	defer wm.Close(ctx)
 
 	taskQueue := "test-workflow-execution"
 
@@ -298,10 +306,14 @@ func TestWorkerManagerLifecycle(t *testing.T) {
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
 
+	temporalClient, err := NewClient(WithConfig(*config))
+	require.NoError(t, err)
+	defer temporalClient.Close()
+
 	t.Run("StartAll", func(t *testing.T) {
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err)
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		// Register multiple workers
 		w1 := wm.Register("queue-1", worker.Options{})
@@ -323,13 +335,13 @@ func TestWorkerManagerLifecycle(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// Stop all workers via Close
-		wm.Close()
+		wm.Close(ctx)
 	})
 
 	t.Run("StartAllWithNoWorkers", func(t *testing.T) {
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err)
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		ctx := context.Background()
 		err = wm.StartAll(ctx)
@@ -337,11 +349,11 @@ func TestWorkerManagerLifecycle(t *testing.T) {
 	})
 
 	t.Run("CloseWithoutWorkers", func(t *testing.T) {
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err)
 
 		// Should not panic
-		wm.Close()
+		wm.Close(ctx)
 	})
 }
 
@@ -361,9 +373,13 @@ func TestWorkerConfiguration(t *testing.T) {
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
 
-	wm, err := NewWorkerManager(config)
+	temporalClient, err := NewClient(WithConfig(*config))
 	require.NoError(t, err)
-	defer wm.Close()
+	defer temporalClient.Close()
+
+	wm, err := NewWorkerManager(temporalClient)
+	require.NoError(t, err)
+	defer wm.Close(ctx)
 
 	t.Run("WorkerOptions", func(t *testing.T) {
 		options := worker.Options{

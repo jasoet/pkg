@@ -28,13 +28,19 @@ func RunIntervalScheduler() error {
 
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
-	config := temporal.DefaultConfig()
-	scheduleManager, err := temporal.NewScheduleManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	scheduleManager, err := temporal.NewScheduleManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create schedule manager")
 		return err
 	}
-	defer scheduleManager.Close()
+	defer scheduleManager.Close(context.Background())
 
 	// Step 2: Create an interval-based schedule
 	ctx := context.Background()
@@ -90,13 +96,19 @@ func RunCronScheduler() error {
 
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
-	config := temporal.DefaultConfig()
-	scheduleManager, err := temporal.NewScheduleManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	scheduleManager, err := temporal.NewScheduleManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create schedule manager")
 		return err
 	}
-	defer scheduleManager.Close()
+	defer scheduleManager.Close(context.Background())
 
 	// Step 2: Create a cron-based schedule
 	ctx := context.Background()
@@ -158,13 +170,19 @@ func RunOneTimeScheduler() error {
 
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
-	config := temporal.DefaultConfig()
-	scheduleManager, err := temporal.NewScheduleManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	scheduleManager, err := temporal.NewScheduleManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create schedule manager")
 		return err
 	}
-	defer scheduleManager.Close()
+	defer scheduleManager.Close(context.Background())
 
 	// Step 2: Create a one-time schedule
 	ctx := context.Background()
@@ -228,13 +246,19 @@ func RunMultiScheduleManager() error {
 
 	// Step 1: Create a Temporal client and schedule manager
 	logger.Info().Msg("Creating schedule manager")
-	config := temporal.DefaultConfig()
-	scheduleManager, err := temporal.NewScheduleManager(config)
+	temporalClient, err := temporal.NewClient()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create Temporal client")
+		return err
+	}
+	defer temporalClient.Close()
+
+	scheduleManager, err := temporal.NewScheduleManager(temporalClient)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create schedule manager")
 		return err
 	}
-	defer scheduleManager.Close()
+	defer scheduleManager.Close(context.Background())
 
 	// Step 2: Create multiple schedules
 	ctx := context.Background()

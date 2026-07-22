@@ -16,23 +16,23 @@ func NewZerologAdapter(logger zerolog.Logger) *ZerologAdapter {
 	}
 }
 
-func (z *ZerologAdapter) Debug(msg string, keyvals ...interface{}) {
+func (z *ZerologAdapter) Debug(msg string, keyvals ...any) {
 	z.log(z.logger.Debug(), msg, keyvals...)
 }
 
-func (z *ZerologAdapter) Info(msg string, keyvals ...interface{}) {
+func (z *ZerologAdapter) Info(msg string, keyvals ...any) {
 	z.log(z.logger.Info(), msg, keyvals...)
 }
 
-func (z *ZerologAdapter) Warn(msg string, keyvals ...interface{}) {
+func (z *ZerologAdapter) Warn(msg string, keyvals ...any) {
 	z.log(z.logger.Warn(), msg, keyvals...)
 }
 
-func (z *ZerologAdapter) Error(msg string, keyvals ...interface{}) {
+func (z *ZerologAdapter) Error(msg string, keyvals ...any) {
 	z.log(z.logger.Error(), msg, keyvals...)
 }
 
-func (z *ZerologAdapter) log(event *zerolog.Event, msg string, keyvals ...interface{}) {
+func (z *ZerologAdapter) log(event *zerolog.Event, msg string, keyvals ...any) {
 	// Process key-value pairs
 	for i := 0; i < len(keyvals); i += 2 {
 		if i+1 < len(keyvals) {
@@ -55,7 +55,7 @@ func (z *ZerologAdapter) WithCallerSkip(skip int) temporallog.Logger {
 	return NewZerologAdapter(newLogger)
 }
 
-func (z *ZerologAdapter) With(keyvals ...interface{}) temporallog.Logger {
+func (z *ZerologAdapter) With(keyvals ...any) temporallog.Logger {
 	ctx := z.logger.With()
 
 	for i := 0; i < len(keyvals); i += 2 {

@@ -12,9 +12,16 @@ import (
 	"github.com/jasoet/pkg/v3/otel"
 )
 
-func NewClient(config *Config) (client.Client, error) {
+// NewClient creates a Temporal client. It starts from DefaultConfig and
+// applies the given options in order.
+func NewClient(opts ...Option) (client.Client, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewClient")
+
+	config := DefaultConfig()
+	for _, opt := range opts {
+		opt(config)
+	}
 
 	logger.Debug("Creating new Temporal client",
 		otel.F("hostPort", config.HostPort),

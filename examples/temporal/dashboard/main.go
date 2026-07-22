@@ -20,12 +20,17 @@ func main() {
 		Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
 	}
 
-	// Create WorkflowManager
-	wm, err := temporal.NewWorkflowManager(config)
+	// Create client and WorkflowManager
+	temporalClient, err := temporal.NewClient(temporal.WithConfig(*config))
+	if err != nil {
+		log.Fatalf("Failed to create Temporal client: %v", err)
+	}
+	defer temporalClient.Close()
+
+	wm, err := temporal.NewWorkflowManagerWithNamespace(temporalClient, config.Namespace)
 	if err != nil {
 		log.Fatalf("Failed to create WorkflowManager: %v", err)
 	}
-	defer wm.Close()
 
 	fmt.Println("=== Temporal Workflow Dashboard ===")
 	fmt.Printf("Connected to: %s\n", config.HostPort)

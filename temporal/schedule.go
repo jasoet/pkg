@@ -21,60 +21,35 @@ type WorkflowScheduleOptions struct {
 
 type ScheduleManager struct {
 	client           client.Client
-	ownsClient       bool
 	mu               sync.RWMutex
 	scheduleHandlers map[string]client.ScheduleHandle
 }
 
-func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
+// NewScheduleManager creates a ScheduleManager using the provided client.
+// The caller retains ownership of the client and is responsible for closing
+// it; Close does not close the client.
+func NewScheduleManager(temporalClient client.Client) (*ScheduleManager, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewScheduleManager")
 
-	var temporalClient client.Client
-	var ownsClient bool
-
-	switch v := clientOrConfig.(type) {
-	case client.Client:
-		// If passed a client directly, use it (caller retains ownership)
-		temporalClient = v
-		ownsClient = false
-		logger.Debug("Using provided Temporal client for Schedule Manager")
-	case *Config:
-		// If passed a config, create a new client (we own it)
-		logger.Debug("Creating new Schedule Manager with config",
-			otel.F("hostPort", v.HostPort),
-			otel.F("namespace", v.Namespace))
-
-		var err error
-		temporalClient, err = NewClient(v)
-		if err != nil {
-			logger.Error(err, "Failed to create Temporal client for Schedule Manager")
-			return nil, fmt.Errorf("failed to create Temporal client: %w", err)
-		}
-		ownsClient = true
-	default:
-		return nil, fmt.Errorf("invalid argument type: expected client.Client or *Config")
+	if temporalClient == nil {
+		return nil, fmt.Errorf("temporal client must not be nil")
 	}
 
 	logger.Debug("Schedule Manager created successfully")
 	return &ScheduleManager{
 		client:           temporalClient,
-		ownsClient:       ownsClient,
 		scheduleHandlers: make(map[string]client.ScheduleHandle),
 	}, nil
 }
 
-func (sm *ScheduleManager) Close() {
-	ctx := context.Background()
+// Close closes the ScheduleManager. It does not close the Temporal client;
+// the caller owns the client and must close it. The ctx parameter is used for
+// logging only.
+func (sm *ScheduleManager) Close(ctx context.Context) {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.Close")
 
 	logger.Debug("Closing Schedule Manager")
-
-	if sm.ownsClient && sm.client != nil {
-		logger.Debug("Closing Temporal client")
-		sm.client.Close()
-	}
-
 	logger.Debug("Schedule Manager closed")
 }
 

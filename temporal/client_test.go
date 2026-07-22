@@ -56,7 +56,7 @@ func TestNewClient_NilOTelConfig(t *testing.T) {
 	}
 
 	// This may or may not error (Temporal client.Dial is lazy), but it must not panic
-	c, _ := NewClient(config)
+	c, _ := NewClient(WithConfig(*config))
 	if c != nil {
 		c.Close()
 	}
@@ -70,7 +70,7 @@ func TestNewClient_OTelConfigTracingDisabled(t *testing.T) {
 		OTelConfig: &otel.Config{},
 	}
 
-	c, _ := NewClient(config)
+	c, _ := NewClient(WithConfig(*config))
 	if c != nil {
 		c.Close()
 	}

@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"go.temporal.io/sdk/client"
@@ -16,29 +17,28 @@ type WorkerManager struct {
 	workers []worker.Worker
 }
 
-func NewWorkerManager(config *Config) (*WorkerManager, error) {
+// NewWorkerManager creates a WorkerManager using the provided client.
+// The caller retains ownership of the client and is responsible for closing
+// it; Close does not close the client.
+func NewWorkerManager(client client.Client) (*WorkerManager, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewWorkerManager")
 
-	logger.Debug("Creating new Worker Manager",
-		otel.F("hostPort", config.HostPort),
-		otel.F("namespace", config.Namespace))
-
-	temporalClient, err := NewClient(config)
-	if err != nil {
-		logger.Error(err, "Failed to create Temporal client for Worker Manager")
-		return nil, err
+	if client == nil {
+		return nil, fmt.Errorf("temporal client must not be nil")
 	}
 
-	logger.Debug("Worker Manager created successfully")
+	logger.Debug("Creating new Worker Manager")
 	return &WorkerManager{
-		client:  temporalClient,
+		client:  client,
 		workers: make([]worker.Worker, 0),
 	}, nil
 }
 
-func (wm *WorkerManager) Close() {
-	ctx := context.Background()
+// Close stops all registered workers. It does not close the Temporal client;
+// the caller owns the client and must close it. The ctx parameter is used for
+// logging only.
+func (wm *WorkerManager) Close(ctx context.Context) {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkerManager.Close")
 
 	wm.mu.RLock()
@@ -58,11 +58,6 @@ func (wm *WorkerManager) Close() {
 		logger.Debug("All workers stopped")
 	} else {
 		logger.Debug("No workers to stop")
-	}
-
-	if wm.client != nil {
-		logger.Debug("Closing Temporal client")
-		wm.client.Close()
 	}
 
 	logger.Debug("Worker Manager closed")
@@ -151,8 +146,8 @@ func (wm *WorkerManager) StartAll(ctx context.Context) error {
 	return nil
 }
 
-// GetClient returns the internal Temporal client. Callers must not close this
-// client independently; use Close() on the manager instead.
+// GetClient returns the Temporal client provided at construction. The client
+// is owned by the caller; Close does not close it.
 func (wm *WorkerManager) GetClient() client.Client {
 	return wm.client
 }

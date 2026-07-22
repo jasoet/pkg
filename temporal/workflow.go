@@ -17,9 +17,8 @@ import (
 
 // WorkflowManager provides workflow query and management operations
 type WorkflowManager struct {
-	client     client.Client
-	ownsClient bool
-	namespace  string
+	client    client.Client
+	namespace string
 }
 
 // WorkflowDetails contains detailed information about a workflow execution
@@ -56,74 +55,34 @@ func validateQueryParam(param string) error {
 	return nil
 }
 
-// NewWorkflowManagerWithNamespace creates a new WorkflowManager with an explicit
-// namespace when using an existing client.Client. When a *Config is passed the
-// namespace is taken from the config and the namespace parameter is ignored.
-func NewWorkflowManagerWithNamespace(clientOrConfig interface{}, namespace string) (*WorkflowManager, error) {
+// NewWorkflowManagerWithNamespace creates a new WorkflowManager with an
+// explicit namespace for the given client. The caller retains ownership of
+// the client and is responsible for closing it.
+func NewWorkflowManagerWithNamespace(client client.Client, namespace string) (*WorkflowManager, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewWorkflowManagerWithNamespace")
 
-	var temporalClient client.Client
-	var ownsClient bool
-
-	switch v := clientOrConfig.(type) {
-	case client.Client:
-		// If passed a client directly, use it (caller retains ownership)
-		temporalClient = v
-		ownsClient = false
-		logger.Debug("Using provided Temporal client for Workflow Manager", otel.F("namespace", namespace))
-	case *Config:
-		// If passed a config, create a new client (we own it)
-		namespace = v.Namespace
-		logger.Debug("Creating new Workflow Manager with config",
-			otel.F("hostPort", v.HostPort),
-			otel.F("namespace", namespace))
-
-		var err error
-		temporalClient, err = NewClient(v)
-		if err != nil {
-			logger.Error(err, "Failed to create Temporal client for Workflow Manager")
-			return nil, fmt.Errorf("create temporal client: %w", err)
-		}
-		ownsClient = true
-	default:
-		logger.Error(nil, "Invalid argument type for NewWorkflowManagerWithNamespace")
-		return nil, fmt.Errorf("invalid argument type: expected client.Client or *Config")
+	if client == nil {
+		return nil, fmt.Errorf("temporal client must not be nil")
 	}
 
-	logger.Debug("Workflow Manager created successfully")
+	logger.Debug("Workflow Manager created successfully", otel.F("namespace", namespace))
 	return &WorkflowManager{
-		client:     temporalClient,
-		ownsClient: ownsClient,
-		namespace:  namespace,
+		client:    client,
+		namespace: namespace,
 	}, nil
 }
 
-// NewWorkflowManager creates a new WorkflowManager instance.
-// Accepts either a client.Client or *Config.
-// When a client.Client is provided the namespace defaults to "default";
-// use NewWorkflowManagerWithNamespace to specify a different namespace.
-func NewWorkflowManager(clientOrConfig interface{}) (*WorkflowManager, error) {
-	return NewWorkflowManagerWithNamespace(clientOrConfig, "default")
+// NewWorkflowManager creates a new WorkflowManager instance using the
+// provided client with the "default" namespace; use
+// NewWorkflowManagerWithNamespace to specify a different namespace.
+// The caller retains ownership of the client and is responsible for closing it.
+func NewWorkflowManager(client client.Client) (*WorkflowManager, error) {
+	return NewWorkflowManagerWithNamespace(client, "default")
 }
 
-// Close closes the Workflow Manager and its client if it was created by the manager
-func (wm *WorkflowManager) Close() {
-	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.Close")
-
-	logger.Debug("Closing Workflow Manager")
-
-	if wm.ownsClient && wm.client != nil {
-		logger.Debug("Closing Temporal client")
-		wm.client.Close()
-	}
-
-	logger.Debug("Workflow Manager closed")
-}
-
-// GetClient returns the internal Temporal client. Callers must not close this
-// client independently; use Close() on the manager instead.
+// GetClient returns the Temporal client provided at construction. The client
+// is owned by the caller and must be closed by the caller.
 func (wm *WorkflowManager) GetClient() client.Client {
 	return wm.client
 }
@@ -299,7 +258,7 @@ func (wm *WorkflowManager) TerminateWorkflow(ctx context.Context, workflowID, ru
 }
 
 // SignalWorkflow sends a signal to a running workflow
-func (wm *WorkflowManager) SignalWorkflow(ctx context.Context, workflowID, runID, signalName string, arg interface{}) error {
+func (wm *WorkflowManager) SignalWorkflow(ctx context.Context, workflowID, runID, signalName string, arg any) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.SignalWorkflow")
 
 	logger.Debug("Signaling workflow",
@@ -322,7 +281,7 @@ func (wm *WorkflowManager) SignalWorkflow(ctx context.Context, workflowID, runID
 }
 
 // QueryWorkflow queries a running workflow for custom data
-func (wm *WorkflowManager) QueryWorkflow(ctx context.Context, workflowID, runID, queryType string, args ...interface{}) (interface{}, error) {
+func (wm *WorkflowManager) QueryWorkflow(ctx context.Context, workflowID, runID, queryType string, args ...any) (any, error) {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.QueryWorkflow")
 
 	logger.Debug("Querying workflow",
@@ -524,7 +483,7 @@ func (wm *WorkflowManager) GetRecentWorkflows(ctx context.Context, limit int) ([
 }
 
 // GetWorkflowResult retrieves the result of a completed workflow
-func (wm *WorkflowManager) GetWorkflowResult(ctx context.Context, workflowID, runID string, valuePtr interface{}) error {
+func (wm *WorkflowManager) GetWorkflowResult(ctx context.Context, workflowID, runID string, valuePtr any) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.GetWorkflowResult")
 
 	logger.Debug("Getting workflow result",

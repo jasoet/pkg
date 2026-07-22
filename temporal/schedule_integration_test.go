@@ -349,15 +349,19 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	config.HostPort = container.HostPort()
 
 	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {
-		sm, err := NewScheduleManager(config)
+		temporalClient, err := NewClient(WithConfig(*config))
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
 		require.NotNil(t, sm, "ScheduleManager created with config should not be nil")
 		assert.NotNil(t, sm.GetClient(), "Client should be created")
-		sm.Close()
+		sm.Close(ctx)
 	})
 
 	t.Run("NewScheduleManagerWithClient", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -367,14 +371,8 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 		assert.Equal(t, temporalClient, sm.GetClient(), "Client should match")
 	})
 
-	t.Run("NewScheduleManagerWithInvalidType", func(t *testing.T) {
-		sm, err := NewScheduleManager("invalid-type")
-		assert.Error(t, err, "Should return error for invalid type")
-		assert.Nil(t, sm, "ScheduleManager should be nil for invalid type")
-	})
-
 	t.Run("CreateScheduleWithOptions", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -413,7 +411,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("CreateWorkflowSchedule", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -447,7 +445,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteSchedules", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -492,7 +490,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteSchedulesWithEmpty", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -509,7 +507,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("GetScheduleHandlers", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -549,14 +547,18 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("CloseScheduleManager", func(t *testing.T) {
-		sm, err := NewScheduleManager(config)
+		temporalClient, err := NewClient(WithConfig(*config))
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
 		require.NotNil(t, sm)
 
 		// Should not panic
-		sm.Close()
+		sm.Close(ctx)
 
 		// Closing again should also be safe
-		sm.Close()
+		sm.Close(ctx)
 	})
 }

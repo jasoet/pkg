@@ -18,3 +18,34 @@ func DefaultConfig() *Config {
 		Namespace: "default",
 	}
 }
+
+// Option mutates a Config. Options are applied to DefaultConfig by NewClient.
+type Option func(*Config)
+
+// WithConfig replaces the entire configuration with c.
+func WithConfig(c Config) Option {
+	return func(cfg *Config) {
+		*cfg = c
+	}
+}
+
+// WithHostPort sets the Temporal frontend address (host:port).
+func WithHostPort(addr string) Option {
+	return func(cfg *Config) {
+		cfg.HostPort = addr
+	}
+}
+
+// WithNamespace sets the Temporal namespace.
+func WithNamespace(ns string) Option {
+	return func(cfg *Config) {
+		cfg.Namespace = ns
+	}
+}
+
+// WithOTelConfig attaches OTel tracing/metrics to the client.
+func WithOTelConfig(otelCfg *otel.Config) Option {
+	return func(cfg *Config) {
+		cfg.OTelConfig = otelCfg
+	}
+}
