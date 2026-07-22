@@ -143,3 +143,32 @@ func TestServerRestartAfterShutdownFails(t *testing.T) {
 	// Shutdown is idempotent: callback and drain run exactly once.
 	require.NoError(t, srv.Shutdown(ctx))
 }
+
+func TestServerShutdownBeforeStartIsNoOp(t *testing.T) {
+	var shutdownCalled atomic.Bool
+	srv, err := New(
+		WithPort(0),
+		WithShutdown(func(e *echo.Echo) { shutdownCalled.Store(true) }),
+	)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, srv.Shutdown(ctx), "Shutdown before Start must be a no-op")
+	assert.False(t, shutdownCalled.Load(), "Shutdown callback must not run before Start")
+
+	// Start must still work normally afterwards.
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
+	waitForAddr(t, srv)
+
+	require.NoError(t, srv.Shutdown(ctx))
+	assert.True(t, shutdownCalled.Load())
+
+	select {
+	case err := <-startErr:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after Shutdown")
+	}
+}

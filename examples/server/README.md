@@ -156,9 +156,9 @@ srv, _ = server.New(
 )
 
 // With full telemetry (traces + metrics + logs)
-otelCfg = otel.NewConfig("my-service").
-    WithTracerProvider(tp).
-    WithMeterProvider(mp)
+otelCfg = otel.NewConfig("my-service",
+    otel.WithTracerProvider(tp),
+    otel.WithMeterProvider(mp))
 srv, _ = server.New(
     server.WithPort(8080),
     server.WithOperation(operation),

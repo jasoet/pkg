@@ -16,9 +16,9 @@ import (
 const otelScope = "http.server"
 
 // otelTracingMiddleware creates Echo middleware that emits one server span per
-// request. The span is provisionally named by method; the final name
-// "{method} {route}" and the http.route attribute are set after the handler
-// runs, once Echo routing has resolved c.Path().
+// request. The span is provisionally named by method and renamed to
+// "{method} {route}" with the http.route attribute in a deferred block, so
+// unmatched routes (404s) are covered too.
 func otelTracingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc {
 	tracer := cfg.GetTracer(otelScope)
 

@@ -614,7 +614,7 @@ Builds a `Config` from functional options with sensible defaults (10s shutdown t
 ### Methods
 
 #### `(s *Server) Start() error`
-Binds the listener (so `Addr()` works with `Port: 0`), runs the `Operation` callback, and serves, blocking until `Shutdown` is called or serving fails. Returns `nil` on a clean shutdown (`http.ErrServerClosed` is filtered). Calling `Start` while already running returns an error. A stopped `Server` cannot be restarted — `Start` returns an error; create a new one with `New`.
+Runs the `Operation` callback first, then binds the listener and serves, blocking until `Shutdown` is called or serving fails. Because `Operation` runs before binding, `Addr()` returns `""` inside `Operation` — with `Port: 0` the OS-assigned port is only known after binding. Returns `nil` on a clean shutdown (`http.ErrServerClosed` is filtered). Calling `Start` while already running returns an error. A stopped `Server` cannot be restarted — `Start` returns an error; create a new one with `New`.
 
 #### `(s *Server) Shutdown(ctx context.Context) error`
 Invokes the `Shutdown` callback and drains the Echo server, honoring `ShutdownTimeout` on top of the caller's context (whichever deadline is earlier). Idempotent: the callback and drain run exactly once.

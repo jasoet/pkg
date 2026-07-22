@@ -129,8 +129,9 @@ func (s *Server) Echo() *echo.Echo {
 }
 
 // Addr returns the bound listener address (e.g. "[::]:8080"), or an empty
-// string if the server is not listening yet. With Port 0 this is how callers
-// discover the OS-assigned port once Start has bound the listener.
+// string if the server is not listening yet or has already shut down. With
+// Port 0 this is how callers discover the OS-assigned port once Start has
+// bound the listener.
 func (s *Server) Addr() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -140,8 +141,10 @@ func (s *Server) Addr() string {
 	return s.listener.Addr().String()
 }
 
-// Start binds the listener, runs the Operation callback, and serves HTTP,
-// blocking until Shutdown is called or serving fails. It returns nil on a
+// Start runs the Operation callback first, then binds the listener and serves
+// HTTP, blocking until Shutdown is called or serving fails. Because Operation
+// runs before binding, Addr() returns "" inside Operation (notably with Port 0
+// — the OS-assigned port is only known after binding). It returns nil on a
 // clean Shutdown (http.ErrServerClosed is filtered out). Calling Start while
 // the server is already running returns an error immediately. A stopped
 // Server cannot be restarted — create a new one with New.
@@ -193,7 +196,16 @@ func (s *Server) Start() error {
 // then drains the Echo server, honoring ShutdownTimeout (applied on top of the
 // caller's context, whichever deadline is earlier). Start returns nil once the
 // shutdown completes. Shutdown is idempotent: the callback runs exactly once.
+// Calling Shutdown on a server that was never started is a no-op and returns
+// nil, leaving the server free to Start later.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	neverStarted := !s.running && !s.stopped
+	s.mu.Unlock()
+	if neverStarted {
+		return nil
+	}
+
 	s.shutdownOnce.Do(func() {
 		s.mu.Lock()
 		s.stopped = true
@@ -245,9 +257,10 @@ func setupEcho(config Config) *echo.Echo {
 	}
 
 	// Register health-check routes (no generic "/" handler — library callers add their own routes).
-	// These routes are registered AFTER the user middleware above, so user middleware (including
-	// auth) applies to them. Callers that need unauthenticated Kubernetes probes must not register
-	// global auth middleware, or must exempt these paths themselves.
+	// Echo applies global middleware to ALL routes regardless of registration order, so user
+	// middleware (including auth) applies to these health routes too. Callers that need
+	// unauthenticated Kubernetes probes must not register global auth middleware, or must
+	// exempt these paths themselves.
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "UP"})
 	})

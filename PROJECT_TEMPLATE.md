@@ -969,7 +969,7 @@ The `server` package automatically registers:
 
 There is no built-in `GET /` handler — register your own routes via `EchoConfigurer`.
 
-**Note:** `server.Config` has an `OTelConfig` field (`yaml:"-" mapstructure:"-"`), used for OTel-based logging during startup/shutdown. Set it directly on the config or via `server.WithOTelConfig()`. HTTP request tracing is not added automatically — add tracing middleware through the `Middleware` slice or inside `EchoConfigurer`.
+**Note:** `server.Config` has an `OTelConfig` field (`yaml:"-" mapstructure:"-"`). Set it directly on the config or via `server.WithOTelConfig()`. When set, the server auto-installs OTel request instrumentation (instrumentation scope `http.server`): tracing spans named `{method} {route}` with attributes `http.request.method`, `url.full`, `http.response.status_code`, and `http.route`; plus metrics `http.server.request.count` and `http.server.request.duration` attributed by method and status code. See `server/README.md` for details.
 
 ---
 
