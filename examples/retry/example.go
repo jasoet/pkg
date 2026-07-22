@@ -41,10 +41,10 @@ func example1BasicRetry() {
 	fmt.Println("----------------------")
 
 	ctx := context.Background()
-	cfg := retry.DefaultConfig().
-		WithName("example.basic").
-		WithMaxRetries(3)
-
+	cfg := retry.New(
+		retry.WithName("example.basic"),
+		retry.WithMaxRetries(3),
+	)
 	attempts := 0
 	err := retry.Do(ctx, cfg, func(ctx context.Context) error {
 		attempts++
@@ -69,13 +69,13 @@ func example2CustomBackoff() {
 	fmt.Println("-------------------------")
 
 	ctx := context.Background()
-	cfg := retry.DefaultConfig().
-		WithName("example.custom").
-		WithMaxRetries(4).
-		WithInitialInterval(100 * time.Millisecond).
-		WithMaxInterval(1 * time.Second).
-		WithMultiplier(1.5)
-
+	cfg := retry.New(
+		retry.WithName("example.custom"),
+		retry.WithMaxRetries(4),
+		retry.WithInitialInterval(100*time.Millisecond),
+		retry.WithMaxInterval(1*time.Second),
+		retry.WithMultiplier(1.5),
+	)
 	attempts := 0
 	startTime := time.Now()
 
@@ -104,10 +104,10 @@ func example3PermanentErrors() {
 	fmt.Println("---------------------------")
 
 	ctx := context.Background()
-	cfg := retry.DefaultConfig().
-		WithName("example.permanent").
-		WithMaxRetries(5)
-
+	cfg := retry.New(
+		retry.WithName("example.permanent"),
+		retry.WithMaxRetries(5),
+	)
 	// Simulate validation that should not be retried
 	validateInput := func(value string) error {
 		if value == "" {
@@ -135,11 +135,11 @@ func example4ContextCancellation() {
 	fmt.Println("-------------------------------")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cfg := retry.DefaultConfig().
-		WithName("example.cancel").
-		WithMaxRetries(10).
-		WithInitialInterval(50 * time.Millisecond)
-
+	cfg := retry.New(
+		retry.WithName("example.cancel"),
+		retry.WithMaxRetries(10),
+		retry.WithInitialInterval(50*time.Millisecond),
+	)
 	attempts := 0
 
 	// Cancel after 2 attempts
@@ -170,11 +170,12 @@ func example5UnlimitedRetries() {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	cfg := retry.DefaultConfig().
-		WithName("example.unlimited").
-		WithMaxRetries(0). // Unlimited!
-		WithInitialInterval(50 * time.Millisecond).
-		WithMaxInterval(200 * time.Millisecond)
+	cfg := retry.New(
+		retry.WithName("example.unlimited"),
+		retry.WithMaxRetries(0), // Unlimited!
+		retry.WithInitialInterval(50*time.Millisecond),
+		retry.WithMaxInterval(200*time.Millisecond),
+	)
 
 	attempts := 0
 	err := retry.Do(ctx, cfg, func(ctx context.Context) error {
@@ -202,11 +203,11 @@ func example6CustomNotifications() {
 	fmt.Println("--------------------------------")
 
 	ctx := context.Background()
-	cfg := retry.DefaultConfig().
-		WithName("example.notify").
-		WithMaxRetries(4).
-		WithInitialInterval(50 * time.Millisecond)
-
+	cfg := retry.New(
+		retry.WithName("example.notify"),
+		retry.WithMaxRetries(4),
+		retry.WithInitialInterval(50*time.Millisecond),
+	)
 	attempts := 0
 	err := retry.DoWithNotify(ctx, cfg,
 		func(ctx context.Context) error {

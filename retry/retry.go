@@ -26,32 +26,32 @@ type Config struct {
 	// (0 means unlimited retries). With MaxRetries = N the operation is called
 	// at most N+1 times: 1 initial attempt plus up to N retries.
 	// Default: 5
-	MaxRetries uint64
+	MaxRetries uint64 `yaml:"maxRetries" mapstructure:"maxRetries"`
 
 	// InitialInterval is the initial retry interval.
 	// Default: 500ms
-	InitialInterval time.Duration
+	InitialInterval time.Duration `yaml:"initialInterval" mapstructure:"initialInterval"`
 
 	// MaxInterval caps the maximum retry interval.
 	// Default: 60s
-	MaxInterval time.Duration
+	MaxInterval time.Duration `yaml:"maxInterval" mapstructure:"maxInterval"`
 
 	// Multiplier is the exponential backoff multiplier. Must be > 1.
 	// Default: 2.0 (each retry waits 2x longer)
-	Multiplier float64
+	Multiplier float64 `yaml:"multiplier" mapstructure:"multiplier"`
 
 	// RandomizationFactor adds jitter to backoff intervals to prevent thundering herd.
-	// Must be in [0, 1). 0.0 means no randomization, 0.5 means +/-50% jitter.
+	// Must be in [0, 1]. 0.0 means no randomization, 0.5 means +/-50% jitter.
 	// Default: 0.5
-	RandomizationFactor float64
+	RandomizationFactor float64 `yaml:"randomizationFactor" mapstructure:"randomizationFactor"`
 
-	// OperationName is used for logging and tracing.
+	// Name is the operation name used for logging and tracing.
 	// Default: "retry.operation"
-	OperationName string
+	Name string `yaml:"name" mapstructure:"name"`
 
 	// OTelConfig enables OpenTelemetry tracing and logging.
 	// Optional: if nil, no OTel instrumentation.
-	OTelConfig *pkgotel.Config
+	OTelConfig *pkgotel.Config `yaml:"-" mapstructure:"-"` // Not serializable from config files
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -62,58 +62,94 @@ func DefaultConfig() Config {
 		MaxInterval:         60 * time.Second,
 		Multiplier:          2.0,
 		RandomizationFactor: 0.5,
-		OperationName:       "retry.operation",
+		Name:                "retry.operation",
 	}
 }
 
-// WithOTel adds OpenTelemetry configuration to the retry config.
-func (c Config) WithOTel(otelConfig *pkgotel.Config) Config {
-	c.OTelConfig = otelConfig
-	return c
+// Option configures a Config. Options never panic; invalid values are
+// reported as an error by Do and DoWithNotify before the first attempt.
+type Option func(*Config)
+
+// New returns a Config starting from DefaultConfig with each option applied
+// in order.
+func New(opts ...Option) Config {
+	cfg := DefaultConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+// WithOTelConfig adds OpenTelemetry configuration to the retry config.
+func WithOTelConfig(otelConfig *pkgotel.Config) Option {
+	return func(c *Config) {
+		c.OTelConfig = otelConfig
+	}
 }
 
 // WithName sets the operation name for logging and tracing.
-func (c Config) WithName(name string) Config {
-	c.OperationName = name
-	return c
+func WithName(name string) Option {
+	return func(c *Config) {
+		c.Name = name
+	}
 }
 
 // WithMaxRetries sets the maximum number of retries after the initial attempt.
-func (c Config) WithMaxRetries(maxRetries uint64) Config {
-	c.MaxRetries = maxRetries
-	return c
+func WithMaxRetries(maxRetries uint64) Option {
+	return func(c *Config) {
+		c.MaxRetries = maxRetries
+	}
 }
 
 // WithInitialInterval sets the initial retry interval.
-func (c Config) WithInitialInterval(interval time.Duration) Config {
-	c.InitialInterval = interval
-	return c
+func WithInitialInterval(interval time.Duration) Option {
+	return func(c *Config) {
+		c.InitialInterval = interval
+	}
 }
 
 // WithMaxInterval sets the maximum retry interval.
-func (c Config) WithMaxInterval(interval time.Duration) Config {
-	c.MaxInterval = interval
-	return c
+func WithMaxInterval(interval time.Duration) Option {
+	return func(c *Config) {
+		c.MaxInterval = interval
+	}
 }
 
-// WithMultiplier sets the exponential backoff multiplier. Panics if multiplier <= 1.
-func (c Config) WithMultiplier(multiplier float64) Config {
-	if multiplier <= 1 {
-		panic("retry: Multiplier must be > 1")
+// WithMultiplier sets the exponential backoff multiplier. Must be > 1;
+// invalid values make Do and DoWithNotify return an error.
+func WithMultiplier(multiplier float64) Option {
+	return func(c *Config) {
+		c.Multiplier = multiplier
 	}
-	c.Multiplier = multiplier
-	return c
 }
 
 // WithRandomizationFactor sets the jitter factor for backoff intervals.
-// A value of 0.5 means intervals will vary by +/-50%. Set to 0.0 to disable jitter.
-// Panics if factor is not in [0, 1).
-func (c Config) WithRandomizationFactor(factor float64) Config {
-	if factor < 0 || factor >= 1 {
-		panic("retry: RandomizationFactor must be in [0, 1)")
+// A value of 0.5 means intervals will vary by +/-50%. Set to 0.0 to disable
+// jitter. Must be in [0, 1]; invalid values make Do and DoWithNotify return
+// an error.
+func WithRandomizationFactor(factor float64) Option {
+	return func(c *Config) {
+		c.RandomizationFactor = factor
 	}
-	c.RandomizationFactor = factor
-	return c
+}
+
+// validate reports whether the Config is usable. It returns an error
+// describing the first invalid field.
+func (c Config) validate() error {
+	if c.Multiplier <= 1 {
+		return fmt.Errorf("retry: multiplier must be > 1, got %v", c.Multiplier)
+	}
+	if c.InitialInterval <= 0 {
+		return fmt.Errorf("retry: initial interval must be > 0, got %v", c.InitialInterval)
+	}
+	if c.MaxInterval < c.InitialInterval {
+		return fmt.Errorf("retry: max interval (%v) must be >= initial interval (%v)",
+			c.MaxInterval, c.InitialInterval)
+	}
+	if c.RandomizationFactor < 0 || c.RandomizationFactor > 1 {
+		return fmt.Errorf("retry: randomization factor must be in [0, 1], got %v", c.RandomizationFactor)
+	}
+	return nil
 }
 
 // doRetry is the shared implementation for Do and DoWithNotify.
@@ -124,7 +160,7 @@ func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc fu
 	var span trace.Span
 	if cfg.OTelConfig != nil && cfg.OTelConfig.IsTracingEnabled() {
 		tracer := cfg.OTelConfig.GetTracer(instrumentationName)
-		ctx, span = tracer.Start(ctx, cfg.OperationName,
+		ctx, span = tracer.Start(ctx, cfg.Name,
 			trace.WithAttributes(
 				attribute.Int64("retry.max_retries", int64(cfg.MaxRetries)),
 				attribute.String("retry.initial_interval", cfg.InitialInterval.String()),
@@ -139,7 +175,7 @@ func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc fu
 	// Setup OTel logging independently of tracing.
 	var logger *pkgotel.LogHelper
 	if cfg.OTelConfig != nil {
-		logger = pkgotel.NewLogHelper(ctx, cfg.OTelConfig, instrumentationName, cfg.OperationName)
+		logger = pkgotel.NewLogHelper(ctx, cfg.OTelConfig, instrumentationName, cfg.Name)
 	}
 
 	// Create backoff strategy.
@@ -217,7 +253,7 @@ func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc fu
 				pkgotel.F("attempts", attempt),
 			)
 		}
-		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.OperationName, attempt, ctx.Err())
+		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.Name, attempt, ctx.Err())
 	}
 
 	// Failed after retries.
@@ -233,23 +269,29 @@ func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc fu
 		)
 	}
 	return fmt.Errorf("%s failed after %d attempts (1 initial + %d retries): %w",
-		cfg.OperationName, attempt, attempt-1, lastErr)
+		cfg.Name, attempt, attempt-1, lastErr)
 }
 
 // Do executes the operation with retry logic using exponential backoff.
 // It returns nil if the operation succeeds, or the last error if all retries are exhausted.
+// An invalid Config (see Config field docs) is reported as an error before the
+// first attempt; Do never panics.
 //
 // Example:
 //
-//	cfg := retry.DefaultConfig().
-//		WithName("database.connect").
-//		WithMaxRetries(3).
-//		WithOTel(otelConfig)
+//	cfg := retry.New(
+//		retry.WithName("database.connect"),
+//		retry.WithMaxRetries(3),
+//		retry.WithOTelConfig(otelConfig),
+//	)
 //
 //	err := retry.Do(ctx, cfg, func(ctx context.Context) error {
 //		return db.Ping()
 //	})
 func Do(ctx context.Context, cfg Config, operation Operation) error {
+	if err := cfg.validate(); err != nil {
+		return err
+	}
 	return doRetry(ctx, cfg, operation, nil)
 }
 
@@ -267,6 +309,9 @@ func DoWithNotify(
 	operation Operation,
 	notifyFunc func(error, time.Duration),
 ) error {
+	if err := cfg.validate(); err != nil {
+		return err
+	}
 	return doRetry(ctx, cfg, operation, notifyFunc)
 }
 

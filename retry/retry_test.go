@@ -16,19 +16,20 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 60*time.Second, cfg.MaxInterval)
 	assert.Equal(t, 2.0, cfg.Multiplier)
 	assert.Equal(t, 0.5, cfg.RandomizationFactor)
-	assert.Equal(t, "retry.operation", cfg.OperationName)
+	assert.Equal(t, "retry.operation", cfg.Name)
 	assert.Nil(t, cfg.OTelConfig)
 }
 
-func TestConfigWithMethods(t *testing.T) {
-	cfg := DefaultConfig().
-		WithName("test.operation").
-		WithMaxRetries(3).
-		WithInitialInterval(100 * time.Millisecond).
-		WithMaxInterval(10 * time.Second).
-		WithMultiplier(1.5)
+func TestNewWithOptions(t *testing.T) {
+	cfg := New(
+		WithName("test.operation"),
+		WithMaxRetries(3),
+		WithInitialInterval(100*time.Millisecond),
+		WithMaxInterval(10*time.Second),
+		WithMultiplier(1.5),
+	)
 
-	assert.Equal(t, "test.operation", cfg.OperationName)
+	assert.Equal(t, "test.operation", cfg.Name)
 	assert.Equal(t, uint64(3), cfg.MaxRetries)
 	assert.Equal(t, 100*time.Millisecond, cfg.InitialInterval)
 	assert.Equal(t, 10*time.Second, cfg.MaxInterval)
@@ -37,7 +38,7 @@ func TestConfigWithMethods(t *testing.T) {
 
 func TestDo_SuccessOnFirstAttempt(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().WithName("test.success")
+	cfg := New(WithName("test.success"))
 
 	attempts := 0
 	operation := func(ctx context.Context) error {
@@ -52,10 +53,11 @@ func TestDo_SuccessOnFirstAttempt(t *testing.T) {
 
 func TestDo_SuccessAfterRetries(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.retry").
-		WithMaxRetries(3).
-		WithInitialInterval(10 * time.Millisecond)
+	cfg := New(
+		WithName("test.retry"),
+		WithMaxRetries(3),
+		WithInitialInterval(10*time.Millisecond),
+	)
 
 	attempts := 0
 	operation := func(ctx context.Context) error {
@@ -79,10 +81,11 @@ func TestDo_SuccessAfterRetries(t *testing.T) {
 
 func TestDo_FailsAfterMaxRetries(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.fail").
-		WithMaxRetries(3).
-		WithInitialInterval(10 * time.Millisecond)
+	cfg := New(
+		WithName("test.fail"),
+		WithMaxRetries(3),
+		WithInitialInterval(10*time.Millisecond),
+	)
 
 	attempts := 0
 	expectedErr := errors.New("permanent error")
@@ -100,10 +103,11 @@ func TestDo_FailsAfterMaxRetries(t *testing.T) {
 
 func TestDo_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cfg := DefaultConfig().
-		WithName("test.cancel").
-		WithMaxRetries(5).
-		WithInitialInterval(100 * time.Millisecond)
+	cfg := New(
+		WithName("test.cancel"),
+		WithMaxRetries(5),
+		WithInitialInterval(100*time.Millisecond),
+	)
 
 	attempts := 0
 	operation := func(ctx context.Context) error {
@@ -126,10 +130,11 @@ func TestDo_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	cfg := DefaultConfig().
-		WithName("test.timeout").
-		WithMaxRetries(5).
-		WithInitialInterval(100 * time.Millisecond)
+	cfg := New(
+		WithName("test.timeout"),
+		WithMaxRetries(5),
+		WithInitialInterval(100*time.Millisecond),
+	)
 
 	attempts := 0
 	operation := func(ctx context.Context) error {
@@ -146,11 +151,12 @@ func TestDo_ContextTimeout(t *testing.T) {
 
 func TestDo_ExponentialBackoff(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.backoff").
-		WithMaxRetries(3).
-		WithInitialInterval(10 * time.Millisecond).
-		WithMultiplier(2.0)
+	cfg := New(
+		WithName("test.backoff"),
+		WithMaxRetries(3),
+		WithInitialInterval(10*time.Millisecond),
+		WithMultiplier(2.0),
+	)
 
 	var intervals []time.Duration
 	lastTime := time.Now()
@@ -186,10 +192,11 @@ func TestDo_UnlimitedRetries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	cfg := DefaultConfig().
-		WithName("test.unlimited").
-		WithMaxRetries(0). // Unlimited
-		WithInitialInterval(2 * time.Millisecond)
+	cfg := New(
+		WithName("test.unlimited"),
+		WithMaxRetries(0), // Unlimited
+		WithInitialInterval(2*time.Millisecond),
+	)
 
 	attempts := 0
 	operation := func(ctx context.Context) error {
@@ -205,10 +212,11 @@ func TestDo_UnlimitedRetries(t *testing.T) {
 
 func TestDoWithNotify(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.notify").
-		WithMaxRetries(3).
-		WithInitialInterval(10 * time.Millisecond)
+	cfg := New(
+		WithName("test.notify"),
+		WithMaxRetries(3),
+		WithInitialInterval(10*time.Millisecond),
+	)
 
 	var notifications []error
 	notifyFunc := func(err error, backoff time.Duration) {
@@ -235,10 +243,11 @@ func TestDoWithNotify(t *testing.T) {
 
 func TestDoWithNotify_AllFailed(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.notify.fail").
-		WithMaxRetries(2).
-		WithInitialInterval(10 * time.Millisecond)
+	cfg := New(
+		WithName("test.notify.fail"),
+		WithMaxRetries(2),
+		WithInitialInterval(10*time.Millisecond),
+	)
 
 	var notifications []error
 	notifyFunc := func(err error, backoff time.Duration) {
@@ -259,10 +268,11 @@ func TestDoWithNotify_AllFailed(t *testing.T) {
 
 func TestPermanent(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.permanent").
-		WithMaxRetries(5).
-		WithInitialInterval(10 * time.Millisecond)
+	cfg := New(
+		WithName("test.permanent"),
+		WithMaxRetries(5),
+		WithInitialInterval(10*time.Millisecond),
+	)
 
 	attempts := 0
 	permanentErr := errors.New("permanent error")
@@ -278,10 +288,10 @@ func TestPermanent(t *testing.T) {
 }
 
 func TestConfigWithRandomizationFactor(t *testing.T) {
-	cfg := DefaultConfig().WithRandomizationFactor(0.0)
+	cfg := New(WithRandomizationFactor(0.0))
 	assert.Equal(t, 0.0, cfg.RandomizationFactor)
 
-	cfg = DefaultConfig().WithRandomizationFactor(0.8)
+	cfg = New(WithRandomizationFactor(0.8))
 	assert.Equal(t, 0.8, cfg.RandomizationFactor)
 }
 
@@ -290,38 +300,68 @@ func TestDefaultConfigHasRandomizationFactor(t *testing.T) {
 	assert.Equal(t, 0.5, cfg.RandomizationFactor)
 }
 
-func TestWithOTel(t *testing.T) {
-	cfg := DefaultConfig().WithOTel(nil)
+func TestWithOTelConfig(t *testing.T) {
+	cfg := New(WithOTelConfig(nil))
 	assert.Nil(t, cfg.OTelConfig)
 }
 
-func TestWithRandomizationFactor_PanicsOnInvalidValue(t *testing.T) {
-	assert.Panics(t, func() {
-		DefaultConfig().WithRandomizationFactor(-0.1)
-	})
-	assert.Panics(t, func() {
-		DefaultConfig().WithRandomizationFactor(1.0)
-	})
-	assert.Panics(t, func() {
-		DefaultConfig().WithRandomizationFactor(1.5)
-	})
+func TestDo_InvalidRandomizationFactorReturnsErrorNotPanic(t *testing.T) {
+	for _, factor := range []float64{-0.1, 1.5} {
+		cfg := New(WithRandomizationFactor(factor))
+
+		attempts := 0
+		err := Do(context.Background(), cfg, func(ctx context.Context) error {
+			attempts++
+			return errors.New("boom")
+		})
+		assert.Error(t, err, "factor=%v", factor)
+		assert.Contains(t, err.Error(), "randomization factor")
+		assert.Equal(t, 0, attempts, "factor=%v: no attempt should run", factor)
+	}
 }
 
-func TestWithMultiplier_PanicsOnInvalidValue(t *testing.T) {
-	assert.Panics(t, func() {
-		DefaultConfig().WithMultiplier(1.0)
+func TestDo_InvalidMultiplierReturnsErrorNotPanic(t *testing.T) {
+	for _, multiplier := range []float64{1.0, 0.5} {
+		cfg := New(WithMultiplier(multiplier))
+
+		attempts := 0
+		err := Do(context.Background(), cfg, func(ctx context.Context) error {
+			attempts++
+			return errors.New("boom")
+		})
+		assert.Error(t, err, "multiplier=%v", multiplier)
+		assert.Contains(t, err.Error(), "multiplier")
+		assert.Equal(t, 0, attempts, "multiplier=%v: no attempt should run", multiplier)
+	}
+}
+
+func TestDoWithNotify_InvalidConfigReturnsErrorBeforeFirstAttempt(t *testing.T) {
+	cfg := New(
+		WithInitialInterval(100*time.Millisecond),
+		WithMaxInterval(10*time.Millisecond), // < InitialInterval
+	)
+
+	notified := false
+	attempts := 0
+	err := DoWithNotify(context.Background(), cfg, func(ctx context.Context) error {
+		attempts++
+		return errors.New("boom")
+	}, func(error, time.Duration) {
+		notified = true
 	})
-	assert.Panics(t, func() {
-		DefaultConfig().WithMultiplier(0.5)
-	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "max interval")
+	assert.Equal(t, 0, attempts, "no attempt should run")
+	assert.False(t, notified, "notify should not be called")
 }
 
 func TestDoWithNotify_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cfg := DefaultConfig().
-		WithName("test.notify.cancel").
-		WithMaxRetries(5).
-		WithInitialInterval(100 * time.Millisecond)
+	cfg := New(
+		WithName("test.notify.cancel"),
+		WithMaxRetries(5),
+		WithInitialInterval(100*time.Millisecond),
+	)
 
 	var notifications []error
 	notifyFunc := func(err error, backoff time.Duration) {
@@ -346,12 +386,13 @@ func TestDoWithNotify_ContextCancellation(t *testing.T) {
 
 func TestDo_MaxIntervalCap(t *testing.T) {
 	ctx := context.Background()
-	cfg := DefaultConfig().
-		WithName("test.maxinterval").
-		WithMaxRetries(10).
-		WithInitialInterval(10 * time.Millisecond).
-		WithMaxInterval(50 * time.Millisecond). // Cap at 50ms
-		WithMultiplier(2.0)
+	cfg := New(
+		WithName("test.maxinterval"),
+		WithMaxRetries(10),
+		WithInitialInterval(10*time.Millisecond),
+		WithMaxInterval(50*time.Millisecond), // Cap at 50ms
+		WithMultiplier(2.0),
+	)
 
 	var intervals []time.Duration
 	lastTime := time.Now()
