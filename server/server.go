@@ -98,11 +98,14 @@ func NewConfig(opts ...Option) Config {
 // Create one with New, then call Start (blocking) and Shutdown from another
 // goroutine to stop it gracefully.
 type Server struct {
-	config   Config
-	echo     *echo.Echo
-	mu       sync.Mutex
-	listener net.Listener
-	running  bool
+	config       Config
+	echo         *echo.Echo
+	mu           sync.Mutex
+	listener     net.Listener
+	running      bool
+	stopped      bool
+	shutdownOnce sync.Once
+	shutdownErr  error
 }
 
 // New creates a Server from functional options. It validates the configuration
@@ -140,18 +143,24 @@ func (s *Server) Addr() string {
 // Start binds the listener, runs the Operation callback, and serves HTTP,
 // blocking until Shutdown is called or serving fails. It returns nil on a
 // clean Shutdown (http.ErrServerClosed is filtered out). Calling Start while
-// the server is already running returns an error immediately.
+// the server is already running returns an error immediately. A stopped
+// Server cannot be restarted — create a new one with New.
 func (s *Server) Start() error {
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
 		return errors.New("server is already running")
 	}
+	if s.stopped {
+		s.mu.Unlock()
+		return errors.New("server cannot be restarted; create a new one with New")
+	}
 	s.running = true
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		s.running = false
+		s.listener = nil
 		s.mu.Unlock()
 	}()
 
@@ -183,20 +192,27 @@ func (s *Server) Start() error {
 // Shutdown gracefully stops the server. It invokes the Shutdown callback and
 // then drains the Echo server, honoring ShutdownTimeout (applied on top of the
 // caller's context, whichever deadline is earlier). Start returns nil once the
-// shutdown completes.
+// shutdown completes. Shutdown is idempotent: the callback runs exactly once.
 func (s *Server) Shutdown(ctx context.Context) error {
-	// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
-	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "Server.Shutdown")
-	logger.Info("Gracefully shutting down server")
+	s.shutdownOnce.Do(func() {
+		s.mu.Lock()
+		s.stopped = true
+		s.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(ctx, s.config.ShutdownTimeout)
-	defer cancel()
+		// Logger uses context.Background() intentionally: server lifecycle logs are not tied to any request context.
+		logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "Server.Shutdown")
+		logger.Info("Gracefully shutting down server")
 
-	if s.config.Shutdown != nil {
-		s.config.Shutdown(s.echo)
-	}
+		ctx, cancel := context.WithTimeout(ctx, s.config.ShutdownTimeout)
+		defer cancel()
 
-	return s.echo.Shutdown(ctx)
+		if s.config.Shutdown != nil {
+			s.config.Shutdown(s.echo)
+		}
+
+		s.shutdownErr = s.echo.Shutdown(ctx)
+	})
+	return s.shutdownErr
 }
 
 // setupEcho configures the Echo instance with middleware and health routes.

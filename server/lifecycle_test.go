@@ -119,3 +119,27 @@ func TestNewInvalidPort(t *testing.T) {
 	_, err = New(WithPort(70000))
 	assert.Error(t, err, "New should reject port above 65535")
 }
+
+func TestServerRestartAfterShutdownFails(t *testing.T) {
+	srv, err := New(WithPort(0))
+	require.NoError(t, err)
+
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
+	waitForAddr(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, srv.Shutdown(ctx))
+	require.NoError(t, <-startErr)
+
+	err = srv.Start()
+	require.Error(t, err, "Start after Shutdown must fail (no silent no-op restart)")
+	assert.Contains(t, err.Error(), "cannot be restarted")
+
+	// Addr must not report a stale listener after shutdown.
+	assert.Empty(t, srv.Addr())
+
+	// Shutdown is idempotent: callback and drain run exactly once.
+	require.NoError(t, srv.Shutdown(ctx))
+}
