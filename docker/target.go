@@ -22,7 +22,7 @@ type ContainerState struct {
 // strategies never need to import the docker client.
 //
 // A ContainerTarget is only usable when constructed by the Executor
-// (as passed to WaitStrategy.Wait). The zero value holds a nil client
+// (as passed to WaitStrategy.WaitUntilReady). The zero value holds a nil client
 // and will panic on Logs and State.
 type ContainerTarget struct {
 	cli         *client.Client
