@@ -11,6 +11,7 @@ Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 
 **Go Version:** 1.26+ (uses generics)
 **Test Coverage:** 79%
 **v1 Branch:** [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) — final v1 release (v1.6.0), no longer maintained. Use `go get github.com/jasoet/pkg@v1.6.0` for projects that don't need OpenTelemetry.
+**v3 Development:** v2 is frozen at v2.13.1 (`release/v2` branch, emergency patches only). v3 work happens on the `next` branch (prereleases `v3.0.0-next.N`). Backlog: `docs/plans/2026-07-22-v3-audit-backlog.md`.
 
 ## ABSOLUTE RULE — Git Authorship
 
@@ -44,6 +45,7 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 | `<module>/*_test.go` | Unit tests (no build tag) |
 | `<module>/*_integration_test.go` | Integration tests (`//go:build integration`) |
 | `docs/plans/` | Design docs and implementation plans |
+| `internal/archtest/` | Convention-enforcement tests — extend registry when unifying a package |
 | `.claude/` | Claude Code hooks and settings |
 | `flake.nix` | Nix flake — dev tool declarations |
 | `.envrc` | direnv auto-activation (optional) |
