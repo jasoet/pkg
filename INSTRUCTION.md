@@ -7,7 +7,7 @@
 
 Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 packages: otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32.
 
-**Module Path:** `github.com/jasoet/pkg/v2`
+**Module Path:** `github.com/jasoet/pkg/v3`
 **Go Version:** 1.26+ (uses generics)
 **Test Coverage:** 79%
 **v1 Branch:** [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) — final v1 release (v1.6.0), no longer maintained. Use `go get github.com/jasoet/pkg@v1.6.0` for projects that don't need OpenTelemetry.

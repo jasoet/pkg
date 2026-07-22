@@ -5,7 +5,7 @@ This document explains how to maintain and release this library.
 ## Branch Strategy
 
 ### `main` - Active Development
-- **Module Path:** `github.com/jasoet/pkg/v2`
+- **Module Path:** `github.com/jasoet/pkg/v3`
 - **Purpose:** Active development for v2.x releases
 - **Go Version:** 1.26+
 
@@ -60,12 +60,12 @@ All PR titles must follow [Conventional Commits](https://www.conventionalcommits
 ## Import Paths
 
 ```go
-import "github.com/jasoet/pkg/v2/compress"
-import "github.com/jasoet/pkg/v2/server"
+import "github.com/jasoet/pkg/v3/compress"
+import "github.com/jasoet/pkg/v3/server"
 ```
 
 ```bash
-go get github.com/jasoet/pkg/v2@latest
+go get github.com/jasoet/pkg/v3@latest
 ```
 
 ## Testing

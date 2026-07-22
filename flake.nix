@@ -1,5 +1,5 @@
 {
-  description = "Go pkg/v2 development environment";
+  description = "Go pkg/v3 development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -30,7 +30,7 @@
           ];
 
           shellHook = ''
-            echo "pkg/v2 dev environment ready — Go $(go version | awk '{print $3}')"
+            echo "pkg/v3 dev environment ready — Go $(go version | awk '{print $3}')"
           '';
         };
       });
