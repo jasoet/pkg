@@ -395,13 +395,7 @@ func TestSSHTunnelIntegration(t *testing.T) {
 		defer tunnel.Close()
 
 		// Make an HTTP request through the tunnel and assert the backend's body.
-		// DisableKeepAlives: an idle keep-alive connection would otherwise keep
-		// the forward goroutine (and tunnel.Close's wg.Wait) blocked until the
-		// transport's 90s IdleConnTimeout fires.
-		client := &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: &http.Transport{DisableKeepAlives: true},
-		}
+		client := &http.Client{Timeout: 10 * time.Second}
 
 		resp, err := client.Get("http://" + tunnel.LocalAddr())
 		require.NoError(t, err, "HTTP request through tunnel should succeed")
@@ -444,13 +438,7 @@ func TestTunnelForwardsHTTP(t *testing.T) {
 	require.NotEmpty(t, localAddr, "LocalAddr should return the bound address after Start")
 
 	// Push REAL bytes through the tunnel: HTTP GET via the forwarded local port.
-	// DisableKeepAlives: an idle keep-alive connection would otherwise keep the
-	// forward goroutine (and tunnel.Close's wg.Wait) blocked until the
-	// transport's 90s IdleConnTimeout fires.
-	client := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: &http.Transport{DisableKeepAlives: true},
-	}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get("http://" + localAddr + "/")
 	require.NoError(t, err, "HTTP GET through the tunnel should succeed")
 	defer resp.Body.Close()

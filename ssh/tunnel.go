@@ -264,12 +264,17 @@ func (t *Tunnel) LocalAddr() string {
 
 // forward handles the forwarding of data between the local and remote connections.
 //
-// Note: half-close (CloseWrite) is not implemented here. Both directions are
-// copied concurrently and both connections are closed once both copies finish.
-// This may affect streaming protocols that rely on half-close semantics.
+// Both directions are copied concurrently. When one direction's copy completes
+// (EOF or error), the close is propagated to the other direction's write side
+// via CloseWrite (when supported), so the peer sees EOF promptly instead of
+// waiting for an idle timeout. Both connections are closed once both copies
+// finish.
 func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.forward")
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	logger := otel.NewLogHelper(ctx, t.config.OTelConfig, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.forward")
 
 	t.mu.Lock()
 	client := t.client
@@ -295,6 +300,9 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 		if _, err := io.Copy(remoteConn, localConn); err != nil {
 			logger.Debug("copy local->remote ended", otel.F("err", err.Error()))
 		}
+		// Local side is done sending; propagate EOF to the remote so it can
+		// finish its response instead of waiting for an idle timeout.
+		closeWrite(remoteConn)
 	}()
 
 	go func() {
@@ -302,11 +310,22 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 		if _, err := io.Copy(localConn, remoteConn); err != nil {
 			logger.Debug("copy remote->local ended", otel.F("err", err.Error()))
 		}
+		// Remote side is done sending; propagate EOF to the local client.
+		closeWrite(localConn)
 	}()
 
 	wg.Wait()
 	_ = localConn.Close()
 	_ = remoteConn.Close()
+}
+
+// closeWrite half-closes the write side of conn when the connection supports
+// it (e.g. *net.TCPConn, ssh.Channel), signaling EOF to the peer while leaving
+// the read side open.
+func closeWrite(conn net.Conn) {
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+	}
 }
 
 // Close terminates the SSH connection and stops the tunnel
@@ -321,6 +340,7 @@ func (t *Tunnel) Close() error {
 	t.mu.Lock()
 	if t.client == nil {
 		t.mu.Unlock()
+		lc.Success("no active connection")
 		return nil
 	}
 
@@ -341,8 +361,13 @@ func (t *Tunnel) Close() error {
 	t.client = nil
 	t.mu.Unlock()
 
+	// Close the SSH client before waiting: this tears down in-flight
+	// forwarded channels, and forward's half-close propagation then unblocks
+	// the local side, so wg.Wait returns promptly instead of waiting for the
+	// peer's idle timeout.
+	err := client.Close()
 	t.wg.Wait()
-	if err := client.Close(); err != nil {
+	if err != nil {
 		return lc.Error(fmt.Errorf("SSH client close error: %w", err), "failed to close SSH client")
 	}
 
