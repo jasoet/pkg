@@ -203,6 +203,12 @@ func (s *Server) setupGatewayIntegration(e *echo.Echo) error {
 	// Create gateway mux with standard configuration
 	gatewayMux := CreateGatewayMux()
 
+	// Let the consumer register generated gateway handlers before mounting;
+	// without this the mounted gateway serves nothing.
+	if s.config.gatewayRegistrar != nil {
+		s.config.gatewayRegistrar(gatewayMux)
+	}
+
 	// Mount gateway on Echo at the configured base path
 	MountGatewayOnEcho(e, gatewayMux, s.config.gatewayBasePath)
 

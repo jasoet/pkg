@@ -1,22 +1,22 @@
 # gRPC Server Package
 
-A production-ready, reusable gRPC server with Echo HTTP framework integration for Go applications. This package provides a clean, configuration-driven API for setting up gRPC servers with HTTP/REST gateway support, built-in observability, health checks, and graceful shutdown capabilities.
+A production-ready, reusable gRPC server with Echo HTTP framework integration for Go applications. This package provides a functional-options API for setting up gRPC servers with HTTP/REST gateway support, built-in observability, health checks, and graceful shutdown capabilities.
 
 ## Features
 
 - **Echo Framework Integration**: Full-featured HTTP server using Echo v4
 - **Dual Protocol Support**: Run gRPC and HTTP services on the same port (H2C) or separate ports
-- **gRPC Gateway**: Automatic HTTP/REST endpoints for gRPC services
+- **gRPC Gateway**: Mount a grpc-gateway mux on Echo and register generated handlers via `WithGatewayRegistrar`
 - **Zero Configuration**: Works out-of-the-box with sensible defaults
-- **Production Ready**: Built-in OpenTelemetry metrics, health checks, and graceful shutdown
-- **Highly Configurable**: Extensive configuration options including CORS, rate limiting, and custom middleware
+- **Production Ready**: Built-in OpenTelemetry instrumentation, health checks, and graceful shutdown
+- **Highly Configurable**: Functional options for CORS, rate limiting, timeouts, and custom middleware
 - **Observability**: OpenTelemetry metrics, tracing, and structured logging for both gRPC and HTTP
 - **Easy Integration**: Clean API that works with any gRPC service implementation
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/grpc
+go get github.com/jasoet/pkg/v3/grpc
 ```
 
 ## Quick Start
@@ -28,9 +28,10 @@ package main
 
 import (
     "log"
+
     "google.golang.org/grpc"
 
-    grpcserver "github.com/jasoet/pkg/grpc"
+    grpcserver "github.com/jasoet/pkg/v3/grpc"
     calculatorv1 "your-module/gen/calculator/v1"
     "your-module/internal/service"
 )
@@ -52,7 +53,7 @@ func main() {
 
 This starts a server in H2C mode where both gRPC and HTTP endpoints are available on port 8080:
 - gRPC endpoints: `localhost:8080`
-- HTTP gateway: `http://localhost:8080/api/v1/`
+- HTTP gateway: `http://localhost:8080/api/v1/` (serves routes registered via `WithGatewayRegistrar`)
 - Health checks: `http://localhost:8080/health`
 
 ## Server Modes
@@ -73,129 +74,127 @@ Different ports for gRPC and HTTP services:
 grpcserver.StartSeparate("9090", "9091", serviceRegistrar)
 ```
 
-## Advanced Configuration
+## Configuration with Options
 
-### Echo Integration with Custom Routes
+The server is configured with functional options passed to `New` (or to the `Start*` convenience functions, which accept trailing options). All options are optional; sensible defaults apply.
 
 ```go
-package main
-
-import (
-    "log"
-    "time"
-
-    "github.com/labstack/echo/v4"
-    "google.golang.org/grpc"
-
-    grpcserver "github.com/jasoet/pkg/grpc"
-)
-
-func main() {
-    // Create advanced configuration
-    config := grpcserver.DefaultConfig()
-
-    // Server Configuration
-    config.GRPCPort = "50051"
-    config.Mode = grpcserver.H2CMode
+server, err := grpcserver.New(
+    // Ports & mode
+    grpcserver.WithH2CMode(),                       // or WithSeparateMode("9090", "9091")
+    grpcserver.WithGRPCPort("50051"),
 
     // Timeouts
-    config.ShutdownTimeout = 45 * time.Second
-    config.ReadTimeout = 10 * time.Second
-    config.WriteTimeout = 15 * time.Second
-    config.IdleTimeout = 120 * time.Second
-    config.MaxConnectionIdle = 30 * time.Minute
-    config.MaxConnectionAge = 60 * time.Minute
-    config.MaxConnectionAgeGrace = 10 * time.Second
+    grpcserver.WithShutdownTimeout(45*time.Second),
+    grpcserver.WithReadTimeout(10*time.Second),
+    grpcserver.WithWriteTimeout(15*time.Second),
+    grpcserver.WithIdleTimeout(120*time.Second),
+    grpcserver.WithConnectionTimeouts(30*time.Minute, 60*time.Minute, 10*time.Second),
 
-    // Production Features
-    config.EnableHealthCheck = true
-    config.EnableReflection = true
+    // Features
+    grpcserver.WithHealthCheck(),
+    grpcserver.WithHealthPath("/health"),
+    grpcserver.WithReflection(),
+    grpcserver.WithCORS(),
+    grpcserver.WithRateLimit(100.0), // requests per second
 
-    // Echo-specific Features
-    config.EnableCORS = true
-    config.EnableRateLimit = true
-    config.RateLimit = 100.0 // requests per second
+    // Gateway
+    grpcserver.WithGatewayBasePath("/api/v1"),
 
-    // Gateway Configuration
-    config.GatewayBasePath = "/api/v1"
-
-    // Register gRPC services
-    config.ServiceRegistrar = func(srv *grpc.Server) {
-        // Register your gRPC services here
-        log.Println("Registering gRPC services...")
-    }
-
-    // Configure Echo with custom routes
-    config.EchoConfigurer = func(e *echo.Echo) {
-        // Add custom REST endpoints
+    // Hooks
+    grpcserver.WithServiceRegistrar(serviceRegistrar),
+    grpcserver.WithEchoConfigurer(func(e *echo.Echo) {
         e.GET("/status", func(c echo.Context) error {
-            return c.JSON(200, map[string]interface{}{
-                "service": "my-service",
-                "status":  "running",
-            })
+            return c.JSON(200, map[string]string{"status": "running"})
         })
-
-        // Add custom middleware
-        e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-            return func(c echo.Context) error {
-                log.Printf("Custom middleware: %s %s", c.Request().Method, c.Path())
-                return next(c)
-            }
-        })
-
-        log.Println("Custom Echo routes configured")
-    }
-
-    // Custom gRPC configuration
-    config.GRPCConfigurer = func(s *grpc.Server) {
-        log.Println("Applying custom gRPC configuration...")
-        // Add interceptors, custom options, etc.
-    }
-
-    // Custom shutdown handler
-    config.Shutdown = func() error {
-        log.Println("Running custom cleanup...")
-        // Close connections, cleanup resources
+    }),
+    grpcserver.WithShutdownHandler(func() error {
+        // Close connections, clean up resources
         return nil
-    }
+    }),
+)
+if err != nil {
+    log.Fatal(err)
+}
 
-    // Start server
-    if err := grpcserver.StartWithConfig(config); err != nil {
-        log.Fatalf("Failed to start server: %v", err)
-    }
+if err := server.Start(); err != nil {
+    log.Fatal(err)
 }
 ```
 
-### Using Echo Middleware
+### Option Reference
+
+**Ports & Mode**
+- `WithH2CMode()` — gRPC and HTTP on one port (default)
+- `WithSeparateMode(grpcPort, httpPort string)` — separate ports for gRPC and HTTP
+- `WithGRPCPort(port string)` — gRPC port (default `"8080"`)
+- `WithHTTPPort(port string)` — HTTP gateway port, SeparateMode only (default `"8081"`)
+
+**Timeouts**
+- `WithShutdownTimeout(d)` — graceful shutdown timeout (default 30s)
+- `WithReadTimeout(d)` / `WithWriteTimeout(d)` / `WithIdleTimeout(d)` — HTTP server timeouts (defaults 5s / 10s / 60s)
+- `WithConnectionTimeouts(idle, age, grace)` — gRPC keepalive limits (defaults 15m / 30m / 5s)
+- `WithMaxConnectionIdle(d)` / `WithMaxConnectionAge(d)` / `WithMaxConnectionAgeGrace(d)` — individual keepalive limits
+
+**Health**
+- `WithHealthCheck()` / `WithoutHealthCheck()` — toggle health endpoints (default enabled)
+- `WithHealthPath(path)` — health base path (default `"/health"`)
+
+**Reflection**
+- `WithReflection()` / `WithoutReflection()` — toggle gRPC server reflection (default disabled)
+
+**CORS**
+- `WithCORS()` — enable CORS with the default (wildcard) policy
+- `WithCORSConfig(middleware.CORSConfig)` — enable CORS with a custom configuration
+
+**Rate limit**
+- `WithRateLimit(rps float64)` — enable Echo rate limiting (default 100 rps when enabled)
+
+**Gateway**
+- `WithGatewayBasePath(path)` — base path for gateway routes (default `"/api/v1"`)
+- `WithGatewayRegistrar(fn func(*runtime.ServeMux))` — register handlers on the gateway mux (see below)
+
+**Lifecycle & hooks**
+- `WithServiceRegistrar(fn func(*grpc.Server))` — register gRPC services
+- `WithGRPCConfigurer(fn func(*grpc.Server))` — customize the gRPC server
+- `WithEchoConfigurer(fn func(*echo.Echo))` — add custom routes/middleware; runs after the gateway mount, so its routes take precedence
+- `WithShutdownHandler(fn func() error)` — custom shutdown hook
+- `WithMiddleware(mw ...echo.MiddlewareFunc)` — additional Echo middleware
+
+**OTel**
+- `WithOTelConfig(cfg *otel.Config)` — enable OpenTelemetry (nil/absent disables it)
+
+## gRPC Gateway
+
+When a service registrar is configured, the server creates a grpc-gateway `runtime.ServeMux` and mounts it on Echo under the gateway base path (default `/api/v1`). The mount is a catch-all — **the gateway only serves what you register on the mux**, and the only way to register on it is `WithGatewayRegistrar`. The function runs during `Start`, after the mux is created and before it is mounted, which is where you hook in generated gateway code:
 
 ```go
-import (
-    "github.com/labstack/echo/v4"
-    "github.com/labstack/echo/v4/middleware"
+server, err := grpcserver.New(
+    grpcserver.WithH2CMode(),
+    grpcserver.WithGRPCPort("8080"),
+    grpcserver.WithServiceRegistrar(func(s *grpc.Server) {
+        calculatorv1.RegisterCalculatorServiceServer(s, calculatorService)
+    }),
+    grpcserver.WithGatewayRegistrar(func(mux *runtime.ServeMux) {
+        // Register generated gateway handlers, e.g.:
+        //   conn, _ := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
+        //   calculatorv1.RegisterCalculatorServiceHandler(context.Background(), mux, conn)
+        // or register plain HTTP routes directly:
+        _ = mux.HandlePath(http.MethodGet, "/api/v1/ping",
+            func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+                _, _ = w.Write([]byte("pong"))
+            })
+    }),
 )
-
-config := grpcserver.DefaultConfig()
-
-// Add Echo middleware via configuration
-config.Middleware = []echo.MiddlewareFunc{
-    middleware.RequestID(),
-    middleware.Secure(),
-    middleware.Gzip(),
-}
-
-// Or configure via EchoConfigurer
-config.EchoConfigurer = func(e *echo.Echo) {
-    e.Use(middleware.RequestID())
-    e.Use(middleware.Secure())
-    e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-        Level: 5,
-    }))
-}
 ```
+
+Note the mux matches against the full request path (the mount does not strip the base path), so patterns registered with `HandlePath` must include the base path prefix.
+
+`CreateGatewayMux()` and `MountGatewayOnEcho(e, mux, basePath)` are also exported if you need to assemble a gateway manually.
 
 ## OpenTelemetry Integration
 
-The gRPC server package supports OpenTelemetry for comprehensive observability with distributed tracing, metrics, and structured logging. Provide `OTelConfig` to enable instrumentation.
+The gRPC server package supports OpenTelemetry for comprehensive observability with distributed tracing, metrics, and structured logging. Provide an `*otel.Config` via `WithOTelConfig` to enable instrumentation. Instrumentation is implemented as gRPC **interceptors** (unary and stream) plus Echo middleware — it does not use `otel.Layers`.
 
 ### Basic OpenTelemetry Setup
 
@@ -205,9 +204,10 @@ package main
 import (
     "log"
 
-    "github.com/jasoet/pkg/v3/otel"
-    grpcserver "github.com/jasoet/pkg/v3/grpc"
     "google.golang.org/grpc"
+
+    grpcserver "github.com/jasoet/pkg/v3/grpc"
+    "github.com/jasoet/pkg/v3/otel"
 )
 
 func main() {
@@ -250,14 +250,15 @@ import (
     "log"
     "time"
 
-    "github.com/jasoet/pkg/v3/otel"
-    grpcserver "github.com/jasoet/pkg/v3/grpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
     "google.golang.org/grpc"
+
+    grpcserver "github.com/jasoet/pkg/v3/grpc"
+    "github.com/jasoet/pkg/v3/otel"
 )
 
 func main() {
@@ -339,9 +340,9 @@ func main() {
 
 ### What Gets Instrumented
 
-When `OTelConfig` is provided, the server automatically instruments:
+When `WithOTelConfig` is provided, the server automatically instruments:
 
-#### gRPC Server
+#### gRPC Server (via interceptors)
 - **Traces**: Distributed tracing for all gRPC methods with semantic conventions
 - **Metrics**:
   - `rpc.server.request.count` - Total gRPC requests by method and status
@@ -349,7 +350,7 @@ When `OTelConfig` is provided, the server automatically instruments:
   - `rpc.server.active_requests` - Active concurrent requests
 - **Logs**: Structured logs with automatic trace_id/span_id correlation
 
-#### HTTP Gateway
+#### HTTP Gateway (via Echo middleware)
 - **Traces**: HTTP request spans linked to gRPC spans
 - **Metrics**:
   - `http.server.request.count` - Total HTTP requests
@@ -379,43 +380,7 @@ When using the `logging` package LoggerProvider, all logs automatically include 
 
 ### Without OTelConfig
 
-When no `OTelConfig` is provided, the server runs without metrics or structured logging instrumentation. Health checks still work. To enable observability, provide an `OTelConfig` via `WithOTelConfig()`.
-
-## Configuration Options
-
-### Core Settings
-- `GRPCPort`: Port for gRPC server (required)
-- `HTTPPort`: Port for HTTP gateway (required for separate mode)
-- `Mode`: Server mode (`H2CMode` or `SeparateMode`)
-
-### Timeouts
-- `ShutdownTimeout`: Graceful shutdown timeout (default: 30s)
-- `ReadTimeout`: HTTP read timeout (default: 5s)
-- `WriteTimeout`: HTTP write timeout (default: 10s)
-- `IdleTimeout`: HTTP idle timeout (default: 60s)
-- `MaxConnectionIdle`: Max connection idle time (default: 15m)
-- `MaxConnectionAge`: Max connection age (default: 30m)
-- `MaxConnectionAgeGrace`: Connection age grace period (default: 5s)
-
-### Features
-- `EnableHealthCheck`: Enable health check endpoints (default: true)
-- `HealthPath`: Health check path (default: "/health")
-- `EnableReflection`: Enable gRPC reflection (default: false)
-
-### Echo-Specific Features
-- `EnableCORS`: Enable CORS middleware (default: false)
-- `EnableRateLimit`: Enable rate limiting middleware (default: false)
-- `RateLimit`: Requests per second for rate limiting (default: 100.0)
-- `Middleware`: Custom Echo middleware functions
-
-### Gateway Configuration
-- `GatewayBasePath`: Base path for gRPC gateway routes (default: "/api/v1")
-
-### Customization Hooks
-- `ServiceRegistrar`: Function to register gRPC services
-- `GRPCConfigurer`: Function to customize gRPC server
-- `EchoConfigurer`: Function to configure Echo server and add custom routes
-- `Shutdown`: Custom shutdown handler
+When no `*otel.Config` is provided, the server runs without metrics or structured logging instrumentation. Health checks still work. To enable observability, provide a config via `WithOTelConfig()`.
 
 ## Health Checks
 
@@ -428,7 +393,7 @@ The server provides comprehensive health check endpoints:
 ### Custom Health Checks
 
 ```go
-server, err := grpcserver.New(config)
+server, err := grpcserver.New(grpcserver.WithGRPCPort("8080"))
 if err != nil {
     log.Fatal(err)
 }
@@ -455,7 +420,7 @@ if err := server.Start(); err != nil {
 
 ## Metrics (OpenTelemetry)
 
-When `OTelConfig` is provided with a `MeterProvider`, the following OTel metrics are emitted:
+When `WithOTelConfig` is provided with a `MeterProvider`, the following OTel metrics are emitted:
 
 ### gRPC Metrics
 - `rpc.server.request.count` - Total gRPC requests by method and status
@@ -478,47 +443,35 @@ Metrics flow through the OTel pipeline (OTLP exporter → collector → backend)
 
 ## API Reference
 
-### Quick Start Functions
+### Convenience Start Functions
 
-#### `Start(port string, serviceRegistrar func(*grpc.Server)) error`
-Starts a server in H2C mode with default configuration.
+All three block until shutdown, handle SIGINT/SIGTERM gracefully, and accept any number of trailing `Option`s.
+
+#### `Start(port string, serviceRegistrar func(*grpc.Server), opts ...Option) error`
+Starts a server in H2C mode (default mode) on the given port.
 
 ```go
 grpcserver.Start("8080", func(s *grpc.Server) {
     // Register services
-})
+}, grpcserver.WithReflection())
 ```
 
-#### `StartH2C(port string, serviceRegistrar func(*grpc.Server)) error`
+#### `StartH2C(port string, serviceRegistrar func(*grpc.Server), opts ...Option) error`
 Explicitly starts a server in H2C mode.
 
-```go
-grpcserver.StartH2C("8080", serviceRegistrar)
-```
-
-#### `StartSeparate(grpcPort, httpPort string, serviceRegistrar func(*grpc.Server)) error`
+#### `StartSeparate(grpcPort, httpPort string, serviceRegistrar func(*grpc.Server), opts ...Option) error`
 Starts a server in separate mode with different ports for gRPC and HTTP.
 
-```go
-grpcserver.StartSeparate("9090", "9091", serviceRegistrar)
-```
+### Server Constructor
 
-#### `StartWithConfig(config Config) error`
-Starts a server with custom configuration.
+#### `New(opts ...Option) (*Server, error)`
+Creates a server instance without starting it, for full lifecycle control:
 
 ```go
-config := grpcserver.DefaultConfig()
-// Configure...
-grpcserver.StartWithConfig(config)
-```
-
-### Advanced Usage Functions
-
-#### `New(config Config) (*Server, error)`
-Creates a new server instance without starting it. Useful for advanced control and testing.
-
-```go
-server, err := grpcserver.New(config)
+server, err := grpcserver.New(
+    grpcserver.WithGRPCPort("50051"),
+    grpcserver.WithServiceRegistrar(serviceRegistrar),
+)
 if err != nil {
     log.Fatal(err)
 }
@@ -526,32 +479,24 @@ if err != nil {
 // Access managers before starting
 healthManager := server.GetHealthManager()
 
-// Start when ready
+// Start when ready (blocks)
 if err := server.Start(); err != nil {
     log.Fatal(err)
 }
 ```
 
-#### `DefaultConfig() Config`
-Returns a configuration with sensible defaults.
-
-```go
-config := grpcserver.DefaultConfig()
-config.GRPCPort = "50051"
-```
-
 ### Types
-
-#### `Config`
-Main configuration struct with all server options. See Configuration Options section above.
 
 #### `Server`
 Server instance with methods:
-- `Start() error` - Start the server
+- `Start() error` - Start the server (blocks); supports Start/Stop/Start cycles
 - `Stop() error` - Gracefully stop the server
-- `GetHealthManager() *HealthManager` - Get health check manager
-- `GetGRPCServer() *grpc.Server` - Get underlying gRPC server
-- `IsRunning() bool` - Check if server is running
+- `IsRunning() bool` - Check if the server is running
+- `GetHealthManager() *HealthManager` - Get the health check manager
+- `GetGRPCServer() *grpc.Server` - Get the underlying gRPC server (nil after Stop until the next Start)
+
+#### `Option`
+Functional option: `type Option func(*config)`. See the Option Reference above.
 
 #### `ServerMode`
 Server mode enumeration:
@@ -572,8 +517,8 @@ Client Request → Port 8080
     (application/grpc)    (HTTP/1.1 & HTTP/2)
          ↓                     ↓
     Your Services        - gRPC Gateway
-                        - Health Checks
-                        - Custom Routes
+                         - Health Checks
+                         - Custom Routes
 ```
 
 ### Separate Mode Architecture
@@ -589,7 +534,7 @@ Client Request
 
 ## Examples
 
-The `examples/` directory contains a complete calculator service demonstrating:
+The `examples/grpc/` directory contains a complete calculator service demonstrating:
 
 - **Unary RPC**: Basic request-response operations (Add, Subtract, Multiply, Divide)
 - **Server Streaming**: Server sends multiple responses (Factorial)
@@ -600,15 +545,14 @@ The `examples/` directory contains a complete calculator service demonstrating:
 
 ### Running the Example
 
-```bash
-# Navigate to examples directory
-cd examples
+From the repository root:
 
+```bash
 # Run the server
-go run -tags examples cmd/server/main.go
+go run -tags=example ./examples/grpc/cmd/server
 
 # In another terminal, run the client
-go run -tags examples cmd/client/main.go
+go run -tags=example ./examples/grpc/cmd/client
 
 # Test HTTP endpoints
 curl http://localhost:50051/status
@@ -635,12 +579,12 @@ go test ./...
 
 1. **Use H2C Mode for Development**: Simplifies local testing with a single port
 2. **Use Separate Mode for Production**: Better isolation and flexibility
-3. **Enable OTel Observability**: Provide `OTelConfig` with `MeterProvider` and `TracerProvider` for production
+3. **Enable OTel Observability**: Provide an `*otel.Config` with `MeterProvider` and `TracerProvider` for production
 4. **Configure Timeouts**: Set appropriate timeouts based on your service requirements
 5. **Use gRPC Reflection in Development**: Makes testing with tools like grpcurl easier
 6. **Disable Reflection in Production**: Security best practice
 7. **Add Custom Health Checks**: Monitor critical dependencies (database, cache, etc.)
-8. **Use Echo Middleware**: Leverage Echo's rich middleware ecosystem
+8. **Use Echo Middleware**: Leverage Echo's rich middleware ecosystem via `WithMiddleware` or `WithEchoConfigurer`
 
 ## Dependencies
 

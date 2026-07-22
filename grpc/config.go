@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"google.golang.org/grpc"
@@ -53,7 +54,8 @@ type config struct {
 	shutdown         func() error       // Custom shutdown handler
 
 	// Gateway Configuration
-	gatewayBasePath string // Base path for gRPC gateway routes (default: "/api/v1")
+	gatewayBasePath  string                  // Base path for gRPC gateway routes (default: "/api/v1")
+	gatewayRegistrar func(*runtime.ServeMux) // Register handlers on the gateway mux
 
 	// Echo-specific Features
 	enableCORS      bool                   // Enable CORS middleware
@@ -345,6 +347,17 @@ func WithHealthPath(path string) Option {
 func WithGatewayBasePath(path string) Option {
 	return func(c *config) {
 		c.gatewayBasePath = path
+	}
+}
+
+// WithGatewayRegistrar sets the function to register handlers on the gRPC
+// gateway mux — typically closures around generated code such as
+// pb.RegisterXxxHandlerServer(ctx, mux, conn). It is invoked during server
+// start after the gateway mux is created and before it is mounted on Echo.
+// The mounted gateway only serves what is registered through this option.
+func WithGatewayRegistrar(fn func(mux *runtime.ServeMux)) Option {
+	return func(c *config) {
+		c.gatewayRegistrar = fn
 	}
 }
 
