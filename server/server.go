@@ -229,6 +229,16 @@ func setupEcho(config Config) *echo.Echo {
 	// Enforce a default body size limit to prevent request body attacks
 	e.Use(middleware.BodyLimit("4M"))
 
+	// Auto-install OTel request instrumentation when configured, before user middleware
+	if config.OTelConfig != nil {
+		if config.OTelConfig.IsTracingEnabled() {
+			e.Use(otelTracingMiddleware(config.OTelConfig))
+		}
+		if config.OTelConfig.IsMetricsEnabled() {
+			e.Use(otelMetricsMiddleware(config.OTelConfig))
+		}
+	}
+
 	// Add custom middleware
 	for _, m := range config.Middleware {
 		e.Use(m)
