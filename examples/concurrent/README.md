@@ -4,13 +4,13 @@ This directory contains examples demonstrating how to use the `concurrent` packa
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/concurrent/examples/example.go](https://github.com/jasoet/pkg/blob/main/concurrent/examples/example.go)
+**Full example implementation:** [example.go](example.go)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
 ```go
 // Basic usage pattern
-import "github.com/jasoet/pkg/concurrent"
+import "github.com/jasoet/pkg/v3/concurrent"
 
 // Define functions to run concurrently
 funcs := map[string]concurrent.Func[string]{
@@ -51,15 +51,15 @@ The `concurrent` package provides utilities for:
 
 ## Running the Examples
 
-To run the examples, use the following command from the `concurrent/examples` directory:
+The example is behind the `example` build tag. From the repository root:
 
 ```bash
-go run example.go
+go run -tags=example ./examples/concurrent/
 ```
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/concurrent/examples/example.go) file demonstrates several use cases:
+The [example.go](example.go) file demonstrates several use cases:
 
 ### 1. Basic Concurrent Execution
 

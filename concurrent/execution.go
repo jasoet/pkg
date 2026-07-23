@@ -98,11 +98,14 @@ func isContextErr(err error) bool {
 }
 
 // ExecuteConcurrentlyTyped executes multiple functions concurrently and transforms
-// the results into a typed struct using the provided resultBuilder function.
+// the results into a typed value using the provided resultBuilder function.
 //
 // This is a more type-safe alternative to ExecuteConcurrently when you know the
 // exact structure of the results.
-func ExecuteConcurrentlyTyped[T any, R any](
+//
+// Type parameters are result-first: instantiate as
+// ExecuteConcurrentlyTyped[Output, Input].
+func ExecuteConcurrentlyTyped[R any, T any](
 	ctx context.Context,
 	resultBuilder func(map[string]T) (R, error),
 	funcs map[string]Func[T],

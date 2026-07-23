@@ -4,6 +4,7 @@ package concurrent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -218,7 +219,7 @@ func TestExecuteConcurrentlyWithInterface(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[ResultValue, MixedTypeDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[MixedTypeDTO, ResultValue](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, "Hello", result.StringValue)
 		assert.Equal(t, 42.5, result.FloatValue)
@@ -242,7 +243,7 @@ func TestExecuteConcurrentlyWithInterface(t *testing.T) {
 			return MixedTypeDTO{}, nil // Won't be called due to error
 		}
 
-		result, err := ExecuteConcurrentlyTyped[ResultValue, MixedTypeDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[MixedTypeDTO, ResultValue](context.Background(), resultBuilder, funcs)
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Equal(t, MixedTypeDTO{}, result)
@@ -289,12 +290,32 @@ func TestExecuteConcurrentlyWithInterface(t *testing.T) {
 			return dto, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[ResultValue, MixedTypeDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[MixedTypeDTO, ResultValue](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, "Hello", result.StringValue)
 		assert.Equal(t, 42.5, result.FloatValue)
 		assert.Equal(t, 100, result.IntValue)
 		assert.Equal(t, "Hello d", result.Combined) // 'd' is ASCII 100
+	})
+}
+
+func TestExecuteConcurrentlyTypedResultFirstOrder(t *testing.T) {
+	// Result-first type-parameter order: ExecuteConcurrentlyTyped[Output, Input]
+	// must accept Func[int] functions and a builder returning string.
+	t.Run("result type parameter comes first", func(t *testing.T) {
+		funcs := map[string]Func[int]{
+			"answer": func(ctx context.Context) (int, error) {
+				return 42, nil
+			},
+		}
+
+		resultBuilder := func(results map[string]int) (string, error) {
+			return fmt.Sprintf("answer=%d", results["answer"]), nil
+		}
+
+		result, err := ExecuteConcurrentlyTyped[string, int](context.Background(), resultBuilder, funcs)
+		assert.NoError(t, err)
+		assert.Equal(t, "answer=42", result)
 	})
 }
 
@@ -331,7 +352,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[string, StringDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[StringDTO, string](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, "Hello", result.Greeting)
 		assert.Equal(t, "World", result.Name)
@@ -357,7 +378,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[float64, TestDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[TestDTO, float64](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, 10.0, result.Value1)
 		assert.Equal(t, 20.0, result.Value2)
@@ -384,7 +405,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[float64, TestDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[TestDTO, float64](context.Background(), resultBuilder, funcs)
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Equal(t, TestDTO{}, result)
@@ -406,7 +427,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			return TestDTO{}, expectedErr
 		}
 
-		result, err := ExecuteConcurrentlyTyped[float64, TestDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[TestDTO, float64](context.Background(), resultBuilder, funcs)
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Equal(t, TestDTO{}, result)
