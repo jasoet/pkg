@@ -101,9 +101,10 @@ func WithArgoServerHTTP1(http1 bool) Option {
 //
 // Example:
 //
-//	otelConfig := otel.NewConfig("my-service").
-//	    WithTracerProvider(tracerProvider).
-//	    WithMeterProvider(meterProvider)
+//	otelConfig := otel.NewConfig("my-service",
+//	    otel.WithTracerProvider(tracerProvider),
+//	    otel.WithMeterProvider(meterProvider),
+//	)
 //
 //	ctx, client, err := argo.NewClientWithOptions(ctx,
 //	    argo.WithOTelConfig(otelConfig),

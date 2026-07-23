@@ -27,7 +27,6 @@ import (
 //	if err != nil {
 //	    return err
 //	}
-//	defer client.Close()
 //
 // Example (in-cluster):
 //
