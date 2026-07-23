@@ -37,6 +37,10 @@ import (
 //
 //	cfg := argo.ServerConfig("https://argo-server:2746", "Bearer token")
 //	ctx, client, err := argo.NewClient(ctx, cfg)
+//
+// When config.OTelConfig is set, the returned context carries it (via
+// otel.ContextWithConfig), so package operations resolve instrumentation
+// automatically through otel.ConfigFromContext.
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
 	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v3/argo", "argo.NewClient")
 

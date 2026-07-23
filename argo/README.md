@@ -3,21 +3,24 @@
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Production-ready Argo Workflows client library with flexible configuration, OpenTelemetry support, and comprehensive error handling.
+Argo Workflows client library with flexible configuration, context-based OpenTelemetry propagation, and proper error handling.
+
+## Package Posture
+
+This package is an **SDK integration**: it exposes `argo-workflows` types (`apiclient.Client`, `v1alpha1.Workflow`, `workflow.*Request`) directly by design, rather than wrapping them behind an abstraction layer. It adds value on top of the raw SDK: unified client construction (kubeconfig / in-cluster / Argo Server), a fluent workflow builder, pre-built patterns, and optional OpenTelemetry instrumentation. If you need an SDK operation that is not wrapped here, use `client.NewWorkflowServiceClient()` directly.
 
 ## Features
 
 - **Multiple Connection Modes**: Kubernetes API, In-Cluster, or Argo Server HTTP
 - **Flexible Configuration**: Config structs and functional options
-- **OpenTelemetry Integration**: Built-in tracing and observability
+- **Context-Based OpenTelemetry**: OTel config propagates through `context.Context` — set it once at client creation, operations pick it up automatically
 - **Production-Ready**: Proper error handling, no fatal errors
-- **Type-Safe**: Full Go type safety with generics support
 - **Well-Documented**: Comprehensive examples and documentation
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/argo
+go get github.com/jasoet/pkg/v3/argo
 ```
 
 ## Quick Start
@@ -29,7 +32,8 @@ package main
 
 import (
     "context"
-    "github.com/jasoet/pkg/v2/argo"
+
+    "github.com/jasoet/pkg/v3/argo"
 )
 
 func main() {
@@ -94,6 +98,11 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 Connect via Argo Server HTTP API.
 
 ```go
+ctx, client, err := argo.NewClient(ctx,
+    argo.ServerConfig("https://argo-server:2746", "Bearer token"),
+)
+
+// Or using functional options
 ctx, client, err := argo.NewClientWithOptions(ctx,
     argo.WithArgoServer("https://argo-server:2746", "Bearer token"),
 )
@@ -112,19 +121,19 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 ```go
 type Config struct {
     // KubeConfigPath specifies the path to kubeconfig file
-    KubeConfigPath string
+    KubeConfigPath string `yaml:"kubeConfigPath" mapstructure:"kubeConfigPath"`
 
     // Context specifies the kubeconfig context to use
-    Context string
+    Context string `yaml:"context" mapstructure:"context"`
 
     // InCluster indicates whether to use in-cluster configuration
-    InCluster bool
+    InCluster bool `yaml:"inCluster" mapstructure:"inCluster"`
 
     // ArgoServerOpts configures connection to Argo Server
-    ArgoServerOpts ArgoServerOpts
+    ArgoServerOpts ServerOpts `yaml:"argoServer" mapstructure:"argoServer"`
 
     // OTelConfig enables OpenTelemetry instrumentation
-    OTelConfig *otel.Config
+    OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
 }
 ```
 
@@ -138,7 +147,7 @@ config := argo.DefaultConfig()
 config := argo.InClusterConfig()
 
 // Argo Server configuration
-config := argo.ArgoServerConfig("https://argo-server:2746", "Bearer token")
+config := argo.ServerConfig("https://argo-server:2746", "Bearer token")
 ```
 
 ## Functional Options
@@ -156,6 +165,13 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
     argo.WithArgoServer("https://argo-server:2746", "Bearer token"),
     argo.WithArgoServerInsecure(false),
     argo.WithArgoServerHTTP1(false),
+    argo.WithArgoServerOpts(argo.ServerOpts{
+        URL:       "https://argo-server:2746",
+        AuthToken: "Bearer token",
+    }),
+
+    // Apply a complete pre-built config
+    argo.WithConfig(myConfig),
 
     // Observability
     argo.WithOTelConfig(otelConfig),
@@ -164,27 +180,42 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 
 ## OpenTelemetry Integration
 
-Enable distributed tracing and monitoring:
+OTel configuration propagates through `context.Context`. `NewClient` / `NewClientWithOptions` inject the configured `*otel.Config` into the context they return; the package operations (`SubmitWorkflow`, `SubmitAndWait`, `GetWorkflowStatus`, `ListWorkflows`, `DeleteWorkflow`) resolve it from the context via `otel.ConfigFromContext(ctx)`. Pass the returned `ctx` to operations and instrumentation is automatic — no per-call config argument.
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/argo"
-    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v3/argo"
+    "github.com/jasoet/pkg/v3/otel"
 )
 
 // Create OTel config
-otelConfig := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+)
 
-// Create Argo client with OTel
+// Create Argo client with OTel — the returned ctx carries the config
 ctx, client, err := argo.NewClientWithOptions(ctx,
     argo.WithKubeConfig("/path/to/kubeconfig"),
     argo.WithOTelConfig(otelConfig),
 )
+if err != nil {
+    return err
+}
+
+// Operations read the OTel config from ctx
+created, err := argo.SubmitWorkflow(ctx, client, wf)
+```
+
+You can also inject a config into any context manually:
+
+```go
+ctx = otel.ContextWithConfig(ctx, otelConfig)
 ```
 
 ## Working with Workflows
+
+The examples below use the raw Argo SDK client (`client.NewWorkflowServiceClient()`). For the higher-level instrumented wrappers, see [Enhanced Client Operations](#enhanced-client-operations).
 
 ### List Workflows
 
@@ -286,14 +317,15 @@ for {
 
 ## Workflow Builder API
 
-The workflow builder API provides a high-level, fluent interface for constructing Argo Workflows without needing to understand the low-level protobuf-generated structs. It includes template sources, pre-built patterns, and full OpenTelemetry instrumentation.
+The workflow builder API provides a high-level, fluent interface for constructing Argo Workflows without needing to understand the low-level protobuf-generated structs. It includes template sources, pre-built patterns, and optional OpenTelemetry instrumentation.
 
 ### Quick Start with Builder
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/argo/builder"
-    "github.com/jasoet/pkg/v2/argo/builder/template"
+    "github.com/jasoet/pkg/v3/argo"
+    "github.com/jasoet/pkg/v3/argo/builder"
+    "github.com/jasoet/pkg/v3/argo/builder/template"
 )
 
 // Create workflow steps
@@ -317,8 +349,8 @@ if err != nil {
     return err
 }
 
-// Submit workflow
-created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+// Submit workflow (ctx carries the OTel config if one was set)
+created, err := argo.SubmitWorkflow(ctx, client, wf)
 ```
 
 ### Template Sources
@@ -405,7 +437,7 @@ wf, err := builder.NewWorkflowBuilder("myworkflow", "argo",
 
     // Resource Management
     builder.WithArchiveLogs(true),
-    builder.WithActiveDeadline(3600), // 1 hour timeout
+    builder.WithActiveDeadlineSeconds(3600), // 1 hour timeout
 
     // Retry Strategy
     builder.WithRetryStrategy(&v1alpha1.RetryStrategy{
@@ -420,6 +452,10 @@ wf, err := builder.NewWorkflowBuilder("myworkflow", "argo",
             EmptyDir: &corev1.EmptyDirVolumeSource{},
         },
     }),
+
+    // Garbage collection and TTL
+    builder.WithPodGC(&v1alpha1.PodGC{Strategy: v1alpha1.PodGCOnWorkflowSuccess}),
+    builder.WithTTL(&v1alpha1.TTLStrategy{SecondsAfterCompletion: &ttl}),
 
     // OpenTelemetry
     builder.WithOTelConfig(otelConfig),
@@ -460,7 +496,7 @@ wf, err := builder.NewWorkflowBuilder("deployment", "argo").
 ##### Build-Test-Deploy
 
 ```go
-import "github.com/jasoet/pkg/v2/argo/patterns"
+import "github.com/jasoet/pkg/v3/argo/patterns"
 
 wf, err := patterns.BuildTestDeploy(
     "myapp", "argo",
@@ -541,7 +577,7 @@ wf, err := patterns.MapReduce(
     "word-count", "argo",
     "alpine:latest",
     []string{"file1.txt", "file2.txt", "file3.txt"},
-    "wc -w",                          // map command
+    "wc -w",                           // map command
     "awk '{sum+=$1} END {print sum}'", // reduce command
 )
 ```
@@ -576,12 +612,12 @@ wf, err := patterns.ParallelDeployment(
 
 ### Enhanced Client Operations
 
-Higher-level operations with full OpenTelemetry instrumentation:
+Higher-level operations with optional OpenTelemetry instrumentation. None of them take an OTel config argument — they resolve it from `ctx` via `otel.ConfigFromContext(ctx)`. When the `ctx` came from `NewClient` / `NewClientWithOptions` configured with `WithOTelConfig`, instrumentation is automatic.
 
 #### Submit Workflow
 
 ```go
-import "github.com/jasoet/pkg/v2/argo"
+import "github.com/jasoet/pkg/v3/argo"
 
 wf, err := builder.NewWorkflowBuilder("deploy", "argo").
     Add(deployStep).
@@ -590,7 +626,7 @@ if err != nil {
     return err
 }
 
-created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+created, err := argo.SubmitWorkflow(ctx, client, wf)
 if err != nil {
     return err
 }
@@ -603,7 +639,7 @@ fmt.Printf("Workflow %s submitted\n", created.Name)
 Submit a workflow and wait for completion with automatic polling:
 
 ```go
-completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute)
 if err != nil {
     return err
 }
@@ -616,7 +652,7 @@ if completed.Status.Phase == v1alpha1.WorkflowSucceeded {
 #### Get Workflow Status
 
 ```go
-status, err := argo.GetWorkflowStatus(ctx, client, "argo", "my-workflow-abc123", otelConfig)
+status, err := argo.GetWorkflowStatus(ctx, client, "argo", "my-workflow-abc123")
 if err != nil {
     return err
 }
@@ -629,16 +665,16 @@ fmt.Printf("Progress: %s\n", status.Progress)
 
 ```go
 // List all workflows
-workflows, err := argo.ListWorkflows(ctx, client, "argo", "", otelConfig)
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "")
 
 // List with label selector
-workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp", otelConfig)
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp")
 ```
 
 #### Delete Workflow
 
 ```go
-err := argo.DeleteWorkflow(ctx, client, "argo", "my-workflow-abc123", otelConfig)
+err := argo.DeleteWorkflow(ctx, client, "argo", "my-workflow-abc123")
 if err != nil {
     return err
 }
@@ -675,12 +711,13 @@ package main
 
 import (
     "context"
+    "fmt"
     "time"
 
-    "github.com/jasoet/pkg/v2/argo"
-    "github.com/jasoet/pkg/v2/argo/builder"
-    "github.com/jasoet/pkg/v2/argo/builder/template"
-    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v3/argo"
+    "github.com/jasoet/pkg/v3/argo/builder"
+    "github.com/jasoet/pkg/v3/argo/builder/template"
+    "github.com/jasoet/pkg/v3/otel"
 )
 
 func main() {
@@ -689,7 +726,7 @@ func main() {
     // Create OTel config
     otelConfig := otel.NewConfig("workflow-manager")
 
-    // Create Argo client
+    // Create Argo client — returned ctx carries the OTel config
     ctx, client, err := argo.NewClientWithOptions(ctx,
         argo.WithOTelConfig(otelConfig))
     if err != nil {
@@ -731,8 +768,8 @@ func main() {
         panic(err)
     }
 
-    // Submit and wait
-    completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+    // Submit and wait — OTel config resolved from ctx
+    completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute)
     if err != nil {
         panic(err)
     }
@@ -810,61 +847,50 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 
 ## Running Examples
 
+Runnable examples live under `examples/argo/`, one directory per topic:
+
 ```bash
-# Run the comprehensive example
-go run -tags=example ./examples/argo
+# Run the basic client example
+go run -tags=example ./examples/argo/basic
 
 # Or build and run
-go build -tags=example -o argo-example ./examples/argo
+go build -tags=example -o argo-example ./examples/argo/basic
 ./argo-example
 ```
 
 See [examples/argo/README.md](../examples/argo/README.md) for more details.
 
-## Comparison with Original Implementation
+## Migration Notes
 
-### Before (scp/api)
+### Migrating from v2 (positional OTel config)
 
-```go
-// util/argo/argo.go - tightly coupled, uses fatal errors
-func NewClient(ctx context.Context) (context.Context, apiclient.Client) {
-    ctx, argoClient, err := apiclient.NewClientFromOpts(
-        apiclient.Opts{
-            ArgoServerOpts:       apiclient.ArgoServerOpts{},
-            ClientConfigSupplier: kube.GetCmdConfig,
-            Context:              ctx,
-        })
-    if err != nil {
-        log.Fatal().Err(err).Msg("unable to create argo client")  // Fatal!
-    }
-    return ctx, argoClient
-}
-```
-
-### After (pkg/v2/argo)
+The five package operations no longer take a positional `*otel.Config` argument. They resolve instrumentation from the context:
 
 ```go
-// Flexible, reusable, proper error handling
-ctx, client, err := argo.NewClientWithOptions(ctx,
-    argo.WithKubeConfig("/path/to/kubeconfig"),
-    argo.WithContext("production"),
-    argo.WithOTelConfig(otelConfig),
-)
-if err != nil {
-    return fmt.Errorf("failed to create client: %w", err)  // Graceful!
-}
-defer client.Close()
+// Before (v2)
+created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 10*time.Minute)
+status, err := argo.GetWorkflowStatus(ctx, client, "argo", name, otelConfig)
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "", otelConfig)
+err = argo.DeleteWorkflow(ctx, client, "argo", name, otelConfig)
+
+// After (v3) — set the config once when creating the client
+ctx, client, err := argo.NewClientWithOptions(ctx, argo.WithOTelConfig(otelConfig))
+
+created, err := argo.SubmitWorkflow(ctx, client, wf)
+completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute)
+status, err := argo.GetWorkflowStatus(ctx, client, "argo", name)
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "")
+err = argo.DeleteWorkflow(ctx, client, "argo", name)
 ```
 
-## Benefits
+If you construct clients without `WithOTelConfig` but still want instrumented calls, inject the config manually:
 
-✅ **Reusable** - Can be used across multiple projects
-✅ **Flexible** - Config struct + functional options
-✅ **Library-friendly** - Returns errors instead of fatal
-✅ **Testable** - Easy to mock and test
-✅ **Observable** - OpenTelemetry integration ready
-✅ **Well-documented** - Comprehensive docs and examples
-✅ **Production-ready** - Proper error handling and logging
+```go
+ctx = otel.ContextWithConfig(ctx, otelConfig)
+```
+
+Other renames from v2: the Argo Server config factory is now `argo.ServerConfig(...)`; the builder timeout option is `builder.WithActiveDeadlineSeconds(seconds int64)`.
 
 ## Best Practices
 
