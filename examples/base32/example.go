@@ -73,8 +73,8 @@ func basicEncodingDecoding() {
 	fmt.Printf("Decode '%s':             %d\n", encoded2, decoded)
 
 	// Case-insensitive decoding
-	decodedLower, _ := base32.DecodeBase32("c1p9")
-	fmt.Printf("Decode 'c1p9' (lower):   %d\n\n", decodedLower)
+	decodedLower, _ := base32.DecodeBase32("c1s")
+	fmt.Printf("Decode 'c1s' (lower):    %d\n\n", decodedLower)
 }
 
 // Example 2: Checksum operations
@@ -117,7 +117,7 @@ func urlShortener() {
 	}
 
 	// Decode a short code back to database ID
-	shortCode := "3QTYY1"
+	shortCode := "3NQK8N"
 	decodedID, _ := base32.DecodeBase32(shortCode)
 	fmt.Printf("\nDecode '%s' → Database ID: %d\n\n", shortCode, decodedID)
 }
@@ -239,7 +239,7 @@ func iotDeviceIDs() {
 
 	// Validate a device ID
 	fmt.Println("\nDevice ID Validation:")
-	testDeviceID := "DEV-3QTY01XY"
+	testDeviceID := "DEV-3RJ0N1"   // Real checksummed ID for serial 123456, as generated above
 	devicePart := testDeviceID[4:] // Remove "DEV-" prefix
 
 	if base32.ValidateChecksum(devicePart) {

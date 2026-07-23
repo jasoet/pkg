@@ -21,7 +21,7 @@ const crc10Polynomial = 0x233
 //
 // Example:
 //
-//	checksum, err := base32.CalculateChecksum("ABC123")  // "XY", nil
+//	checksum, err := base32.CalculateChecksum("ABC123")  // "TF", nil
 //
 // Parameters:
 //   - data: The Base32 string to checksum (must contain only valid Base32 characters)
@@ -72,20 +72,26 @@ func CalculateChecksum(data string) (string, error) {
 //
 // Expected format: [data][2 chars checksum]
 //
+// The input is normalized via NormalizeBase32 before validation, so
+// lowercase, dashed, or spaced input (e.g. "0000-c1p9-q0") validates against
+// its normalized form. Clean input is unaffected by normalization.
+//
 // This function is useful for validating user input or detecting data corruption.
 // Returns false if the input is too short or contains invalid Base32 characters.
 //
 // Example:
 //
-//	valid := base32.ValidateChecksum("ABC123XY")  // true if XY is correct checksum
-//	valid := base32.ValidateChecksum("ABC123ZZ")  // false if ZZ is wrong
+//	valid := base32.ValidateChecksum("ABC123TF")    // true (TF is the checksum of "ABC123")
+//	valid := base32.ValidateChecksum("abc-123-tf")  // true (normalized before validation)
+//	valid := base32.ValidateChecksum("ABC123ZZ")    // false (ZZ is the wrong checksum)
 //
 // Parameters:
-//   - input: The string with checksum appended (minimum 3 characters)
+//   - input: The string with checksum appended (minimum 3 characters after normalization)
 //
 // Returns:
 //   - true if the checksum is valid, false otherwise
 func ValidateChecksum(input string) bool {
+	input = NormalizeBase32(input)
 	if len(input) < 3 {
 		return false
 	}
@@ -101,28 +107,36 @@ func ValidateChecksum(input string) bool {
 		return false
 	}
 
-	// Compare checksums (case-insensitive)
-	return NormalizeBase32(providedChecksum) == NormalizeBase32(expectedChecksum)
+	// Compare checksums (input is already normalized above)
+	return providedChecksum == expectedChecksum
 }
 
 // AppendChecksum adds a 2-character checksum to the end of the data.
 //
 // This is the recommended way to create checksummed strings.
 //
-// Returns an error if the input contains invalid Base32 characters.
+// The input is normalized via NormalizeBase32 before the checksum is
+// computed, so lowercase, dashed, or spaced input (e.g. "0000-c1p9") works;
+// the returned string is always the normalized data plus its checksum.
+// Clean input is unaffected by normalization.
+//
+// Returns an error if the normalized input is empty or contains invalid
+// Base32 characters.
 //
 // Example:
 //
 //	id, _ := base32.EncodeBase32(12345, 6)             // "000C1S"
-//	idWithChecksum, _ := base32.AppendChecksum(id)     // "000C1SXY"
+//	idWithChecksum, _ := base32.AppendChecksum(id)     // "000C1S69"
+//	withDashes, _ := base32.AppendChecksum("0000-c1p9") // "0000C1P9Q0" (normalized)
 //
 // Parameters:
-//   - data: The Base32 string to checksum (must contain only valid Base32 characters)
+//   - data: The Base32 string to checksum (normalized before checksumming)
 //
 // Returns:
-//   - The input string with a 2-character checksum appended
-//   - An error if the input contains invalid characters
+//   - The normalized input string with a 2-character checksum appended
+//   - An error if the normalized input contains invalid characters
 func AppendChecksum(data string) (string, error) {
+	data = NormalizeBase32(data)
 	checksum, err := CalculateChecksum(data)
 	if err != nil {
 		return "", err
@@ -136,7 +150,7 @@ func AppendChecksum(data string) (string, error) {
 //
 // Example:
 //
-//	data := base32.StripChecksum("ABC123XY")  // "ABC123"
+//	data := base32.StripChecksum("ABC123TF")  // "ABC123"
 //	data := base32.StripChecksum("AB")        // ""
 //
 // Parameters:
@@ -157,7 +171,7 @@ func StripChecksum(input string) string {
 //
 // Example:
 //
-//	checksum := base32.ExtractChecksum("ABC123XY")  // "XY"
+//	checksum := base32.ExtractChecksum("ABC123TF")  // "TF"
 //	checksum := base32.ExtractChecksum("A")         // ""
 //
 // Parameters:

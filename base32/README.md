@@ -1,6 +1,6 @@
 # Base32 Package
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/base32.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/base32)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/base32.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/base32)
 
 Crockford Base32 encoding and CRC-10 checksums for human-readable, error-correcting identifiers.
 
@@ -23,7 +23,7 @@ Crockford Base32 encoding and CRC-10 checksums for human-readable, error-correct
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2
+go get github.com/jasoet/pkg/v3
 ```
 
 ## Quick Start
@@ -33,12 +33,12 @@ package main
 
 import (
     "fmt"
-    "github.com/jasoet/pkg/v2/base32"
+    "github.com/jasoet/pkg/v3/base32"
 )
 
 func main() {
     // Encode a number
-    id, err := base32.EncodeBase32(12345, 8)  // "0000C1S", nil
+    id, err := base32.EncodeBase32(12345, 8)  // "00000C1S", nil
     if err != nil {
         panic(err)
     }
@@ -68,10 +68,10 @@ func main() {
 // Database ID to short code
 databaseID := uint64(123456789)
 shortCode := base32.EncodeBase32Compact(databaseID)
-// https://short.url/3QTYY1
+// https://short.url/3NQK8N
 
 // Decode back
-decoded, _ := base32.DecodeBase32(shortCode)
+decoded, _ := base32.DecodeBase32(shortCode)  // 123456789
 ```
 
 ### 2. Order/Transaction IDs
@@ -82,10 +82,12 @@ timestamp := uint64(time.Now().Unix())
 sequence := uint64(12345)
 
 timeCode, _ := base32.EncodeBase32(timestamp, 8)
-seqCode, _ := base32.EncodeBase32(sequence, 4)
+seqCode, _ := base32.EncodeBase32(sequence, 4)  // "0C1S"
 
+// AppendChecksum normalizes its input first: dashes are removed and
+// common lookalikes are corrected (note: "ORD" contains O, which → 0)
 orderID, _ := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
-// ORD-6HG4K2N0-00C1P9XY
+// "0RD" + timeCode + seqCode + 2-char checksum, e.g. "0RD01N62VHA0C1S27"
 ```
 
 ### 3. License Keys
@@ -94,20 +96,20 @@ orderID, _ := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
 productID := uint64(42)
 customerID := uint64(789)
 
-product, _ := base32.EncodeBase32(productID, 2)
-customer, _ := base32.EncodeBase32(customerID, 4)
+product, _ := base32.EncodeBase32(productID, 2)    // "1A"
+customer, _ := base32.EncodeBase32(customerID, 4)  // "00RN"
 
 licenseKey, _ := base32.AppendChecksum(product + customer)
-// Format: 16-00NC-XY
+// "1A00RN7D"
 ```
 
 ### 4. Voucher/Coupon Codes
 
 ```go
 voucherID := uint64(9999)
-code, _ := base32.EncodeBase32(voucherID, 4)
-codeWithChecksum, _ := base32.AppendChecksum(code)
-// 09ZZ-XY (easy to type, error-correcting)
+code, _ := base32.EncodeBase32(voucherID, 4)           // "09RF"
+codeWithChecksum, _ := base32.AppendChecksum(code)     // "09RFZB"
+// Easy to type, error-correcting
 ```
 
 ### 5. IoT Device IDs
@@ -145,9 +147,9 @@ encoded := base32.EncodeBase32Compact(12345)  // "C1S"
 Decodes a Base32 string to an unsigned integer.
 
 ```go
-value, err := base32.DecodeBase32("C1P9")  // 12345, nil
-value, err := base32.DecodeBase32("c1p9")  // 12345, nil (case-insensitive)
-value, err := base32.DecodeBase32("C1PO")  // 12345, nil (O→0 correction)
+value, err := base32.DecodeBase32("C1S")  // 12345, nil
+value, err := base32.DecodeBase32("c1s")  // 12345, nil (case-insensitive)
+value, err := base32.DecodeBase32("I0")   // 32, nil (I→1 correction)
 ```
 
 #### `NormalizeBase32(input string) string`
@@ -179,24 +181,30 @@ base32.IsValidBase32Char('U')  // false
 Computes a 2-character CRC-10 checksum.
 
 ```go
-checksum, err := base32.CalculateChecksum("ABC123")  // "XY", nil
+checksum, err := base32.CalculateChecksum("ABC123")  // "TF", nil
 ```
 
 #### `AppendChecksum(data string) (string, error)`
 
-Adds checksum to the end of data.
+Adds checksum to the end of data. The input is normalized via
+`NormalizeBase32` first (uppercased, dashes/spaces removed, I→1 / L→1 / O→0),
+so dashed or lowercase identifiers work; clean input is unaffected.
 
 ```go
-withChecksum, err := base32.AppendChecksum("ABC123")  // "ABC123XY", nil
+withChecksum, err := base32.AppendChecksum("ABC123")     // "ABC123TF", nil
+withChecksum, err := base32.AppendChecksum("0000-c1p9")  // "0000C1P9Q0", nil
 ```
 
 #### `ValidateChecksum(input string) bool`
 
-Verifies checksum validity.
+Verifies checksum validity. The input is normalized via `NormalizeBase32`
+first, so dashed or lowercase checksummed strings validate; clean input is
+unaffected.
 
 ```go
-valid := base32.ValidateChecksum("ABC123XY")  // true
-valid := base32.ValidateChecksum("ABC123ZZ")  // false
+valid := base32.ValidateChecksum("ABC123TF")    // true
+valid := base32.ValidateChecksum("abc-123-tf")  // true (normalized)
+valid := base32.ValidateChecksum("ABC123ZZ")    // false
 ```
 
 #### `StripChecksum(input string) string`
@@ -204,7 +212,7 @@ valid := base32.ValidateChecksum("ABC123ZZ")  // false
 Removes the last 2 characters (checksum).
 
 ```go
-data := base32.StripChecksum("ABC123XY")  // "ABC123"
+data := base32.StripChecksum("ABC123TF")  // "ABC123"
 ```
 
 #### `ExtractChecksum(input string) string`
@@ -212,7 +220,7 @@ data := base32.StripChecksum("ABC123XY")  // "ABC123"
 Extracts the last 2 characters (checksum).
 
 ```go
-checksum := base32.ExtractChecksum("ABC123XY")  // "XY"
+checksum := base32.ExtractChecksum("ABC123TF")  // "TF"
 ```
 
 ## Error Detection
@@ -245,13 +253,19 @@ base32.ValidateChecksum(transposed)  // false - detected!
 
 ## Examples
 
-Run comprehensive examples:
+Run the comprehensive walkthrough (no build tag needed):
+
+```bash
+go run ./examples/base32
+```
+
+Or the compact demo in this directory (requires the `example` build tag):
 
 ```bash
 go run -tags=example ./base32/examples
 ```
 
-See [examples/main.go](examples/main.go) for detailed usage patterns.
+See [examples/main.go](examples/main.go) and [../examples/base32/example.go](../examples/base32/example.go) for detailed usage patterns.
 
 ## Performance
 
@@ -320,14 +334,14 @@ import "github.com/jasoet/tix-core/encoding"
 
 **After:**
 ```go
-import "github.com/jasoet/pkg/v2/base32"
+import "github.com/jasoet/pkg/v3/base32"
 ```
 
 API is 100% compatible - only the import path and package name change.
 
 ## Contributing
 
-See the main [pkg/v2 repository](https://github.com/jasoet/pkg) for contribution guidelines.
+See the main [pkg/v3 repository](https://github.com/jasoet/pkg) for contribution guidelines.
 
 ## License
 
@@ -335,4 +349,4 @@ MIT License - see [LICENSE](../LICENSE) for details.
 
 ---
 
-**Part of [github.com/jasoet/pkg/v2](https://github.com/jasoet/pkg/v2)** - Production-ready Go utility packages.
+**Part of [github.com/jasoet/pkg/v3](https://github.com/jasoet/pkg)** - Production-ready Go utility packages.

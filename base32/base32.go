@@ -10,7 +10,7 @@
 // Example:
 //
 //	// Encode a value
-//	id, err := base32.EncodeBase32(12345, 8)  // "000000C1S", nil
+//	id, err := base32.EncodeBase32(12345, 8)  // "00000C1S", nil
 //
 //	// Add checksum
 //	idWithChecksum, err := base32.AppendChecksum(id)
@@ -103,9 +103,9 @@ func EncodeBase32(value uint64, length int) (string, error) {
 //
 // Example:
 //
-//	val, err := base32.DecodeBase32("C1P9")  // 12345, nil
-//	val, err := base32.DecodeBase32("c1p9")  // 12345, nil (case-insensitive)
-//	val, err := base32.DecodeBase32("C1PO")  // 12345, nil (O→0 correction)
+//	val, err := base32.DecodeBase32("C1S")  // 12345, nil
+//	val, err := base32.DecodeBase32("c1s")  // 12345, nil (case-insensitive)
+//	val, err := base32.DecodeBase32("I0")   // 32, nil (I→1 correction)
 //
 // Parameters:
 //   - encoded: The Base32-encoded string to decode
@@ -193,7 +193,7 @@ var normalizeReplacer = strings.NewReplacer(
 //
 //	base32.NormalizeBase32("abc-def")   // "ABCDEF"
 //	base32.NormalizeBase32("1O 2I")     // "1021"
-//	base32.NormalizeBase32("hell0")     // "HELL0"
+//	base32.NormalizeBase32("hell0")     // "HE110" (L→1 correction)
 func NormalizeBase32(input string) string {
 	return normalizeReplacer.Replace(strings.ToUpper(input))
 }
@@ -207,7 +207,7 @@ func NormalizeBase32(input string) string {
 //	base32.EncodeBase32Compact(0)      // "0"
 //	base32.EncodeBase32Compact(31)     // "Z"
 //	base32.EncodeBase32Compact(32)     // "10"
-//	base32.EncodeBase32Compact(12345)  // "C1P9"
+//	base32.EncodeBase32Compact(12345)  // "C1S"
 func EncodeBase32Compact(value uint64) string {
 	if value == 0 {
 		return "0"

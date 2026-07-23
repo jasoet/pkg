@@ -4,29 +4,29 @@ This directory contains examples demonstrating how to use the `base32` package f
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/base32/examples/example.go](https://github.com/jasoet/pkg/blob/main/base32/examples/example.go)
+**Full example implementation:** [example.go](example.go) in this directory.
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
 ```go
 // Basic usage pattern
-import "github.com/jasoet/pkg/v2/base32"
+import "github.com/jasoet/pkg/v3/base32"
 
 // Encoding
-encoded := base32.EncodeBase32(12345, 8)      // Fixed-length: "0000C1P9"
-compact := base32.EncodeBase32Compact(12345)  // Compact: "C1P9"
+encoded, err := base32.EncodeBase32(12345, 8)  // Fixed-length: "00000C1S"
+compact := base32.EncodeBase32Compact(12345)   // Compact: "C1S"
 
 // Decoding
-value, err := base32.DecodeBase32("C1P9")     // Returns: 12345
+value, err := base32.DecodeBase32("C1S")        // Returns: 12345
 
-// Checksums
-withChecksum := base32.AppendChecksum("ABC123")     // "ABC123XY"
-isValid := base32.ValidateChecksum(withChecksum)    // true
-checksum := base32.CalculateChecksum("ABC123")      // "XY"
+// Checksums (AppendChecksum/ValidateChecksum normalize their input first)
+withChecksum, err := base32.AppendChecksum("ABC123")  // "ABC123TF"
+isValid := base32.ValidateChecksum(withChecksum)      // true
+checksum, err := base32.CalculateChecksum("ABC123")   // "TF"
 
 // Normalization
-normalized := base32.NormalizeBase32("abc-def")     // "ABCDEF"
-normalized = base32.NormalizeBase32("1O 2I")        // "1021" (O→0, I→1)
+normalized := base32.NormalizeBase32("abc-def")       // "ABCDEF"
+normalized = base32.NormalizeBase32("1O 2I")          // "1021" (O→0, I→1)
 ```
 
 **Key Features:**
@@ -52,10 +52,10 @@ To run the examples, use the following command from the repository root:
 go run ./examples/base32
 ```
 
-Or from the `base32/examples` directory:
+A second, more compact demo lives in `base32/examples` behind the `example` build tag:
 
 ```bash
-go run example.go
+go run -tags=example ./base32/examples
 ```
 
 This will demonstrate:
@@ -71,7 +71,7 @@ This will demonstrate:
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/base32/examples/example.go) file demonstrates several practical use cases:
+The [example.go](example.go) file demonstrates several practical use cases:
 
 ### 1. Basic Encoding and Decoding
 
@@ -79,13 +79,13 @@ Shows fundamental encoding operations:
 
 ```go
 // Fixed-length encoding
-encoded := base32.EncodeBase32(12345, 8)  // "0000C1P9"
+encoded, _ := base32.EncodeBase32(12345, 8)  // "00000C1S"
 
 // Compact encoding (minimum characters)
-compact := base32.EncodeBase32Compact(12345)  // "C1P9"
+compact := base32.EncodeBase32Compact(12345)  // "C1S"
 
 // Case-insensitive decoding
-value, _ := base32.DecodeBase32("c1p9")  // 12345
+value, _ := base32.DecodeBase32("c1s")  // 12345
 ```
 
 ### 2. Checksum Operations
@@ -93,11 +93,11 @@ value, _ := base32.DecodeBase32("c1p9")  // 12345
 Demonstrates all checksum functions:
 
 ```go
-checksum := base32.CalculateChecksum("ABC123")  // "XY"
-withChecksum := base32.AppendChecksum("ABC123") // "ABC123XY"
-isValid := base32.ValidateChecksum(withChecksum) // true
-extracted := base32.ExtractChecksum(withChecksum) // "XY"
-stripped := base32.StripChecksum(withChecksum)   // "ABC123"
+checksum, _ := base32.CalculateChecksum("ABC123")   // "TF"
+withChecksum, _ := base32.AppendChecksum("ABC123")  // "ABC123TF"
+isValid := base32.ValidateChecksum(withChecksum)    // true
+extracted := base32.ExtractChecksum(withChecksum)   // "TF"
+stripped := base32.StripChecksum(withChecksum)      // "ABC123"
 ```
 
 ### 3. URL Shortener
@@ -108,7 +108,7 @@ Complete URL shortener implementation:
 // Database ID to short code
 databaseID := uint64(123456789)
 shortCode := base32.EncodeBase32Compact(databaseID)
-url := "https://short.url/" + shortCode  // "https://short.url/3QTYY1"
+url := "https://short.url/" + shortCode  // "https://short.url/3NQK8N"
 
 // Decode back to database ID
 decoded, _ := base32.DecodeBase32(shortCode)  // 123456789
@@ -122,11 +122,13 @@ Generate timestamped order IDs with sequences:
 timestamp := uint64(time.Now().Unix())
 sequence := uint64(12345)
 
-timeCode := base32.EncodeBase32(timestamp, 8)
-seqCode := base32.EncodeBase32(sequence, 4)
+timeCode, _ := base32.EncodeBase32(timestamp, 8)
+seqCode, _ := base32.EncodeBase32(sequence, 4)  // "0C1S"
 
-orderID := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
-// Example: "ORD-6HG4K2N0-00C1P9XY"
+// AppendChecksum normalizes its input: dashes removed, lookalikes
+// corrected ("ORD" contains O → 0), then the checksum is appended.
+orderID, _ := base32.AppendChecksum("ORD-" + timeCode + "-" + seqCode)
+// "0RD" + timeCode + seqCode + 2-char checksum
 ```
 
 ### 5. License Key Generation
@@ -138,12 +140,13 @@ productID := uint64(42)
 customerID := uint64(789)
 expiryDate := uint64(20251231)
 
-product := base32.EncodeBase32(productID, 2)
-customer := base32.EncodeBase32(customerID, 4)
-expiry := base32.EncodeBase32(expiryDate, 6)
+product, _ := base32.EncodeBase32(productID, 2)    // "1A"
+customer, _ := base32.EncodeBase32(customerID, 4)  // "00RN"
+expiry, _ := base32.EncodeBase32(expiryDate, 6)    // "0KA0JZ"
 
-licenseKey := base32.AppendChecksum(product + "-" + customer + "-" + expiry)
-// Includes automatic error detection
+// Dashes are fine: AppendChecksum normalizes them away first
+licenseKey, _ := base32.AppendChecksum(product + "-" + customer + "-" + expiry)
+// "1A00RN0KA0JZE8" — includes automatic error detection
 ```
 
 ### 6. Voucher/Coupon Codes
@@ -152,9 +155,9 @@ Generate short, typeable voucher codes:
 
 ```go
 voucherID := uint64(9999)
-code := base32.EncodeBase32(voucherID, 4)
-codeWithChecksum := base32.AppendChecksum(code)
-// Format: "09ZZ-XY" (easy to type, error-correcting)
+code, _ := base32.EncodeBase32(voucherID, 4)        // "09RF"
+codeWithChecksum, _ := base32.AppendChecksum(code)  // "09RFZB"
+// Display as "09-RF-ZB" (easy to type, error-correcting)
 ```
 
 ### 7. IoT Device IDs
@@ -163,9 +166,9 @@ Create compact device identifiers:
 
 ```go
 deviceSerial := uint64(123456)
-deviceID := base32.EncodeBase32Compact(deviceSerial)
-deviceIDWithChecksum := base32.AppendChecksum(deviceID)
-// Example: "DEV-3QTY01XY"
+deviceID := base32.EncodeBase32Compact(deviceSerial)      // "3RJ0"
+deviceIDWithChecksum, _ := base32.AppendChecksum(deviceID) // "3RJ0N1"
+// Display as "DEV-3RJ0N1"
 ```
 
 ### 8. Error Correction and Normalization
@@ -189,7 +192,8 @@ base32.IsValidBase32Char('U')  // false (excluded from alphabet)
 Shows error detection capabilities:
 
 ```go
-validID := base32.AppendChecksum("TEST123")
+validID, _ := base32.AppendChecksum("TEST123")  // "TEST123WB"
+checksum := base32.ExtractChecksum(validID)     // "WB"
 
 // Detects single character errors (100%)
 corrupted := "XEST123" + checksum  // T→X
@@ -241,7 +245,7 @@ The examples demonstrate real error detection:
 
 ### URL Shorteners
 Convert database IDs to short, shareable links:
-- Database ID 123456789 → `3QTYY1`
+- Database ID 123456789 → `3NQK8N`
 - Compact, URL-safe representation
 
 ### Order/Transaction IDs
@@ -271,7 +275,7 @@ Compact identifiers for devices:
 
 ```go
 // ✓ Good - includes error detection
-id := base32.AppendChecksum(data)
+id, err := base32.AppendChecksum(data)
 
 // ✗ Avoid - no error detection
 id := data
@@ -325,7 +329,7 @@ All operations are highly optimized for production use.
 
 ### Encoding Functions
 
-- `EncodeBase32(value uint64, length int) string` - Fixed-length encoding
+- `EncodeBase32(value uint64, length int) (string, error)` - Fixed-length encoding
 - `EncodeBase32Compact(value uint64) string` - Minimum character encoding
 
 ### Decoding Functions
@@ -334,9 +338,9 @@ All operations are highly optimized for production use.
 
 ### Checksum Functions
 
-- `CalculateChecksum(data string) string` - Compute CRC-10 checksum
-- `AppendChecksum(data string) string` - Add checksum to data
-- `ValidateChecksum(input string) bool` - Verify checksum
+- `CalculateChecksum(data string) (string, error)` - Compute CRC-10 checksum
+- `AppendChecksum(data string) (string, error)` - Add checksum to data (input normalized first)
+- `ValidateChecksum(input string) bool` - Verify checksum (input normalized first)
 - `StripChecksum(input string) string` - Remove checksum (last 2 chars)
 - `ExtractChecksum(input string) string` - Get checksum (last 2 chars)
 
