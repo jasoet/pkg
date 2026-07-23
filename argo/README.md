@@ -1,6 +1,6 @@
 # Argo Workflows Client
 
-[![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Argo Workflows client library with flexible configuration, context-based OpenTelemetry propagation, and proper error handling.
@@ -890,7 +890,7 @@ If you construct clients without `WithOTelConfig` but still want instrumented ca
 ctx = otel.ContextWithConfig(ctx, otelConfig)
 ```
 
-Other renames from v2: the Argo Server config factory is now `argo.ServerConfig(...)`; the builder timeout option is `builder.WithActiveDeadlineSeconds(seconds int64)`.
+Also note: `argo.Option` no longer returns an error (it is now `func(*Config)`). The Argo Server config factory remains `argo.ServerConfig(...)` and the builder timeout option remains `builder.WithActiveDeadlineSeconds(seconds int64)` (unchanged from v2). Finally, instrument operations by threading the ctx returned by `NewClient`/`NewClientWithOptions` — calling operations with a fresh `context.Background()` compiles fine but silently disables instrumentation.
 
 ## Best Practices
 

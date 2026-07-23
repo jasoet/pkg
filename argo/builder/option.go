@@ -15,9 +15,10 @@ type Option func(*WorkflowBuilder)
 //
 // Example:
 //
-//	otelConfig := otel.NewConfig("workflow-service").
-//	    WithTracerProvider(tp).
-//	    WithMeterProvider(mp)
+//	otelConfig := otel.NewConfig("workflow-service",
+//	    otel.WithTracerProvider(tp),
+//	    otel.WithMeterProvider(mp),
+//	)
 //	builder := NewWorkflowBuilder("my-workflow", "argo",
 //	    WithOTelConfig(otelConfig))
 func WithOTelConfig(cfg *otel.Config) Option {
