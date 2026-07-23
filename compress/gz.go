@@ -26,8 +26,11 @@ func Gz(source io.Reader, writer io.Writer) error {
 
 // UnGz decompresses gzip data from src and writes the result to the file at dst.
 //
-// Decompression is limited by maxFileSize (default 100 MB) to prevent zip bomb attacks.
-// dst must be an absolute path to prevent path traversal.
+// Decompression is limited to prevent zip bomb attacks: the effective limit is
+// the smaller of maxFileSize (default 100 MB) and maxArchiveSize (default 1 GB),
+// configurable via WithMaxFileSize and WithMaxArchiveSize. Unlike UnTar, dst
+// must be an absolute path (relative paths are rejected with ErrPathTraversal);
+// UnTar accepts relative destination directories.
 // Returns the number of bytes written and any error encountered.
 func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error) {
 	// Validate destination path to prevent directory traversal
@@ -39,6 +42,10 @@ func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+
+	// A gzip stream holds a single file, so both limits apply to the same
+	// output; the effective limit is the smaller of the two.
+	maxSize := min(cfg.maxFileSize, cfg.maxArchiveSize)
 
 	zipReader, errReader := gzip.NewReader(src)
 	if errReader != nil {
@@ -53,16 +60,16 @@ func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error) {
 	defer func() { _ = destinationFile.Close() }()
 
 	// Limit decompression to prevent zip bombs
-	limitedReader := io.LimitReader(zipReader, cfg.maxFileSize)
+	limitedReader := io.LimitReader(zipReader, maxSize)
 	written, err := io.Copy(destinationFile, limitedReader)
 	if err != nil {
 		return written, err
 	}
 
-	if written >= cfg.maxFileSize {
+	if written >= maxSize {
 		probe := make([]byte, 1)
 		if n, _ := zipReader.Read(probe); n > 0 {
-			return written, fmt.Errorf("%w: file exceeds maximum size of %d bytes", ErrSizeLimitExceeded, cfg.maxFileSize)
+			return written, fmt.Errorf("%w: file exceeds maximum size of %d bytes", ErrSizeLimitExceeded, maxSize)
 		}
 	}
 

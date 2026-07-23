@@ -22,7 +22,7 @@ func Tar(sourceDirectory string, writer io.Writer) error {
 		return err
 	}
 	if !fileInfo.IsDir() {
-		return fmt.Errorf("%s is not a directory", sourceDirectory)
+		return fmt.Errorf("%w: %s", ErrNotDirectory, sourceDirectory)
 	}
 
 	tarWriter := tar.NewWriter(writer)
@@ -172,7 +172,8 @@ func extractTarFile(tarReader *tar.Reader, target string, header *tar.Header, ma
 	return written, nil
 }
 
-// ExtractOption configures extraction behavior for UnTar.
+// ExtractOption configures extraction behavior for UnGz, UnTar, UnTarGz,
+// and UnTarGzBase64.
 type ExtractOption func(*extractConfig)
 
 type extractConfig struct {
@@ -204,6 +205,8 @@ func WithMaxArchiveSize(size int64) ExtractOption {
 // Includes security protections: path traversal prevention, file mode validation,
 // per-file size limit (default 100 MB), and total archive size limit (default 1 GB)
 // to prevent zip bombs. Use ExtractOption to customize limits.
+// Unlike UnGz, destinationDir may be a relative path; entry paths inside the
+// archive are still validated to stay within destinationDir.
 func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (written int64, err error) {
 	cfg := defaultExtractConfig()
 	for _, opt := range opts {
@@ -216,7 +219,7 @@ func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (written
 	}
 
 	if !info.IsDir() {
-		return 0, fmt.Errorf("%s is not a directory", destinationDir)
+		return 0, fmt.Errorf("%w: %s", ErrNotDirectory, destinationDir)
 	}
 
 	tarReader := tar.NewReader(src)
@@ -233,13 +236,13 @@ func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (written
 		}
 
 		if !validTarPath(header.Name) {
-			return totalWritten, fmt.Errorf("tar contained invalid path %s", header.Name)
+			return totalWritten, fmt.Errorf("%w: tar contained invalid path %s", ErrPathTraversal, header.Name)
 		}
 
 		// Prevent path traversal attacks
 		target := filepath.Join(destinationDir, header.Name)
 		if !strings.HasPrefix(target, filepath.Clean(destinationDir)+string(os.PathSeparator)) {
-			return totalWritten, fmt.Errorf("invalid file path: %s", header.Name)
+			return totalWritten, fmt.Errorf("%w: invalid file path: %s", ErrPathTraversal, header.Name)
 		}
 
 		// Prevent symlink TOCTOU attacks: resolve symlinks in parent directory
@@ -266,7 +269,7 @@ func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (written
 			}
 			totalWritten += written
 			if totalWritten > cfg.maxArchiveSize {
-				return totalWritten, fmt.Errorf("archive extraction exceeded maximum total size of %d bytes", cfg.maxArchiveSize)
+				return totalWritten, fmt.Errorf("%w: archive extraction exceeded maximum total size of %d bytes", ErrSizeLimitExceeded, cfg.maxArchiveSize)
 			}
 		}
 	}
