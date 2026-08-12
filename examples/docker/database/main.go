@@ -21,7 +21,7 @@ func main() {
 }
 
 func postgresExample(ctx context.Context) {
-	fmt.Println("=== PostgreSQL Database Container ===\n")
+	fmt.Println("=== PostgreSQL Database Container ===")
 
 	// Create PostgreSQL container
 	req := docker.ContainerRequest{
@@ -85,7 +85,7 @@ func postgresExample(ctx context.Context) {
 	if err := db.Ping(); err != nil {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
-	fmt.Println("Successfully connected to PostgreSQL! ✓\n")
+	fmt.Println("Successfully connected to PostgreSQL! ✓")
 
 	// Create a test table
 	fmt.Println("Creating test table...")
@@ -100,7 +100,7 @@ func postgresExample(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to create table: %v", err)
 	}
-	fmt.Println("Table created successfully! ✓\n")
+	fmt.Println("Table created successfully! ✓")
 
 	// Insert test data
 	fmt.Println("Inserting test data...")
@@ -113,7 +113,7 @@ func postgresExample(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to insert data: %v", err)
 	}
-	fmt.Println("Data inserted successfully! ✓\n")
+	fmt.Println("Data inserted successfully! ✓")
 
 	// Query data
 	fmt.Println("Querying data...")
@@ -134,7 +134,7 @@ func postgresExample(ctx context.Context) {
 		}
 		fmt.Printf("%-2d | %-7s | %s\n", id, name, email)
 	}
-	fmt.Println("\nQuery successful! ✓\n")
+	fmt.Println("\nQuery successful! ✓")
 
 	// Get container status
 	status, _ := exec.Status(ctx)

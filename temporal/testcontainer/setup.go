@@ -78,7 +78,7 @@ func Setup(ctx context.Context, config ClientConfig, opts Options) (*Container, 
 
 	// Create cleanup function. context.Background() is used intentionally here
 	// instead of the caller-provided ctx, because the caller's context may
-	// already be cancelled by the time cleanup runs (e.g. after t.Cleanup or
+	// already be canceled by the time cleanup runs (e.g. after t.Cleanup or
 	// defer fires at the end of a test).
 	cleanup := func() {
 		temporalClient.Close()

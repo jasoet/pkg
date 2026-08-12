@@ -175,6 +175,31 @@ func parseRetryAfter(value string) time.Duration {
 	return 0
 }
 
+// shouldRetryRequest decides whether resty should retry a request: only idempotent
+// methods unless retryNonIdempotent is set, only transient transport errors, and
+// otherwise 5xx server errors and 429 Too Many Requests.
+func shouldRetryRequest(retryNonIdempotent bool, r *resty.Response, err error) bool {
+	method := ""
+	if r != nil && r.Request != nil {
+		method = r.Request.Method
+	}
+	if !retryNonIdempotent && method != "" && !isIdempotentMethod(method) {
+		return false
+	}
+
+	// Transport-level failure: retry only transient errors. Permanent failures
+	// (bad URL/scheme, x509/TLS, context canceled/deadline) never succeed on retry.
+	if err != nil {
+		return isRetryableError(err)
+	}
+
+	if r == nil {
+		return false
+	}
+	status := r.StatusCode()
+	return status == http.StatusTooManyRequests || status >= 500
+}
+
 // NewClient creates a new REST client with the given options.
 // For custom TLS configuration, use GetRestClient() to access the underlying resty client
 // and call SetTLSClientConfig().
@@ -245,29 +270,7 @@ func NewClient(options ...ClientOption) *Client {
 
 	retryNonIdempotent := client.restConfig.RetryNonIdempotent
 	httpClient.AddRetryCondition(func(r *resty.Response, err error) bool {
-		// Only retry idempotent methods unless the caller opted in. Retrying a
-		// non-idempotent request (POST/PATCH) risks duplicating side effects.
-		method := ""
-		if r != nil && r.Request != nil {
-			method = r.Request.Method
-		}
-		if !retryNonIdempotent && method != "" && !isIdempotentMethod(method) {
-			return false
-		}
-
-		// Transport-level failure: retry only transient errors. Permanent
-		// failures (bad URL/scheme, x509/TLS, context canceled/deadline) will
-		// never succeed on retry and would only waste the backoff budget.
-		if err != nil {
-			return isRetryableError(err)
-		}
-
-		// Status-based retry: 5xx server errors and 429 Too Many Requests.
-		if r == nil {
-			return false
-		}
-		status := r.StatusCode()
-		return status == http.StatusTooManyRequests || status >= 500
+		return shouldRetryRequest(retryNonIdempotent, r, err)
 	})
 
 	// Honor a Retry-After header (delta-seconds or HTTP-date) when present.

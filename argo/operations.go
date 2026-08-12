@@ -279,7 +279,7 @@ func SubmitAndWait(ctx context.Context, client apiclient.Client, wf *v1alpha1.Wo
 					otel.F("duration", duration.String()))
 				return created, wErr
 			}
-			// Parent context cancelled (not a timeout): label it accurately.
+			// Parent context canceled (not a timeout): label it accurately.
 			wErr := fmt.Errorf("waiting for workflow %q canceled after %s: %w", created.Name, duration, cause)
 			logger.Error(wErr, "Workflow wait canceled",
 				otel.F("workflow_name", created.Name),

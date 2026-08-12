@@ -83,7 +83,9 @@ func NewScript(name, language string, opts ...ScriptOption) *Script {
 	default:
 		s.image = "bash:5.2"
 		s.command = []string{"bash"}
-		s.langErr = fmt.Errorf("unknown script language %q: supported languages are bash, sh, python, python3, node, nodejs, javascript, ruby (use WithScriptImage/WithScriptCommand to configure a custom interpreter)", language)
+		s.langErr = fmt.Errorf("unknown script language %q: supported languages are bash, sh, "+
+			"python, python3, node, nodejs, javascript, ruby (use WithScriptImage/WithScriptCommand "+
+			"to configure a custom interpreter)", language)
 	}
 
 	for _, opt := range opts {

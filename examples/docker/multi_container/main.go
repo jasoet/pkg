@@ -20,7 +20,7 @@ func main() {
 }
 
 func multiContainerExample(ctx context.Context) {
-	fmt.Println("=== Multi-Container Example: Nginx + Redis ===\n")
+	fmt.Println("=== Multi-Container Example: Nginx + Redis ===")
 
 	// Create nginx container
 	fmt.Println("Creating nginx container...")
@@ -74,7 +74,7 @@ func multiContainerExample(ctx context.Context) {
 		redis.Terminate(ctx)
 	}()
 
-	fmt.Println("\n✓ Both containers are running!\n")
+	fmt.Println("\n✓ Both containers are running!")
 
 	// Display container information
 	displayContainerInfo(ctx, "Nginx", nginx)

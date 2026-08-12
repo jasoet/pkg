@@ -316,7 +316,7 @@ func TestDoWithNotify_NilOperationReturnsErrorNotPanic(t *testing.T) {
 }
 
 func TestDo_PreCancelledContextDoesNotRunOperation(t *testing.T) {
-	// An already-cancelled context must return before the first attempt so a
+	// An already-canceled context must return before the first attempt so a
 	// non-idempotent operation is never called.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -335,7 +335,7 @@ func TestDo_PreCancelledContextDoesNotRunOperation(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Equal(t, 0, attempts, "operation must not run when context is already cancelled")
+	assert.Equal(t, 0, attempts, "operation must not run when context is already canceled")
 }
 
 func TestDo_CancellationWrapsBothContextAndLastError(t *testing.T) {

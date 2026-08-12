@@ -46,7 +46,7 @@ const (
 	defaultTimeout = 30 * time.Second
 
 	// defaultMaxIdleConns is applied when MaxIdleConns is unset (<= 0) so a
-	// zero-value config still keeps idle connections instead of dialling a fresh
+	// zero-value config still keeps idle connections instead of dialing a fresh
 	// TCP connection for every query.
 	defaultMaxIdleConns = 10
 

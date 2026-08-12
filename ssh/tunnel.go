@@ -147,8 +147,8 @@ func (t *Tunnel) getAuthMethods() ([]ssh.AuthMethod, error) {
 // Start establishes the SSH connection and begins forwarding traffic.
 //
 // The provided ctx is used for logger creation, the local listener, and the
-// SSH dial: cancelling ctx aborts the TCP connect. The SSH handshake itself is
-// bounded by Config.Timeout. Cancelling ctx does not stop an already-running
+// SSH dial: canceling ctx aborts the TCP connect. The SSH handshake itself is
+// bounded by Config.Timeout. Canceling ctx does not stop an already-running
 // tunnel — call Close for that. Start is not reentrant; a second concurrent
 // Start returns "tunnel already started".
 func (t *Tunnel) Start(ctx context.Context) error {
