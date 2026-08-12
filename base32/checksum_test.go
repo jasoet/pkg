@@ -48,7 +48,7 @@ func TestCalculateChecksum(t *testing.T) {
 func TestCalculateChecksum_EmptyString(t *testing.T) {
 	_, err := CalculateChecksum("")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "empty Base32 string")
+	assert.ErrorIs(t, err, ErrEmptyInput)
 }
 
 func TestCalculateChecksumDifferentInputs(t *testing.T) {

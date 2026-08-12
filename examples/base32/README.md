@@ -46,13 +46,16 @@ The `base32` package provides:
 
 ## Running the Examples
 
-To run the examples, use the following command from the repository root:
+To run the examples, use the following command from the repository root
+(the program is behind the `example` build tag so it stays out of normal
+`go build ./...` / `go vet ./...` runs):
 
 ```bash
-go run ./examples/base32
+go run -tags=example ./examples/base32
 ```
 
-A second, more compact demo lives in `base32/examples` behind the `example` build tag:
+A second, more compact demo lives in `base32/examples`, also behind the
+`example` build tag:
 
 ```bash
 go run -tags=example ./base32/examples
@@ -224,14 +227,20 @@ This design minimizes human transcription errors.
 
 ## Error Detection
 
-The CRC-10 checksum provides excellent error detection:
+The CRC-10 checksum provides strong error detection:
 
 | Error Type | Detection Rate |
 |------------|----------------|
 | Single character error | 100% |
 | Transposition (AB→BA) | 99.9%+ |
 | Double errors | 99.9%+ |
-| Insertion/deletion | High |
+| Insertion/deletion (non-leading-zero) | High |
+
+**Leading-zero blind spot:** because the CRC register is initialized to zero,
+inserting or deleting leading `0` characters does not change the checksum
+(`CalculateChecksum("C1S") == CalculateChecksum("000C1S")`), and all-zero
+strings validate. Use fixed-length encoding when leading zeros are significant.
+See the package README for details.
 
 ### How It Works
 

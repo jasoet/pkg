@@ -2,13 +2,16 @@ package base32
 
 import "fmt"
 
-// CRC-10 polynomial for checksum calculation
-// x^10 + x^5 + x^4 + x^1 + 1 = 0x233
+// CRC-10 polynomial for checksum calculation.
+//
+// This is CRC-10/ATM: generator x^10 + x^9 + x^5 + x^4 + x + 1, which in the
+// normal (non-reflected) representation is 0x233. Note the x^9 term — omitting
+// it yields a different polynomial and an incompatible checksum.
 const crc10Polynomial = 0x233
 
-// CalculateChecksum computes a 2-character Base32 checksum using CRC-10.
+// CalculateChecksum computes a 2-character Base32 checksum using CRC-10/ATM.
 //
-// The checksum provides 99.9%+ error detection for:
+// The checksum provides strong error detection for:
 //   - Single character errors
 //   - Character transpositions
 //   - Double errors
@@ -17,7 +20,16 @@ const crc10Polynomial = 0x233
 // The CRC-10 algorithm processes each Base32 character (5 bits) and produces
 // a 10-bit checksum, which is then encoded as 2 Base32 characters.
 //
-// Returns an error if the input contains invalid Base32 characters.
+// Leading-zero blind spot: because the CRC register is initialized to zero,
+// inserting or deleting leading '0' characters does not change the checksum
+// (e.g. CalculateChecksum("C1S") == CalculateChecksum("000C1S")), and any
+// all-zero string checksums to "00" and validates. Do not rely on the
+// checksum to catch loss or addition of leading zeros; encode identifiers at a
+// fixed length (see EncodeBase32) when that matters. This is a compatibility
+// contract pinned by the golden vectors and will not change within v3.
+//
+// Returns ErrEmptyInput for empty input and ErrInvalidCharacter for characters
+// outside the Crockford alphabet. Match with errors.Is.
 //
 // Example:
 //
@@ -28,10 +40,10 @@ const crc10Polynomial = 0x233
 //
 // Returns:
 //   - A 2-character Base32 checksum
-//   - An error if the input contains invalid characters
+//   - An error if the input is empty or contains invalid characters
 func CalculateChecksum(data string) (string, error) {
 	if data == "" {
-		return "", fmt.Errorf("empty Base32 string")
+		return "", fmt.Errorf("empty Base32 input: %w", ErrEmptyInput)
 	}
 
 	crc := uint16(0)
@@ -40,7 +52,7 @@ func CalculateChecksum(data string) (string, error) {
 	for i, char := range data {
 		value := base32CharToValue(char)
 		if value < 0 {
-			return "", fmt.Errorf("invalid Base32 character '%c' at position %d", char, i)
+			return "", fmt.Errorf("invalid Base32 character '%c' at position %d: %w", char, i, ErrInvalidCharacter)
 		}
 
 		// XOR the value into the CRC (shifted left by 5 bits)
@@ -120,8 +132,9 @@ func ValidateChecksum(input string) bool {
 // the returned string is always the normalized data plus its checksum.
 // Clean input is unaffected by normalization.
 //
-// Returns an error if the normalized input is empty or contains invalid
-// Base32 characters.
+// Returns ErrEmptyInput if the input is empty after normalization (e.g. "---",
+// which normalizes to "") and ErrInvalidCharacter if it contains characters
+// outside the Crockford alphabet. Match with errors.Is.
 //
 // Example:
 //
@@ -134,31 +147,43 @@ func ValidateChecksum(input string) bool {
 //
 // Returns:
 //   - The normalized input string with a 2-character checksum appended
-//   - An error if the normalized input contains invalid characters
+//   - An error if the normalized input is empty or contains invalid characters
 func AppendChecksum(data string) (string, error) {
-	data = NormalizeBase32(data)
-	checksum, err := CalculateChecksum(data)
+	normalized := NormalizeBase32(data)
+	if normalized == "" {
+		return "", fmt.Errorf("input %q is empty after normalization: %w", data, ErrEmptyInput)
+	}
+	checksum, err := CalculateChecksum(normalized)
 	if err != nil {
 		return "", err
 	}
-	return data + checksum, nil
+	return normalized + checksum, nil
 }
 
 // StripChecksum removes the last 2 characters (checksum) from a string.
 //
-// Returns an empty string if the input has 2 or fewer characters.
+// The input is normalized via NormalizeBase32 first, mirroring
+// AppendChecksum/ValidateChecksum. This is required for correctness: a
+// checksummed string that validated in dashed/lowercase form (e.g.
+// "0000-c1p9-q0") strips to the normalized payload ("0000C1P9") rather than a
+// byte-sliced fragment of the raw input. Normalizing also avoids splitting a
+// multibyte rune when slicing.
+//
+// Returns an empty string if the normalized input has 2 or fewer characters.
 //
 // Example:
 //
-//	data := base32.StripChecksum("ABC123TF")  // "ABC123"
-//	data := base32.StripChecksum("AB")        // ""
+//	data := base32.StripChecksum("ABC123TF")     // "ABC123"
+//	data := base32.StripChecksum("0000-c1p9-q0") // "0000C1P9" (normalized first)
+//	data := base32.StripChecksum("AB")           // ""
 //
 // Parameters:
-//   - input: The string with checksum appended
+//   - input: The string with checksum appended (normalized before stripping)
 //
 // Returns:
-//   - The input string without the last 2 characters
+//   - The normalized input string without the last 2 characters
 func StripChecksum(input string) string {
+	input = NormalizeBase32(input)
 	if len(input) <= 2 {
 		return ""
 	}
@@ -167,19 +192,27 @@ func StripChecksum(input string) string {
 
 // ExtractChecksum extracts the last 2 characters (checksum) from a string.
 //
-// Returns an empty string if the input has fewer than 2 characters.
+// The input is normalized via NormalizeBase32 first, mirroring
+// AppendChecksum/ValidateChecksum, so the checksum of a validated
+// dashed/lowercase string (e.g. "0000-c1p9-q0" → "Q0") is returned rather than
+// a byte-sliced fragment of the raw input. Normalizing also avoids splitting a
+// multibyte rune when slicing.
+//
+// Returns an empty string if the normalized input has fewer than 2 characters.
 //
 // Example:
 //
-//	checksum := base32.ExtractChecksum("ABC123TF")  // "TF"
-//	checksum := base32.ExtractChecksum("A")         // ""
+//	checksum := base32.ExtractChecksum("ABC123TF")     // "TF"
+//	checksum := base32.ExtractChecksum("0000-c1p9-q0") // "Q0" (normalized first)
+//	checksum := base32.ExtractChecksum("A")            // ""
 //
 // Parameters:
-//   - input: The string with checksum appended
+//   - input: The string with checksum appended (normalized before extracting)
 //
 // Returns:
-//   - The last 2 characters of the input
+//   - The last 2 characters of the normalized input
 func ExtractChecksum(input string) string {
+	input = NormalizeBase32(input)
 	if len(input) < 2 {
 		return ""
 	}

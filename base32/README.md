@@ -225,14 +225,34 @@ checksum := base32.ExtractChecksum("ABC123TF")  // "TF"
 
 ## Error Detection
 
-The CRC-10 checksum provides excellent error detection:
+The CRC-10 (CRC-10/ATM) checksum provides strong error detection:
 
 | Error Type | Detection Rate |
 |------------|----------------|
 | Single character error | 100% |
 | Transposition (AB→BA) | 99.9%+ |
 | Double errors | 99.9%+ |
-| Insertion/deletion | High |
+| Insertion/deletion (non-leading-zero) | High |
+
+### Known limitation: leading zeros
+
+Because the CRC register is initialized to zero, inserting or deleting **leading
+`0` characters is invisible to the checksum**:
+
+```go
+a, _ := base32.CalculateChecksum("C1S")     // same as ...
+b, _ := base32.CalculateChecksum("000C1S")  // ... this
+// a == b
+
+base32.ValidateChecksum("00")           // true  (all-zero string checksums to "00")
+base32.ValidateChecksum("0000000000")   // true
+```
+
+Do not rely on the checksum to catch loss or addition of leading zeros. When
+that matters, store and compare identifiers at a **fixed length** (see
+`EncodeBase32`) so leading zeros are structurally significant. This zero-init
+behavior is a compatibility contract pinned by the package's golden vectors and
+will not change within the v3 series.
 
 ### Example
 

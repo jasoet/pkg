@@ -1,3 +1,5 @@
+//go:build example
+
 // Package main demonstrates comprehensive usage of the base32 package.
 //
 // This example shows:
@@ -6,7 +8,7 @@
 //   - Real-world use cases (URL shorteners, order IDs, license keys, etc.)
 //   - Error correction and normalization
 //
-// Run with: go run ./examples/base32
+// Run with: go run -tags=example ./examples/base32
 package main
 
 import (
