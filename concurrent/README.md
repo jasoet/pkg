@@ -83,7 +83,9 @@ Behavior:
 - If any function fails, the returned map is nil and the error is the first
   causal error (secondary errors are discarded; a causal error is preferred
   over `context.Canceled`/`context.DeadlineExceeded` from siblings).
-- A panic is recovered and converted to an error of the form `panic in "key": ...`.
+- A panic is recovered and converted to an error of the form `panic in "key": ...`;
+  the error includes the panic value (wrapped with `%w` when it is an `error`, so
+  `errors.Is`/`errors.As` still match) and the captured goroutine stack trace.
 
 ### ExecuteConcurrentlyTyped
 
@@ -111,7 +113,8 @@ summary, err := concurrent.ExecuteConcurrentlyTyped[string, int](
 )
 ```
 
-If execution fails, the builder is not called and the zero value of `R` is
+A nil `resultBuilder` is rejected up front with an error, before any function
+runs. If execution fails, the builder is not called and the zero value of `R` is
 returned with the execution error. A builder error is returned as-is.
 
 ## Context Handling

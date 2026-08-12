@@ -319,6 +319,81 @@ func TestExecuteConcurrentlyTypedResultFirstOrder(t *testing.T) {
 	})
 }
 
+func TestExecuteConcurrently_NilFunctionRejected(t *testing.T) {
+	// A nil function in the map must be rejected up front with an error naming
+	// its key, before any goroutine is started.
+	called := false
+	funcs := map[string]Func[int]{
+		"good": func(ctx context.Context) (int, error) {
+			called = true
+			return 1, nil
+		},
+		"bad": nil,
+	}
+
+	results, err := ExecuteConcurrently[int](context.Background(), funcs)
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.Contains(t, err.Error(), "nil function")
+	assert.Contains(t, err.Error(), `"bad"`)
+	assert.False(t, called, "no function should run when a nil function is present")
+}
+
+func TestExecuteConcurrently_PanicWithErrorValueWraps(t *testing.T) {
+	// When a function panics with an error value, the recovered error must be
+	// wrapped with %w so errors.Is can find the original panic error, and the
+	// reported error must include the goroutine stack trace.
+	sentinel := errors.New("boom sentinel")
+	funcs := map[string]Func[int]{
+		"panicker": func(ctx context.Context) (int, error) {
+			panic(sentinel)
+		},
+	}
+
+	results, err := ExecuteConcurrently[int](context.Background(), funcs)
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.ErrorIs(t, err, sentinel, "panic(err) should be wrapped with %%w")
+	assert.Contains(t, err.Error(), "panic in")
+	// The stack trace should mention this test's panicking function frame.
+	assert.Contains(t, err.Error(), "concurrent.TestExecuteConcurrently_PanicWithErrorValueWraps",
+		"error should include the captured goroutine stack trace")
+}
+
+func TestExecuteConcurrently_PanicWithNonErrorIncludesStack(t *testing.T) {
+	// A non-error panic value is still reported with the panic message and the
+	// captured stack trace.
+	funcs := map[string]Func[int]{
+		"panicker": func(ctx context.Context) (int, error) {
+			panic("plain string panic")
+		},
+	}
+
+	results, err := ExecuteConcurrently[int](context.Background(), funcs)
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.Contains(t, err.Error(), "plain string panic")
+	assert.Contains(t, err.Error(), "goroutine ", "error should include the captured stack trace")
+}
+
+func TestExecuteConcurrentlyTyped_NilResultBuilder(t *testing.T) {
+	// A nil resultBuilder must be rejected up front with an error, before any
+	// function is executed, rather than panicking after all work completes.
+	called := false
+	funcs := map[string]Func[int]{
+		"answer": func(ctx context.Context) (int, error) {
+			called = true
+			return 42, nil
+		},
+	}
+
+	result, err := ExecuteConcurrentlyTyped[string, int](context.Background(), nil, funcs)
+	assert.Error(t, err)
+	assert.Equal(t, "", result)
+	assert.Contains(t, err.Error(), "resultBuilder")
+	assert.False(t, called, "no function should run when resultBuilder is nil")
+}
+
 func TestExecuteConcurrentlyTyped(t *testing.T) {
 	// Define a test struct
 	type TestDTO struct {
