@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestConfig is a sample configuration struct for testing
@@ -183,4 +184,51 @@ func TestLoadString_InvalidYAML(t *testing.T) {
 	_, err := LoadString[TestConfig]("not: valid: yaml: [")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse YAML")
+}
+
+// TestSnakeCaseKeyRequiresMapstructureTag proves the README's contract: because
+// viper.Unmarshal binds keys via the mapstructure tag (defaulting to the field
+// name), a snake_case YAML key does NOT bind through a yaml tag alone — a
+// matching mapstructure tag is required.
+func TestSnakeCaseKeyRequiresMapstructureTag(t *testing.T) {
+	yamlConfig := "max_size: 42\n"
+
+	// yaml tag only: the snake_case key is silently dropped, leaving the zero value.
+	type WithoutMapstructure struct {
+		MaxSize int `yaml:"max_size"`
+	}
+	cfg, err := LoadString[WithoutMapstructure](yamlConfig)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cfg.MaxSize, "a yaml tag alone does not bind a snake_case key via viper")
+
+	// mapstructure tag present: the key binds correctly.
+	type WithMapstructure struct {
+		MaxSize int `mapstructure:"max_size"`
+	}
+	cfg2, err := LoadString[WithMapstructure](yamlConfig)
+	require.NoError(t, err)
+	assert.Equal(t, 42, cfg2.MaxSize, "a matching mapstructure tag binds the snake_case key")
+}
+
+// TestAutomaticEnv_AbsentKeyIgnored documents that AutomaticEnv only overrides
+// keys viper already knows (from YAML or defaults); an env var for a key absent
+// from both is ignored. Registering a default makes the key env-overridable.
+func TestAutomaticEnv_AbsentKeyIgnored(t *testing.T) {
+	type PortConfig struct {
+		Port int `yaml:"port" mapstructure:"port"`
+	}
+
+	t.Setenv("ENV_PORT", "9090")
+
+	// No YAML value and no default: the env var is silently ignored.
+	cfg, err := LoadString[PortConfig](``)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cfg.Port, "env var for a YAML-absent, default-absent key is ignored")
+
+	// With a default registered, the env var overrides it.
+	cfg2, err := LoadStringWithOptions[PortConfig](``,
+		WithDefaults(map[string]any{"port": 1}),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 9090, cfg2.Port, "with a default registered, the env var overrides it")
 }
