@@ -63,12 +63,16 @@ func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error) {
 	limitedReader := io.LimitReader(zipReader, maxSize)
 	written, err := io.Copy(destinationFile, limitedReader)
 	if err != nil {
+		_ = destinationFile.Close()
+		_ = os.Remove(dst)
 		return written, err
 	}
 
 	if written >= maxSize {
 		probe := make([]byte, 1)
 		if n, _ := zipReader.Read(probe); n > 0 {
+			_ = destinationFile.Close()
+			_ = os.Remove(dst)
 			return written, fmt.Errorf("%w: file exceeds maximum size of %d bytes", ErrSizeLimitExceeded, maxSize)
 		}
 	}

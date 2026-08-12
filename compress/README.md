@@ -146,8 +146,8 @@ never by comparing message strings:
 
 | Sentinel | Returned when |
 | --- | --- |
-| `ErrPathTraversal` | `UnGz` destination is not absolute; a tar entry path is empty, absolute, contains `..` or `\`, escapes the destination, or resolves through a symlink outside it |
-| `ErrSizeLimitExceeded` | A file exceeds `maxFileSize`, or the archive total exceeds `maxArchiveSize` |
+| `ErrPathTraversal` | `UnGz` destination is not absolute; a tar entry path is empty, absolute, has a `..` path element or contains `\`, escapes the destination, resolves through a parent symlink outside it, or targets a pre-existing leaf symlink |
+| `ErrSizeLimitExceeded` | A file exceeds `maxFileSize`, or the running archive total would exceed `maxArchiveSize` (enforced mid-file) |
 | `ErrNotDirectory` | `Tar` source or `UnTar`/`UnTarGz` destination is not a directory |
 
 ```go
@@ -171,12 +171,25 @@ underlying `os`/`gzip`/`tar` errors and are matchable with `errors.Is` against
 ## Security Details
 
 - **Path traversal prevention**: tar entry names are rejected when empty,
-  absolute, or containing `..` or `\`; the joined target path must stay under
-  the destination; parent directories are resolved with
-  `filepath.EvalSymlinks` to stop symlink TOCTOU escapes.
-- **Zip bomb protection**: extraction streams through `io.LimitReader`; one
-  extra byte is probed past the limit so oversized content is detected and
-  reported with `ErrSizeLimitExceeded`.
+  absolute, or containing a `..` path element or a `\` (names that merely
+  contain `..`, like `report..final.txt`, are allowed); the joined target is
+  re-checked with `filepath.Rel` so it stays under the destination (a relative
+  destination such as `.` is accepted); parent directories are resolved with
+  `filepath.EvalSymlinks` to stop parent-symlink TOCTOU escapes.
+- **Leaf-symlink protection**: before writing a file, `UnTar` `Lstat`s the
+  target and refuses (`ErrPathTraversal`) to write through a pre-existing
+  symlink; the open additionally uses `O_NOFOLLOW` on platforms that support
+  it, closing the TOCTOU window so an archive can never overwrite a file
+  outside the destination via a planted symlink.
+- **Truncating overwrite**: files are opened with `O_TRUNC`, so extracting a
+  shorter file over a longer existing one leaves no stale trailing bytes.
+- **Zip bomb protection**: extraction streams through `io.LimitReader` capped at
+  the smaller of the per-file limit and the remaining archive budget, so both
+  `maxFileSize` and `maxArchiveSize` are enforced *mid-file* (no full-file
+  overshoot); one extra byte is probed past the cap so oversized content is
+  detected and reported with `ErrSizeLimitExceeded`.
+- **No partial output**: when extraction of a file aborts (size limit or I/O
+  error), the partially written target is removed rather than left on disk.
 - **File mode sanitization**: extracted file modes are masked with `0o777`,
   stripping setuid/setgid/sticky bits; directories are created `0o750`.
 - **`UnGz` vs `UnTar` path rules**: `UnGz` requires an absolute destination
