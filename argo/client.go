@@ -2,6 +2,7 @@ package argo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/jasoet/pkg/v3/otel"
 )
+
+// ErrNilConfig is returned by NewClient when the provided *Config is nil.
+var ErrNilConfig = errors.New("argo: config must not be nil")
 
 // NewClient creates a new Argo Workflows client from the given configuration.
 // It returns the updated context and client, or an error if the connection fails.
@@ -41,6 +45,12 @@ import (
 // otel.ContextWithConfig), so package operations resolve instrumentation
 // automatically through otel.ConfigFromContext.
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
+	// Guard against a nil config before dereferencing any of its fields, which would
+	// otherwise panic.
+	if config == nil {
+		return nil, nil, ErrNilConfig
+	}
+
 	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v3/argo", "argo.NewClient")
 
 	logger.Debug("Creating Argo Workflows client",

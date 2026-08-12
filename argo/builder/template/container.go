@@ -73,13 +73,16 @@ func NewContainer(name, image string, opts ...ContainerOption) *Container {
 	return c
 }
 
-// Command sets the container command (entrypoint override).
-// Can be called multiple times or with multiple arguments.
+// Command appends to the container command (entrypoint override). Successive calls
+// accumulate, so Command("python").Command("app.py") yields ["python", "app.py"].
+//
+// Note: this differs from the WithCommand option, which REPLACES the command. Use the
+// option to set an initial command at construction; use this method to extend it.
 //
 // Example:
 //
 //	container.Command("python", "app.py")
-//	// or
+//	// or, appending across calls
 //	container.Command("python").Command("app.py")
 func (c *Container) Command(cmd ...string) *Container {
 	c.command = append(c.command, cmd...)
@@ -219,10 +222,11 @@ func (c *Container) ContinueOn(continueOn *v1alpha1.ContinueOn) *Container {
 
 // WithRetry sets a retry strategy for this specific step.
 //
-// Example:
+// RetryStrategy.Limit is *intstr.IntOrString, so take the address of an intstr value:
 //
+//	limit := intstr.FromInt32(3)
 //	container.WithRetry(&v1alpha1.RetryStrategy{
-//	    Limit: intstr.FromInt(3),
+//	    Limit:       &limit,
 //	    RetryPolicy: "Always",
 //	})
 func (c *Container) WithRetry(retry *v1alpha1.RetryStrategy) *Container {

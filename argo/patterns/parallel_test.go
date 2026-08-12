@@ -10,6 +10,23 @@ import (
 	"github.com/jasoet/pkg/v3/argo/builder"
 )
 
+// containerArgs returns the single Args entry of the container template with the given
+// name. Patterns generate one `sh -c "<script>"` arg per leaf step, so tests can assert
+// on the exact shell script the workflow will run.
+func containerArgs(t *testing.T, wf *v1alpha1.Workflow, templateName string) string {
+	t.Helper()
+	for i := range wf.Spec.Templates {
+		tmpl := wf.Spec.Templates[i]
+		if tmpl.Name == templateName {
+			require.NotNil(t, tmpl.Container, "template %s should be a container template", templateName)
+			require.Len(t, tmpl.Container.Args, 1, "template %s should have exactly one arg", templateName)
+			return tmpl.Container.Args[0]
+		}
+	}
+	t.Fatalf("template %s not found", templateName)
+	return ""
+}
+
 func TestFanOutFanIn(t *testing.T) {
 	tasks := []string{"task-1", "task-2", "task-3"}
 
@@ -140,6 +157,100 @@ func TestMapReduce(t *testing.T) {
 	// Second group (reduce phase) should have single reduce step
 	reducePhase := mainTemplate.Steps[1]
 	assert.Len(t, reducePhase.Steps, 1, "reduce phase should have single step")
+}
+
+// TestMapReduce_ProducesRunnableShellCommand verifies the documented word-count example
+// generates a runnable `sh -c` script: the user command "wc -w" must appear as a real
+// program+arg fragment (wc -w file), NOT single-quoted into a bogus executable 'wc -w'.
+func TestMapReduce_ProducesRunnableShellCommand(t *testing.T) {
+	wf, err := MapReduce(
+		"word-count", "argo",
+		"alpine:latest",
+		[]string{"file1.txt"},
+		"wc -w",
+		"awk '{sum+=$1} END {print sum}'",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, wf)
+
+	mapArgs := containerArgs(t, wf, "map-0-template")
+	// Command must be unquoted so the shell runs `wc -w` against the file.
+	assert.Contains(t, mapArgs, "wc -w 'file1.txt'")
+	assert.NotContains(t, mapArgs, "'wc -w'", "the map command must not be single-quoted into one executable name")
+
+	reduceArgs := containerArgs(t, wf, "reduce-template")
+	// The awk fragment (which itself contains quotes) must be passed through verbatim.
+	assert.Contains(t, reduceArgs, "awk '{sum+=$1} END {print sum}'")
+	assert.NotContains(t, reduceArgs, "'awk ", "the reduce command must not be wrapped in an extra quote")
+}
+
+// TestParallelDataProcessing_ProducesRunnableShellCommand verifies the processing command
+// is passed as a shell fragment (unquoted) while the data filename is quoted.
+func TestParallelDataProcessing_ProducesRunnableShellCommand(t *testing.T) {
+	wf, err := ParallelDataProcessing(
+		"batch", "argo",
+		"processor:v1",
+		[]string{"data-1.csv"},
+		"process.sh --verbose",
+	)
+	require.NoError(t, err)
+
+	args := containerArgs(t, wf, "process-0-template")
+	assert.Contains(t, args, "process.sh --verbose 'data-1.csv'")
+	assert.NotContains(t, args, "'process.sh --verbose'", "the processing command must not be single-quoted")
+}
+
+// TestParallelTestSuite_ProducesRunnableShellCommand verifies each test command is a
+// runnable shell fragment rather than a single-quoted bogus executable name.
+func TestParallelTestSuite_ProducesRunnableShellCommand(t *testing.T) {
+	wf, err := ParallelTestSuite(
+		"suite", "argo",
+		"golang:1.25",
+		map[string]string{"unit": "go test ./internal/..."},
+	)
+	require.NoError(t, err)
+
+	args := containerArgs(t, wf, "test-unit-template")
+	assert.Contains(t, args, "go test ./internal/...")
+	assert.NotContains(t, args, "'go test ./internal/...'", "the test command must not be single-quoted")
+}
+
+// TestParallelTestSuite_DeterministicOrder verifies the generated step order is stable
+// across builds regardless of Go map iteration randomization.
+func TestParallelTestSuite_DeterministicOrder(t *testing.T) {
+	suites := map[string]string{
+		"unit":        "go test ./internal/...",
+		"integration": "go test ./tests/integration/...",
+		"e2e":         "go test ./tests/e2e/...",
+	}
+
+	var firstOrder []string
+	for run := 0; run < 5; run++ {
+		wf, err := ParallelTestSuite("suite", "argo", "golang:1.25", suites)
+		require.NoError(t, err)
+
+		var mainTemplate *v1alpha1.Template
+		for i := range wf.Spec.Templates {
+			if wf.Spec.Templates[i].Name == "suite-main" {
+				mainTemplate = &wf.Spec.Templates[i]
+				break
+			}
+		}
+		require.NotNil(t, mainTemplate)
+
+		order := make([]string, 0, len(suites))
+		for _, step := range mainTemplate.Steps[0].Steps {
+			order = append(order, step.Name)
+		}
+		// Expect suites sorted by name: e2e, integration, unit.
+		assert.Equal(t, []string{"test-e2e", "test-integration", "test-unit"}, order)
+
+		if run == 0 {
+			firstOrder = order
+		} else {
+			assert.Equal(t, firstOrder, order, "step order must be identical across builds")
+		}
+	}
 }
 
 func TestMapReduceRequiresInputs(t *testing.T) {

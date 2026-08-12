@@ -16,6 +16,28 @@ import (
 	"github.com/jasoet/pkg/v3/otel"
 )
 
+// sumInt64Counter returns the summed value of all data points for the named int64 counter
+// across the collected metrics, and whether the metric was found.
+func sumInt64Counter(rm metricdata.ResourceMetrics, name string) (int64, bool) {
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			if !ok {
+				return 0, false
+			}
+			var total int64
+			for _, dp := range sum.DataPoints {
+				total += dp.Value
+			}
+			return total, true
+		}
+	}
+	return 0, false
+}
+
 func TestNewOTelInstrumentation(t *testing.T) {
 	t.Run("creates disabled instrumentation with nil config", func(t *testing.T) {
 		inst := newOTelInstrumentation(nil)
@@ -188,6 +210,10 @@ func TestIncrementCounter(t *testing.T) {
 		var rm metricdata.ResourceMetrics
 		err := reader.Collect(ctx, &rm)
 		require.NoError(t, err)
+
+		total, found := sumInt64Counter(rm, "argo.workflows.built")
+		require.True(t, found, "argo.workflows.built counter should be recorded")
+		assert.Equal(t, int64(3), total, "two increments of 1 and 2 should sum to 3")
 	})
 
 	t.Run("increments templates_added counter", func(t *testing.T) {
@@ -207,6 +233,10 @@ func TestIncrementCounter(t *testing.T) {
 		var rm metricdata.ResourceMetrics
 		err := reader.Collect(ctx, &rm)
 		require.NoError(t, err)
+
+		total, found := sumInt64Counter(rm, "argo.workflows.templates_added")
+		require.True(t, found, "argo.workflows.templates_added counter should be recorded")
+		assert.Equal(t, int64(5), total)
 	})
 
 	t.Run("increments sources_added counter", func(t *testing.T) {
@@ -226,6 +256,10 @@ func TestIncrementCounter(t *testing.T) {
 		var rm metricdata.ResourceMetrics
 		err := reader.Collect(ctx, &rm)
 		require.NoError(t, err)
+
+		total, found := sumInt64Counter(rm, "argo.workflows.sources_added")
+		require.True(t, found, "argo.workflows.sources_added counter should be recorded")
+		assert.Equal(t, int64(3), total)
 	})
 
 	t.Run("increments counter with attributes", func(t *testing.T) {
@@ -247,6 +281,10 @@ func TestIncrementCounter(t *testing.T) {
 		var rm metricdata.ResourceMetrics
 		err := reader.Collect(ctx, &rm)
 		require.NoError(t, err)
+
+		total, found := sumInt64Counter(rm, "argo.workflows.built")
+		require.True(t, found, "argo.workflows.built counter should be recorded")
+		assert.Equal(t, int64(1), total)
 	})
 
 	t.Run("handles unknown counter name", func(t *testing.T) {
@@ -293,6 +331,27 @@ func TestRecordDuration(t *testing.T) {
 		var rm metricdata.ResourceMetrics
 		err := reader.Collect(ctx, &rm)
 		require.NoError(t, err)
+
+		var found bool
+		for _, sm := range rm.ScopeMetrics {
+			for _, m := range sm.Metrics {
+				if m.Name != "argo.workflows.build_duration" {
+					continue
+				}
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				require.True(t, ok, "build_duration should be a float64 histogram")
+				var count uint64
+				var sum float64
+				for _, dp := range hist.DataPoints {
+					count += dp.Count
+					sum += dp.Sum
+				}
+				assert.Equal(t, uint64(2), count, "two durations recorded")
+				assert.InDelta(t, 358.01, sum, 0.001, "histogram sum should equal the recorded durations")
+				found = true
+			}
+		}
+		require.True(t, found, "argo.workflows.build_duration histogram should be recorded")
 	})
 
 	t.Run("records duration with attributes", func(t *testing.T) {

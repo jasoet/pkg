@@ -1,6 +1,7 @@
 package argo
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,15 @@ import (
 
 	"github.com/jasoet/pkg/v3/otel"
 )
+
+func TestNewClient_NilConfigReturnsError(t *testing.T) {
+	// NewClient must return an error (not panic) when handed a nil config.
+	ctx, client, err := NewClient(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNilConfig)
+	assert.Nil(t, ctx)
+	assert.Nil(t, client)
+}
 
 func TestNamespaceTrimsNewline(t *testing.T) {
 	namespaceFile := filepath.Join(t.TempDir(), "namespace")

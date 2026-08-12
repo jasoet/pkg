@@ -10,6 +10,10 @@ import (
 	"github.com/jasoet/pkg/v3/otel"
 )
 
+// instrumentationVersion is the OpenTelemetry instrumentation-scope version reported by the
+// builder's tracer and meter. It tracks the module major version (v3).
+const instrumentationVersion = "v3.0.0"
+
 // otelInstrumentation holds OpenTelemetry instrumentation components for the workflow builder.
 // It provides tracing, metrics, and logging capabilities for workflow build operations.
 type otelInstrumentation struct {
@@ -44,7 +48,7 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 	if cfg.TracerProvider != nil {
 		inst.tracer = cfg.TracerProvider.Tracer(
 			"github.com/jasoet/pkg/v3/argo/builder",
-			trace.WithInstrumentationVersion("v2.0.0"),
+			trace.WithInstrumentationVersion(instrumentationVersion),
 		)
 	}
 
@@ -52,7 +56,7 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 	if cfg.MeterProvider != nil {
 		inst.meter = cfg.MeterProvider.Meter(
 			"github.com/jasoet/pkg/v3/argo/builder",
-			metric.WithInstrumentationVersion("v2.0.0"),
+			metric.WithInstrumentationVersion(instrumentationVersion),
 		)
 
 		// Create counter metrics (errors intentionally ignored - metrics are optional)

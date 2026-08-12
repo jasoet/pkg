@@ -1,6 +1,8 @@
 package builder
 
 import (
+	"context"
+
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 
@@ -9,6 +11,24 @@ import (
 
 // Option is a functional option for configuring WorkflowBuilder.
 type Option func(*WorkflowBuilder)
+
+// WithContext sets the parent context used to root the builder's OpenTelemetry trace
+// spans (for Add, AddParallel, AddExitHandler, Build, and BuildWithEntrypoint). Provide the
+// caller's request context so builder spans become children of the active trace instead of
+// orphan root spans. Defaults to context.Background().
+//
+// Example:
+//
+//	builder := NewWorkflowBuilder("my-workflow", "argo",
+//	    WithContext(ctx),
+//	    WithOTelConfig(otelConfig))
+func WithContext(ctx context.Context) Option {
+	return func(b *WorkflowBuilder) {
+		if ctx != nil {
+			b.baseCtx = ctx
+		}
+	}
+}
 
 // WithOTelConfig enables OpenTelemetry instrumentation for the workflow builder.
 // This adds distributed tracing, metrics collection, and structured logging to workflow build operations.
@@ -43,14 +63,21 @@ func WithServiceAccount(sa string) Option {
 // WithRetryStrategy sets a default retry strategy for all workflow steps.
 // Individual steps can override this with their own retry configuration.
 //
-// Example:
+// The default retry strategy is applied only to leaf templates (Container/Script/HTTP/...),
+// never to the generated entrypoint or exit-handler step templates — retrying an
+// orchestration template would re-run already-succeeded steps.
 //
+// Note: RetryStrategy.Limit and Backoff.Factor are *intstr.IntOrString, so take the
+// address of an intstr value:
+//
+//	limit := intstr.FromInt32(3)
+//	factor := intstr.FromInt32(2)
 //	retryStrategy := &v1alpha1.RetryStrategy{
-//	    Limit: intstr.FromInt(3),
+//	    Limit:       &limit,
 //	    RetryPolicy: "Always",
 //	    Backoff: &v1alpha1.Backoff{
-//	        Duration: "1m",
-//	        Factor:   intstr.FromInt(2),
+//	        Duration:    "1m",
+//	        Factor:      &factor,
 //	        MaxDuration: "10m",
 //	    },
 //	}

@@ -2,7 +2,9 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -55,16 +57,68 @@ type WorkflowBuilder struct {
 	activeDeadlineSeconds *int64
 
 	// Workflow structure
-	entryPoint      []v1alpha1.ParallelSteps
-	templates       []v1alpha1.Template
-	exitHandlers    []v1alpha1.ParallelSteps
-	metrics         *v1alpha1.Metrics
-	uniqueTemplates map[string]struct{}
-	errors          []error
+	entryPoint   []v1alpha1.ParallelSteps
+	templates    []v1alpha1.Template
+	exitHandlers []v1alpha1.ParallelSteps
+	// exitHandlersPriority holds cleanup/destroy steps that must run before other exit
+	// handlers. Kept separate so insertion order is preserved within each group instead of
+	// being reversed by repeated prepending.
+	exitHandlersPriority []v1alpha1.ParallelSteps
+	metrics              *v1alpha1.Metrics
+	uniqueTemplates      map[string]struct{}
+	errors               []error
+
+	// baseCtx is the parent context used to root builder trace spans. It defaults to
+	// context.Background() and can be overridden with WithContext so spans are children of
+	// the caller's trace instead of orphan roots.
+	baseCtx context.Context
 
 	// OpenTelemetry
 	otelConfig *otel.Config
 	otel       *otelInstrumentation
+}
+
+// builderLogger wraps otel.LogHelper so that low-severity (Debug/Info) messages are only
+// emitted when an OTel config is present. Without OTel, LogHelper falls back to an
+// unleveled zerolog writer on stderr; suppressing Debug/Info there keeps the library quiet
+// by default while still surfacing Warn/Error.
+type builderLogger struct {
+	h       *otel.LogHelper
+	verbose bool
+}
+
+func (l *builderLogger) Debug(msg string, fields ...otel.Field) {
+	if l.verbose {
+		l.h.Debug(msg, fields...)
+	}
+}
+
+func (l *builderLogger) Info(msg string, fields ...otel.Field) {
+	if l.verbose {
+		l.h.Info(msg, fields...)
+	}
+}
+
+func (l *builderLogger) Warn(msg string, fields ...otel.Field) { l.h.Warn(msg, fields...) }
+
+func (l *builderLogger) Error(err error, msg string, fields ...otel.Field) {
+	l.h.Error(err, msg, fields...)
+}
+
+// newLogger builds a leveled logger for the given function scope.
+func (b *WorkflowBuilder) newLogger(ctx context.Context, function string) *builderLogger {
+	return &builderLogger{
+		h:       otel.NewLogHelper(ctx, b.otelConfig, "github.com/jasoet/pkg/v3/argo/builder", function),
+		verbose: b.otelConfig != nil,
+	}
+}
+
+// context returns the builder's base context, defaulting to context.Background().
+func (b *WorkflowBuilder) context() context.Context {
+	if b.baseCtx != nil {
+		return b.baseCtx
+	}
+	return context.Background()
 }
 
 // NewWorkflowBuilder creates a new workflow builder with the specified name and namespace.
@@ -89,6 +143,7 @@ func NewWorkflowBuilder(name, namespace string, opts ...Option) *WorkflowBuilder
 		uniqueTemplates: make(map[string]struct{}),
 		labels:          make(map[string]string),
 		annotations:     make(map[string]string),
+		baseCtx:         context.Background(),
 	}
 
 	// Apply options
@@ -113,7 +168,7 @@ func NewWorkflowBuilder(name, namespace string, opts ...Option) *WorkflowBuilder
 //	deploy := template.NewContainer("deploy", "myapp:v1")
 //	builder.Add(deploy)
 func (b *WorkflowBuilder) Add(source WorkflowSource) *WorkflowBuilder {
-	ctx := context.Background()
+	ctx := b.context()
 
 	// Start tracing
 	if b.otel != nil {
@@ -122,14 +177,13 @@ func (b *WorkflowBuilder) Add(source WorkflowSource) *WorkflowBuilder {
 		defer span.End()
 	}
 
-	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.Add")
+	logger := b.newLogger(ctx, "WorkflowBuilder.Add")
 	logger.Debug("Adding workflow source")
 
 	// Get templates from source
 	templates, err := source.Templates()
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("failed to get templates: %w", err))
+		b.errors = append(b.errors, fmt.Errorf("%w: failed to get templates: %w", ErrTemplateSource, err))
 		logger.Error(err, "Failed to get templates from source")
 		return b
 	}
@@ -142,7 +196,7 @@ func (b *WorkflowBuilder) Add(source WorkflowSource) *WorkflowBuilder {
 	// Get steps from source
 	steps, err := source.Steps()
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("failed to get steps: %w", err))
+		b.errors = append(b.errors, fmt.Errorf("%w: failed to get steps: %w", ErrTemplateSource, err))
 		logger.Error(err, "Failed to get steps from source")
 		return b
 	}
@@ -175,7 +229,7 @@ func (b *WorkflowBuilder) Add(source WorkflowSource) *WorkflowBuilder {
 //	parallelSource := &MyParallelSource{}
 //	builder.AddParallel(parallelSource)
 func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder {
-	ctx := context.Background()
+	ctx := b.context()
 
 	// Start tracing
 	if b.otel != nil {
@@ -184,14 +238,13 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 		defer span.End()
 	}
 
-	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.AddParallel")
+	logger := b.newLogger(ctx, "WorkflowBuilder.AddParallel")
 	logger.Debug("Adding parallel workflow source")
 
 	// Get templates from source
 	templates, err := source.Templates()
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("failed to get templates: %w", err))
+		b.errors = append(b.errors, fmt.Errorf("%w: failed to get templates: %w", ErrTemplateSource, err))
 		logger.Error(err, "Failed to get templates from source")
 		return b
 	}
@@ -204,7 +257,7 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 	// Get parallel steps from source
 	parallelSteps, err := source.ParallelSteps()
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("failed to get parallel steps: %w", err))
+		b.errors = append(b.errors, fmt.Errorf("%w: failed to get parallel steps: %w", ErrTemplateSource, err))
 		logger.Error(err, "Failed to get parallel steps from source")
 		return b
 	}
@@ -239,10 +292,11 @@ func (b *WorkflowBuilder) AddParallel(source WorkflowSourceV2) *WorkflowBuilder 
 // after the main workflow completes (regardless of success or failure).
 //
 // Note: Steps with names containing "destroy" or "cleanup" are automatically
-// prioritized (prepended) in the exit handler sequence, ensuring resource
-// cleanup runs before other exit steps.
+// prioritized (run first) in the exit handler sequence, ensuring resource
+// cleanup runs before other exit steps. Insertion order is preserved within the
+// priority group and within the normal group.
 func (b *WorkflowBuilder) AddExitHandler(source WorkflowSource) *WorkflowBuilder {
-	ctx := context.Background()
+	ctx := b.context()
 
 	// Start tracing
 	if b.otel != nil {
@@ -251,14 +305,13 @@ func (b *WorkflowBuilder) AddExitHandler(source WorkflowSource) *WorkflowBuilder
 		defer span.End()
 	}
 
-	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.AddExitHandler")
+	logger := b.newLogger(ctx, "WorkflowBuilder.AddExitHandler")
 	logger.Debug("Adding exit handler")
 
 	// Get templates from source
 	templates, err := source.Templates()
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("failed to get exit handler templates: %w", err))
+		b.errors = append(b.errors, fmt.Errorf("%w: failed to get exit handler templates: %w", ErrTemplateSource, err))
 		logger.Error(err, "Failed to get templates from exit handler")
 		return b
 	}
@@ -271,24 +324,19 @@ func (b *WorkflowBuilder) AddExitHandler(source WorkflowSource) *WorkflowBuilder
 	// Get steps from source
 	steps, err := source.Steps()
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("failed to get exit handler steps: %w", err))
+		b.errors = append(b.errors, fmt.Errorf("%w: failed to get exit handler steps: %w", ErrTemplateSource, err))
 		logger.Error(err, "Failed to get steps from exit handler")
 		return b
 	}
 
-	// Add exit handler steps
+	// Add exit handler steps, appending to the priority or normal group. Appending (rather
+	// than prepending) preserves the relative insertion order within each group.
 	for _, step := range steps {
-		// Check if this is a cleanup/destroy step and prioritize it
-		if strings.Contains(step.Name, "destroy") || strings.Contains(step.Name, "cleanup") {
-			// Insert at the beginning
-			b.exitHandlers = append([]v1alpha1.ParallelSteps{
-				{Steps: []v1alpha1.WorkflowStep{step}},
-			}, b.exitHandlers...)
+		ps := v1alpha1.ParallelSteps{Steps: []v1alpha1.WorkflowStep{step}}
+		if isPriorityExitStep(step.Name) {
+			b.exitHandlersPriority = append(b.exitHandlersPriority, ps)
 		} else {
-			// Append normally
-			b.exitHandlers = append(b.exitHandlers, v1alpha1.ParallelSteps{
-				Steps: []v1alpha1.WorkflowStep{step},
-			})
+			b.exitHandlers = append(b.exitHandlers, ps)
 		}
 	}
 
@@ -336,7 +384,7 @@ func (b *WorkflowBuilder) WithMetrics(provider WorkflowMetricsProvider) *Workflo
 //	    log.Fatal(err)
 //	}
 func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
-	ctx := context.Background()
+	ctx := b.context()
 
 	// Start tracing and timing
 	startTime := time.Now()
@@ -352,81 +400,54 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 		}()
 	}
 
-	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.Build")
+	logger := b.newLogger(ctx, "WorkflowBuilder.Build")
 	logger.Debug("Building workflow",
 		otel.F("name", b.namePrefix),
 		otel.F("namespace", b.namespace),
 		otel.F("steps_count", len(b.entryPoint)),
 		otel.F("templates_count", len(b.templates)),
-		otel.F("exit_handlers_count", len(b.exitHandlers)))
+		otel.F("exit_handlers_count", len(b.exitHandlers)+len(b.exitHandlersPriority)))
 
 	// Check for errors
-	if len(b.errors) > 0 {
+	if err := b.joinedError(); err != nil {
 		if b.otel != nil {
-			b.otel.recordError(ctx, "build_validation_error", b.errors[0])
+			b.otel.recordError(ctx, "build_validation_error", err)
 		}
-		logger.Error(b.errors[0], "Failed to build workflow")
-		return nil, b.errors[0]
+		logger.Error(err, "Failed to build workflow")
+		return nil, err
 	}
 
-	// Ensure we have at least one step
-	if len(b.entryPoint) == 0 {
-		logger.Warn("No steps provided, workflow will be empty")
+	// Build the entrypoint steps. If no steps were provided, insert a no-op step so the
+	// generated workflow is valid — Argo rejects a Steps template with zero steps.
+	const entrypointName = "main"
+	entrySteps := b.entryPoint
+	if len(entrySteps) == 0 {
+		logger.Debug("No steps provided, inserting a no-op step")
+		entrySteps = []v1alpha1.ParallelSteps{{Steps: []v1alpha1.WorkflowStep{b.noopStep()}}}
+	}
+	entrypoint := v1alpha1.Template{
+		Name:  entrypointName,
+		Steps: entrySteps,
 	}
 
 	// Build a fresh templates slice so Build() is safe to call multiple times.
-	const entrypointName = "main"
-	entrypoint := v1alpha1.Template{
-		Name:  entrypointName,
-		Steps: b.entryPoint,
-	}
 	templates := make([]v1alpha1.Template, len(b.templates), len(b.templates)+2)
 	copy(templates, b.templates)
 	templates = append(templates, entrypoint)
 
-	// Create exit handler template if needed
+	// Create exit handler template if needed.
 	const exitHandlerName = "exit-handler"
 	var onExit string
-	if len(b.exitHandlers) > 0 {
-		exitHandler := v1alpha1.Template{
+	exitSteps := b.orderedExitHandlers()
+	if len(exitSteps) > 0 {
+		templates = append(templates, v1alpha1.Template{
 			Name:  exitHandlerName,
-			Steps: b.exitHandlers,
-		}
-		templates = append(templates, exitHandler)
+			Steps: exitSteps,
+		})
 		onExit = exitHandlerName
 	}
 
-	// Build workflow
-	wf := &v1alpha1.Workflow{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: b.namePrefix,
-			Namespace:    b.namespace,
-			Labels:       b.labels,
-			Annotations:  b.annotations,
-		},
-		Spec: v1alpha1.WorkflowSpec{
-			Entrypoint:            entrypointName,
-			ServiceAccountName:    b.serviceAccount,
-			Templates:             templates,
-			Volumes:               b.volumes,
-			Metrics:               b.metrics,
-			ArchiveLogs:           b.archiveLogs,
-			PodGC:                 b.podGC,
-			TTLStrategy:           b.ttl,
-			ActiveDeadlineSeconds: b.activeDeadlineSeconds,
-			OnExit:                onExit,
-		},
-	}
-
-	// Apply default retry strategy if set
-	if b.retryStrategy != nil {
-		for i := range wf.Spec.Templates {
-			if wf.Spec.Templates[i].RetryStrategy == nil {
-				wf.Spec.Templates[i].RetryStrategy = b.retryStrategy
-			}
-		}
-	}
+	wf := b.assembleWorkflow(entrypointName, onExit, templates)
 
 	// Record success metrics
 	if b.otel != nil {
@@ -434,9 +455,9 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 		b.otel.addSpanAttributes(ctx,
 			attribute.String("workflow.name", b.namePrefix),
 			attribute.String("workflow.namespace", b.namespace),
-			attribute.Int("workflow.templates_count", len(templates)),
-			attribute.Int("workflow.steps_count", len(b.entryPoint)),
-			attribute.Bool("workflow.has_exit_handler", len(b.exitHandlers) > 0),
+			attribute.Int("workflow.templates_count", len(wf.Spec.Templates)),
+			attribute.Int("workflow.steps_count", len(entrySteps)),
+			attribute.Bool("workflow.has_exit_handler", onExit != ""),
 		)
 	}
 
@@ -463,7 +484,7 @@ func (b *WorkflowBuilder) Build() (*v1alpha1.Workflow, error) {
 //	builder.AddTemplate(entryTemplate)
 //	wf, err := builder.BuildWithEntrypoint("custom-main")
 func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.Workflow, error) {
-	ctx := context.Background()
+	ctx := b.context()
 
 	// Start tracing and timing
 	startTime := time.Now()
@@ -479,8 +500,7 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 		}()
 	}
 
-	logger := otel.NewLogHelper(ctx, b.otelConfig,
-		"github.com/jasoet/pkg/v3/argo/builder", "WorkflowBuilder.BuildWithEntrypoint")
+	logger := b.newLogger(ctx, "WorkflowBuilder.BuildWithEntrypoint")
 	logger.Debug("Building workflow with custom entrypoint",
 		otel.F("name", b.namePrefix),
 		otel.F("namespace", b.namespace),
@@ -488,12 +508,12 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 		otel.F("templates_count", len(b.templates)))
 
 	// Check for errors
-	if len(b.errors) > 0 {
+	if err := b.joinedError(); err != nil {
 		if b.otel != nil {
-			b.otel.recordError(ctx, "build_validation_error", b.errors[0])
+			b.otel.recordError(ctx, "build_validation_error", err)
 		}
-		logger.Error(b.errors[0], "Failed to build workflow")
-		return nil, b.errors[0]
+		logger.Error(err, "Failed to build workflow")
+		return nil, err
 	}
 
 	// Verify entrypoint template exists
@@ -505,7 +525,7 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 		}
 	}
 	if !found {
-		err := fmt.Errorf("entrypoint template '%s' not found in templates", entrypointName)
+		err := fmt.Errorf("%w: %q", ErrEntrypointNotFound, entrypointName)
 		if b.otel != nil {
 			b.otel.recordError(ctx, "build_validation_error", err)
 		}
@@ -520,45 +540,16 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 	// Create exit handler template if needed
 	const exitHandlerName = "exit-handler"
 	var onExit string
-	if len(b.exitHandlers) > 0 {
-		exitHandler := v1alpha1.Template{
+	exitSteps := b.orderedExitHandlers()
+	if len(exitSteps) > 0 {
+		templates = append(templates, v1alpha1.Template{
 			Name:  exitHandlerName,
-			Steps: b.exitHandlers,
-		}
-		templates = append(templates, exitHandler)
+			Steps: exitSteps,
+		})
 		onExit = exitHandlerName
 	}
 
-	// Build workflow
-	wf := &v1alpha1.Workflow{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: b.namePrefix,
-			Namespace:    b.namespace,
-			Labels:       b.labels,
-			Annotations:  b.annotations,
-		},
-		Spec: v1alpha1.WorkflowSpec{
-			Entrypoint:            entrypointName,
-			ServiceAccountName:    b.serviceAccount,
-			Templates:             templates,
-			Volumes:               b.volumes,
-			Metrics:               b.metrics,
-			ArchiveLogs:           b.archiveLogs,
-			PodGC:                 b.podGC,
-			TTLStrategy:           b.ttl,
-			ActiveDeadlineSeconds: b.activeDeadlineSeconds,
-			OnExit:                onExit,
-		},
-	}
-
-	// Apply default retry strategy if set
-	if b.retryStrategy != nil {
-		for i := range wf.Spec.Templates {
-			if wf.Spec.Templates[i].RetryStrategy == nil {
-				wf.Spec.Templates[i].RetryStrategy = b.retryStrategy
-			}
-		}
-	}
+	wf := b.assembleWorkflow(entrypointName, onExit, templates)
 
 	// Record success metrics
 	if b.otel != nil {
@@ -567,8 +558,8 @@ func (b *WorkflowBuilder) BuildWithEntrypoint(entrypointName string) (*v1alpha1.
 			attribute.String("workflow.name", b.namePrefix),
 			attribute.String("workflow.namespace", b.namespace),
 			attribute.String("workflow.entrypoint", entrypointName),
-			attribute.Int("workflow.templates_count", len(templates)),
-			attribute.Bool("workflow.has_exit_handler", len(b.exitHandlers) > 0),
+			attribute.Int("workflow.templates_count", len(wf.Spec.Templates)),
+			attribute.Bool("workflow.has_exit_handler", onExit != ""),
 		)
 	}
 
@@ -598,10 +589,141 @@ func (b *WorkflowBuilder) AddTemplate(template v1alpha1.Template) *WorkflowBuild
 	return b
 }
 
-// insertTemplate adds a template to the workflow, deduplicating by name.
+// insertTemplate adds a template to the workflow, deduplicating by name. Adding the same
+// template (identical content) more than once is a no-op. Adding a DIFFERENT template under
+// a name that is already taken records an ErrTemplateConflict error — silently dropping the
+// second definition would otherwise make a step run the wrong image or command.
 func (b *WorkflowBuilder) insertTemplate(t v1alpha1.Template) {
-	if _, exists := b.uniqueTemplates[t.Name]; !exists {
-		b.templates = append(b.templates, t)
-		b.uniqueTemplates[t.Name] = struct{}{}
+	if _, exists := b.uniqueTemplates[t.Name]; exists {
+		if existing := b.findTemplate(t.Name); existing != nil && !reflect.DeepEqual(*existing, t) {
+			b.errors = append(b.errors, fmt.Errorf("%w: %q", ErrTemplateConflict, t.Name))
+		}
+		return
 	}
+	b.templates = append(b.templates, t)
+	b.uniqueTemplates[t.Name] = struct{}{}
+}
+
+// findTemplate returns a pointer to the already-registered template with the given name,
+// or nil if none exists.
+func (b *WorkflowBuilder) findTemplate(name string) *v1alpha1.Template {
+	for i := range b.templates {
+		if b.templates[i].Name == name {
+			return &b.templates[i]
+		}
+	}
+	return nil
+}
+
+// joinedError aggregates every accumulated error into a single error via errors.Join, so
+// callers see all build problems (not just the first) and can match any of them with
+// errors.Is. Returns nil when no errors were recorded.
+func (b *WorkflowBuilder) joinedError() error {
+	if len(b.errors) == 0 {
+		return nil
+	}
+	return errors.Join(b.errors...)
+}
+
+// isPriorityExitStep reports whether an exit-handler step should run before other exit
+// steps (cleanup/teardown ordering).
+func isPriorityExitStep(name string) bool {
+	return strings.Contains(name, "destroy") || strings.Contains(name, "cleanup")
+}
+
+// orderedExitHandlers returns priority exit steps followed by normal exit steps, each in
+// insertion order.
+func (b *WorkflowBuilder) orderedExitHandlers() []v1alpha1.ParallelSteps {
+	if len(b.exitHandlersPriority) == 0 {
+		return b.exitHandlers
+	}
+	out := make([]v1alpha1.ParallelSteps, 0, len(b.exitHandlersPriority)+len(b.exitHandlers))
+	out = append(out, b.exitHandlersPriority...)
+	out = append(out, b.exitHandlers...)
+	return out
+}
+
+// noopStep returns a step referencing an inserted no-op template. The template is added to
+// the builder (deduplicated) as a side effect so the generated workflow references a real
+// template.
+func (b *WorkflowBuilder) noopStep() v1alpha1.WorkflowStep {
+	const noopTemplateName = "noop-template"
+	b.insertTemplate(v1alpha1.Template{
+		Name: noopTemplateName,
+		Container: &corev1.Container{
+			Image:   "alpine:3.19",
+			Command: []string{"sh", "-c"},
+			Args:    []string{"echo noop"},
+		},
+	})
+	return v1alpha1.WorkflowStep{Name: "noop", Template: noopTemplateName}
+}
+
+// assembleWorkflow constructs the final Workflow. It deep-copies builder-owned state
+// (labels, annotations, volumes, and every template) so a returned workflow can be mutated
+// freely without affecting the builder or any other workflow produced by it. The default
+// retry strategy, when set, is applied only to leaf templates (those without their own
+// Steps) so it never wraps the generated entrypoint or exit-handler orchestration
+// templates — which would otherwise re-run already-succeeded steps.
+func (b *WorkflowBuilder) assembleWorkflow(entrypointName, onExit string, templates []v1alpha1.Template) *v1alpha1.Workflow {
+	// Deep-copy templates so their internal pointers (Container, Script, RetryStrategy, ...)
+	// are not aliased with builder-owned state.
+	copiedTemplates := make([]v1alpha1.Template, len(templates))
+	for i := range templates {
+		copiedTemplates[i] = *templates[i].DeepCopy()
+	}
+
+	// Apply the default retry strategy to leaf templates only.
+	if b.retryStrategy != nil {
+		for i := range copiedTemplates {
+			if copiedTemplates[i].RetryStrategy == nil && len(copiedTemplates[i].Steps) == 0 && copiedTemplates[i].DAG == nil {
+				copiedTemplates[i].RetryStrategy = b.retryStrategy.DeepCopy()
+			}
+		}
+	}
+
+	return &v1alpha1.Workflow{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: b.namePrefix,
+			Namespace:    b.namespace,
+			Labels:       copyStringMap(b.labels),
+			Annotations:  copyStringMap(b.annotations),
+		},
+		Spec: v1alpha1.WorkflowSpec{
+			Entrypoint:            entrypointName,
+			ServiceAccountName:    b.serviceAccount,
+			Templates:             copiedTemplates,
+			Volumes:               copyVolumes(b.volumes),
+			Metrics:               b.metrics,
+			ArchiveLogs:           b.archiveLogs,
+			PodGC:                 b.podGC,
+			TTLStrategy:           b.ttl,
+			ActiveDeadlineSeconds: b.activeDeadlineSeconds,
+			OnExit:                onExit,
+		},
+	}
+}
+
+// copyStringMap returns a shallow copy of a string map, or nil if the input is nil.
+func copyStringMap(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// copyVolumes returns a deep copy of the volumes slice, or nil if the input is empty.
+func copyVolumes(vols []corev1.Volume) []corev1.Volume {
+	if len(vols) == 0 {
+		return nil
+	}
+	out := make([]corev1.Volume, len(vols))
+	for i := range vols {
+		out[i] = *vols[i].DeepCopy()
+	}
+	return out
 }

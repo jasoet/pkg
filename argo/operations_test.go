@@ -18,6 +18,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/jasoet/pkg/v3/otel"
@@ -284,7 +286,7 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second)
+		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second, WithPollInterval(5*time.Millisecond))
 		require.NoError(t, err)
 		require.NotNil(t, completed)
 		assert.Equal(t, v1alpha1.WorkflowSucceeded, completed.Status.Phase)
@@ -314,14 +316,15 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second)
+		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second, WithPollInterval(5*time.Millisecond))
 		require.Error(t, err)
 		require.NotNil(t, completed)
 		assert.Equal(t, v1alpha1.WorkflowFailed, completed.Status.Phase)
+		assert.ErrorIs(t, err, ErrWorkflowFailed)
 		assert.Contains(t, err.Error(), "workflow failed")
 	})
 
-	t.Run("workflow timeout", func(t *testing.T) {
+	t.Run("workflow timeout wraps deadline and sentinel", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
 			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
 				created := testWf.DeepCopy()
@@ -338,9 +341,94 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		_, err := SubmitAndWait(ctx, client, testWf, 1*time.Second)
+		_, err := SubmitAndWait(ctx, client, testWf, 100*time.Millisecond, WithPollInterval(10*time.Millisecond))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "timeout")
+		assert.ErrorIs(t, err, ErrWaitTimeout, "timeout error should match ErrWaitTimeout sentinel")
+		assert.ErrorIs(t, err, context.DeadlineExceeded, "timeout error should wrap context.DeadlineExceeded")
+	})
+
+	t.Run("parent context cancellation is not mislabeled as timeout", func(t *testing.T) {
+		mockWfClient := &mockWorkflowServiceClient{
+			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+				created := testWf.DeepCopy()
+				created.Name = "test-cancel"
+				return created, nil
+			},
+			getWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowGetRequest) (*v1alpha1.Workflow, error) {
+				result := testWf.DeepCopy()
+				result.Name = "test-cancel"
+				result.Status.Phase = v1alpha1.WorkflowRunning
+				return result, nil
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		go func() {
+			time.Sleep(30 * time.Millisecond)
+			cancel()
+		}()
+
+		_, err := SubmitAndWait(cancelCtx, client, testWf, 10*time.Second, WithPollInterval(5*time.Millisecond))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.NotErrorIs(t, err, ErrWaitTimeout, "a cancellation must not be reported as a timeout")
+		assert.Contains(t, err.Error(), "canceled")
+	})
+
+	t.Run("permanent poll error aborts early", func(t *testing.T) {
+		callCount := 0
+		mockWfClient := &mockWorkflowServiceClient{
+			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+				created := testWf.DeepCopy()
+				created.Name = "test-notfound"
+				return created, nil
+			},
+			getWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowGetRequest) (*v1alpha1.Workflow, error) {
+				callCount++
+				return nil, status.Error(codes.NotFound, "workflows.argoproj.io \"test-notfound\" not found")
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		start := time.Now()
+		_, err := SubmitAndWait(ctx, client, testWf, 10*time.Second, WithPollInterval(5*time.Millisecond))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrWaitTimeout, "a permanent NotFound must not spin until timeout")
+		assert.Contains(t, err.Error(), "failed to get workflow status")
+		assert.Less(t, time.Since(start), 2*time.Second, "should abort promptly on a permanent error")
+		assert.Equal(t, 1, callCount, "should not retry a permanent error")
+	})
+
+	t.Run("transient poll error is retried", func(t *testing.T) {
+		callCount := 0
+		mockWfClient := &mockWorkflowServiceClient{
+			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+				created := testWf.DeepCopy()
+				created.Name = "test-transient"
+				return created, nil
+			},
+			getWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowGetRequest) (*v1alpha1.Workflow, error) {
+				callCount++
+				if callCount < 3 {
+					return nil, status.Error(codes.Unavailable, "server temporarily unavailable")
+				}
+				result := testWf.DeepCopy()
+				result.Name = "test-transient"
+				result.Status.Phase = v1alpha1.WorkflowSucceeded
+				return result, nil
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		completed, err := SubmitAndWait(ctx, client, testWf, 10*time.Second, WithPollInterval(5*time.Millisecond))
+		require.NoError(t, err)
+		require.NotNil(t, completed)
+		assert.Equal(t, v1alpha1.WorkflowSucceeded, completed.Status.Phase)
+		assert.GreaterOrEqual(t, callCount, 3, "transient errors should be retried until success")
 	})
 }
 
@@ -431,6 +519,43 @@ func TestListWorkflows(t *testing.T) {
 		require.Len(t, workflows, 2)
 		assert.Equal(t, "wf-1", workflows[0].Name)
 		assert.Equal(t, "wf-2", workflows[1].Name)
+	})
+
+	t.Run("follows pagination continue tokens", func(t *testing.T) {
+		call := 0
+		mockWfClient := &mockWorkflowServiceClient{
+			listWorkflowsFunc: func(ctx context.Context, req *workflow.WorkflowListRequest) (*v1alpha1.WorkflowList, error) {
+				call++
+				switch call {
+				case 1:
+					assert.Empty(t, req.ListOptions.Continue, "first page must not send a continue token")
+					return &v1alpha1.WorkflowList{
+						ListMeta: metav1.ListMeta{Continue: "token-page-2"},
+						Items: []v1alpha1.Workflow{
+							{ObjectMeta: metav1.ObjectMeta{Name: "wf-1"}},
+							{ObjectMeta: metav1.ObjectMeta{Name: "wf-2"}},
+						},
+					}, nil
+				case 2:
+					assert.Equal(t, "token-page-2", req.ListOptions.Continue, "second page must send the continue token")
+					return &v1alpha1.WorkflowList{
+						Items: []v1alpha1.Workflow{
+							{ObjectMeta: metav1.ObjectMeta{Name: "wf-3"}},
+						},
+					}, nil
+				default:
+					return nil, errors.New("unexpected extra list call")
+				}
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		workflows, err := ListWorkflows(ctx, client, "argo", "")
+		require.NoError(t, err)
+		require.Len(t, workflows, 3, "should aggregate items across all pages")
+		assert.Equal(t, "wf-3", workflows[2].Name)
+		assert.Equal(t, 2, call, "should have followed exactly one continue token")
 	})
 
 	t.Run("list with label selector", func(t *testing.T) {

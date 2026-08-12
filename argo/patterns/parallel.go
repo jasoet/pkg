@@ -2,6 +2,7 @@ package patterns
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
@@ -10,8 +11,12 @@ import (
 	"github.com/jasoet/pkg/v3/argo/builder/template"
 )
 
-// shellQuote wraps a string in single quotes and escapes any embedded single quotes,
-// preventing shell injection when user-provided values are interpolated into shell commands.
+// shellQuote wraps a single data value (a filename, path, or similar argument) in
+// single quotes, escaping any embedded single quotes. Use it ONLY for data arguments
+// that are interpolated into a shell command — never for the command itself, because a
+// user-supplied command such as "wc -w" or "awk '{print}'" is a shell fragment that must
+// remain unquoted so the shell parses it into a program plus arguments. Quoting the whole
+// fragment would make the shell look for a single executable literally named "wc -w".
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
@@ -112,9 +117,11 @@ func ParallelDataProcessing(name, namespace, image string, dataItems []string, p
 	parallelSteps := make([]v1alpha1.WorkflowStep, 0, len(dataItems))
 	for i, dataItem := range dataItems {
 		taskName := fmt.Sprintf("process-%d", i)
+		// processingCommand is a shell fragment (e.g. "process.sh" or "python run.py")
+		// and must stay unquoted; only the data item (a filename) is quoted.
 		task := template.NewContainer(taskName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("%s %s", shellQuote(processingCommand), shellQuote(dataItem))),
+			template.WithArgs(fmt.Sprintf("%s %s", processingCommand, shellQuote(dataItem))),
 			template.WithEnv("DATA_ITEM", dataItem),
 			template.WithEnv("ITEM_INDEX", fmt.Sprintf("%d", i)))
 
@@ -172,9 +179,11 @@ func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd
 	mapSteps := make([]v1alpha1.WorkflowStep, 0, len(inputs))
 	for i, input := range inputs {
 		mapTaskName := fmt.Sprintf("map-%d", i)
+		// mapCmd is a shell fragment (e.g. "wc -w") and must stay unquoted so the shell
+		// parses it into a program and arguments; only the input filename is quoted.
 		mapTask := template.NewContainer(mapTaskName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("echo 'Mapping %s' && %s %s", shellQuote(input), shellQuote(mapCmd), shellQuote(input))),
+			template.WithArgs(fmt.Sprintf("echo 'Mapping %s' && %s %s", shellQuote(input), mapCmd, shellQuote(input))),
 			template.WithEnv("INPUT", input))
 
 		steps, err := mapTask.Steps()
@@ -194,10 +203,11 @@ func MapReduce(name, namespace, image string, inputs []string, mapCmd, reduceCmd
 		}
 	}
 
-	// Reduce phase: Aggregate results
+	// Reduce phase: Aggregate results. reduceCmd is a shell fragment
+	// (e.g. "awk '{sum+=$1} END {print sum}'") and must stay unquoted.
 	reduce := template.NewContainer("reduce", image,
 		template.WithCommand("sh", "-c"),
-		template.WithArgs(fmt.Sprintf("echo 'Reducing results...' && %s", shellQuote(reduceCmd))))
+		template.WithArgs(fmt.Sprintf("echo 'Reducing results...' && %s", reduceCmd)))
 
 	reduceSteps, err := reduce.Steps()
 	if err != nil {
@@ -247,12 +257,24 @@ func ParallelTestSuite(name, namespace, image string, testSuites map[string]stri
 
 	wb := builder.NewWorkflowBuilder(name, namespace, opts...)
 
+	// Iterate suites in a stable (sorted) order so the generated workflow is
+	// deterministic across runs — Go map iteration order is randomized, which would
+	// otherwise break GitOps diffing and reproducible builds.
+	suiteNames := make([]string, 0, len(testSuites))
+	for suiteName := range testSuites {
+		suiteNames = append(suiteNames, suiteName)
+	}
+	sort.Strings(suiteNames)
+
 	// Create parallel test steps
 	parallelSteps := make([]v1alpha1.WorkflowStep, 0, len(testSuites))
-	for suiteName, testCmd := range testSuites {
+	for _, suiteName := range suiteNames {
+		testCmd := testSuites[suiteName]
+		// testCmd is a shell fragment (e.g. "go test ./...") and must stay unquoted;
+		// only the suite name (interpolated into an echo) is quoted.
 		testTask := template.NewContainer("test-"+suiteName, image,
 			template.WithCommand("sh", "-c"),
-			template.WithArgs(fmt.Sprintf("echo 'Running %s tests...' && %s", shellQuote(suiteName), shellQuote(testCmd))),
+			template.WithArgs(fmt.Sprintf("echo 'Running %s tests...' && %s", shellQuote(suiteName), testCmd)),
 			template.WithWorkingDir("/workspace"))
 
 		steps, err := testTask.Steps()

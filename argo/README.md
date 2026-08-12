@@ -422,6 +422,10 @@ webhook := template.NewHTTP("notify",
 Configure workflows with functional options:
 
 ```go
+// Values referenced by pointer below must be addressable, so declare them first.
+retryLimit := intstr.FromInt32(3)          // k8s.io/apimachinery/pkg/util/intstr
+ttl := int32(3600)
+
 wf, err := builder.NewWorkflowBuilder("myworkflow", "argo",
     // Service Account
     builder.WithServiceAccount("argo-workflow"),
@@ -440,8 +444,12 @@ wf, err := builder.NewWorkflowBuilder("myworkflow", "argo",
     builder.WithActiveDeadlineSeconds(3600), // 1 hour timeout
 
     // Retry Strategy
+    // RetryStrategy.Limit is *intstr.IntOrString, so take the address of an intstr value
+    // (declared before the builder call: `retryLimit := intstr.FromInt32(3)`).
+    // The default retry strategy is applied to leaf templates only (never to the generated
+    // "main" or "exit-handler" step templates).
     builder.WithRetryStrategy(&v1alpha1.RetryStrategy{
-        Limit:       intstr.FromInt(3),
+        Limit:       &retryLimit,
         RetryPolicy: "Always",
     }),
 
@@ -636,11 +644,24 @@ fmt.Printf("Workflow %s submitted\n", created.Name)
 
 #### Submit and Wait
 
-Submit a workflow and wait for completion with automatic polling:
+Submit a workflow and wait for completion with automatic polling. The poll interval
+defaults to 5s and can be overridden with `argo.WithPollInterval`. The status is polled
+immediately (so an already-terminal workflow is detected without waiting a full interval),
+and permanent errors from the status API (e.g. `NotFound`, `PermissionDenied`) abort the
+wait instead of spinning until the deadline.
 
 ```go
-completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute)
+completed, err := argo.SubmitAndWait(ctx, client, wf, 10*time.Minute,
+    argo.WithPollInterval(15*time.Second)) // optional; default is 5s
 if err != nil {
+    switch {
+    case errors.Is(err, argo.ErrWaitTimeout):
+        // the wait deadline elapsed (also wraps context.DeadlineExceeded)
+    case errors.Is(err, argo.ErrWorkflowFailed):
+        // the workflow reached a terminal Failed/Error phase
+    case errors.Is(err, context.Canceled):
+        // the parent context was cancelled (distinct from a timeout)
+    }
     return err
 }
 
@@ -662,6 +683,9 @@ fmt.Printf("Progress: %s\n", status.Progress)
 ```
 
 #### List Workflows
+
+`ListWorkflows` follows pagination continue tokens internally, so it returns the full
+result set rather than a single (potentially truncated) page.
 
 ```go
 // List all workflows
@@ -935,7 +959,8 @@ Also note: `argo.Option` no longer returns an error (it is now `func(*Config)`).
 go test ./argo
 
 # Integration tests (requires Kubernetes cluster)
-go test -tags=integration ./argo
+# Integration tests are gated behind the `argo` build tag (//go:build argo).
+go test -tags=argo ./argo/...
 
 # All tests with coverage
 go test -cover ./argo

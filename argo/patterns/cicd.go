@@ -1,6 +1,8 @@
 package patterns
 
 import (
+	"fmt"
+
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 
 	"github.com/jasoet/pkg/v3/argo/builder"
@@ -98,8 +100,23 @@ echo "Duration: {{workflow.duration}}"
 		Build()
 }
 
-// ConditionalDeploy creates a workflow that deploys only if tests pass.
-// This demonstrates conditional execution using the 'when' clause.
+// ConditionalDeploy creates a workflow that deploys only if tests pass and rolls back
+// if the deployment fails. It demonstrates conditional execution using the 'when' clause
+// combined with 'continueOn' so the rollback step is actually reachable.
+//
+// Execution semantics:
+//   - test runs first. If it fails, the workflow aborts (nothing is deployed, so there is
+//     nothing to roll back) and the workflow is marked Failed.
+//   - deploy runs only when test Succeeded ({{steps.test.status}} == Succeeded). It sets
+//     continueOn.failed so that a deploy failure does NOT abort the workflow before the
+//     rollback step can evaluate its condition.
+//   - rollback runs only when deploy Failed ({{steps.deploy.status}} == Failed). Because
+//     deploy tolerates failure via continueOn, the rollback is recovery logic and the
+//     workflow completes rather than aborting mid-deploy.
+//
+// Note: gating on step status ({{steps.X.status}}) rather than {{steps.X.outputs.exitCode}}
+// avoids depending on the step actually emitting an exitCode output, which Argo only
+// populates for templates that declare it.
 //
 // Example:
 //
@@ -112,15 +129,17 @@ func ConditionalDeploy(name, namespace, image string, opts ...builder.Option) (*
 	test := template.NewContainer("test", image,
 		template.WithCommand("go", "test", "./..."))
 
-	// Deploy only if tests pass
+	// Deploy only if tests pass. continueOn.failed keeps the workflow running when the
+	// deploy fails so the rollback step below can evaluate its condition.
 	deploy := template.NewContainer("deploy", image,
 		template.WithCommand("sh", "-c", "echo 'Deploying to production...'")).
-		When("{{steps.test.outputs.exitCode}} == 0")
+		When("{{steps.test.status}} == Succeeded").
+		ContinueOn(&v1alpha1.ContinueOn{Failed: true})
 
-	// Rollback if deploy fails
+	// Rollback only if the deploy step failed.
 	rollback := template.NewContainer("rollback", image,
 		template.WithCommand("sh", "-c", "echo 'Rolling back deployment...'")).
-		When("{{steps.deploy.outputs.exitCode}} != 0")
+		When("{{steps.deploy.status}} == Failed")
 
 	return builder.NewWorkflowBuilder(name, namespace, opts...).
 		Add(test).
@@ -139,6 +158,10 @@ func ConditionalDeploy(name, namespace, image string, opts ...builder.Option) (*
 //	    []string{"staging", "production"},
 //	)
 func MultiEnvironmentDeploy(name, namespace, deployImage string, environments []string, opts ...builder.Option) (*v1alpha1.Workflow, error) {
+	if len(environments) == 0 {
+		return nil, fmt.Errorf("at least one environment is required for multi-environment deploy")
+	}
+
 	wb := builder.NewWorkflowBuilder(name, namespace, opts...)
 
 	// Add deployment step for each environment

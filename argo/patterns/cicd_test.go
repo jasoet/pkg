@@ -128,23 +128,41 @@ func TestConditionalDeploy(t *testing.T) {
 	require.NotNil(t, mainTemplate)
 	require.NotEmpty(t, mainTemplate.Steps)
 
-	// Check for conditional deploy and rollback steps
-	hasConditionalDeploy := false
-	hasRollback := false
-
-	for _, parallelSteps := range mainTemplate.Steps {
-		for _, step := range parallelSteps.Steps {
-			if step.Name == "deploy" && step.When != "" {
-				hasConditionalDeploy = true
-			}
-			if step.Name == "rollback" && step.When != "" {
-				hasRollback = true
+	// Locate the deploy and rollback steps.
+	var deployStep, rollbackStep *v1alpha1.WorkflowStep
+	for i := range mainTemplate.Steps {
+		for j := range mainTemplate.Steps[i].Steps {
+			step := &mainTemplate.Steps[i].Steps[j]
+			switch step.Name {
+			case "deploy":
+				deployStep = step
+			case "rollback":
+				rollbackStep = step
 			}
 		}
 	}
 
-	assert.True(t, hasConditionalDeploy, "should have conditional deploy step")
-	assert.True(t, hasRollback, "should have conditional rollback step")
+	require.NotNil(t, deployStep, "should have conditional deploy step")
+	require.NotNil(t, rollbackStep, "should have conditional rollback step")
+
+	// Deploy must gate on test success and tolerate its own failure so rollback is reachable.
+	assert.Equal(t, "{{steps.test.status}} == Succeeded", deployStep.When)
+	require.NotNil(t, deployStep.ContinueOn, "deploy must set continueOn so a deploy failure does not abort before rollback")
+	assert.True(t, deployStep.ContinueOn.Failed, "deploy continueOn.failed must be true")
+
+	// Rollback must gate on deploy failure (via status, not exitCode).
+	assert.Equal(t, "{{steps.deploy.status}} == Failed", rollbackStep.When)
+}
+
+func TestMultiEnvironmentDeployRequiresEnvironments(t *testing.T) {
+	_, err := MultiEnvironmentDeploy(
+		"empty", "argo",
+		"deployer:v1",
+		[]string{},
+	)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one environment is required")
 }
 
 func TestMultiEnvironmentDeploy(t *testing.T) {

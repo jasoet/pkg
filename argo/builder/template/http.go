@@ -134,6 +134,17 @@ func (h *HTTP) When(condition string) *HTTP {
 	return h
 }
 
+// ContinueOn configures the step to continue even when it fails or errors. Without this,
+// the continueOn field read by Steps stays nil and the feature is unreachable.
+//
+// Example:
+//
+//	http.ContinueOn(&v1alpha1.ContinueOn{Failed: true})
+func (h *HTTP) ContinueOn(continueOn *v1alpha1.ContinueOn) *HTTP {
+	h.continueOn = continueOn
+	return h
+}
+
 // Steps implements WorkflowSource interface.
 func (h *HTTP) Steps() ([]v1alpha1.WorkflowStep, error) {
 	ctx := context.Background()
@@ -254,5 +265,12 @@ func WithHTTPTimeout(seconds int32) HTTPOption {
 func WithHTTPOTelConfig(cfg *otel.Config) HTTPOption {
 	return func(h *HTTP) {
 		h.otelConfig = cfg
+	}
+}
+
+// WithHTTPContinueOn configures the step to continue on failure/error.
+func WithHTTPContinueOn(continueOn *v1alpha1.ContinueOn) HTTPOption {
+	return func(h *HTTP) {
+		h.continueOn = continueOn
 	}
 }

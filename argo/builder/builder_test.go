@@ -422,7 +422,8 @@ func TestWorkflowBuilder_BuildWithEntrypoint(t *testing.T) {
 		wf, err := builder.BuildWithEntrypoint("nonexistent")
 		require.Error(t, err)
 		assert.Nil(t, wf)
-		assert.Contains(t, err.Error(), "entrypoint template 'nonexistent' not found")
+		assert.ErrorIs(t, err, ErrEntrypointNotFound)
+		assert.Contains(t, err.Error(), "nonexistent")
 	})
 
 	t.Run("builds with exit handler", func(t *testing.T) {

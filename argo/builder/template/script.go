@@ -37,6 +37,9 @@ type Script struct {
 	continueOn    *v1alpha1.ContinueOn
 	retryStrategy *v1alpha1.RetryStrategy
 	otelConfig    *otel.Config
+	// langErr records an unknown-language error from NewScript so it can surface from
+	// Templates() (NewScript itself cannot return an error).
+	langErr error
 }
 
 // NewScript creates a new script workflow source.
@@ -60,7 +63,10 @@ func NewScript(name, language string, opts ...ScriptOption) *Script {
 		volumeMounts: make([]corev1.VolumeMount, 0),
 	}
 
-	// Set default image based on language
+	// Set default image based on language. An unknown language records an error (surfaced
+	// from Templates) rather than silently defaulting to bash, which would run the source
+	// under the wrong interpreter. The bash default is kept only so the struct is usable if
+	// the caller later overrides the image/command explicitly.
 	switch language {
 	case "bash", "sh":
 		s.image = "bash:5.2"
@@ -75,9 +81,9 @@ func NewScript(name, language string, opts ...ScriptOption) *Script {
 		s.image = "ruby:3.2-slim"
 		s.command = []string{"ruby"}
 	default:
-		// Default to bash
 		s.image = "bash:5.2"
 		s.command = []string{"bash"}
+		s.langErr = fmt.Errorf("unknown script language %q: supported languages are bash, sh, python, python3, node, nodejs, javascript, ruby (use WithScriptImage/WithScriptCommand to configure a custom interpreter)", language)
 	}
 
 	for _, opt := range opts {
@@ -107,13 +113,15 @@ func (s *Script) Source(source string) *Script {
 	return s
 }
 
-// Image overrides the default image for the script.
+// Image overrides the default image for the script. Setting an explicit image clears any
+// unknown-language error, since the caller is providing the interpreter deliberately.
 //
 // Example:
 //
 //	script.Image("custom/python:3.11")
 func (s *Script) Image(image string) *Script {
 	s.image = image
+	s.langErr = nil
 	return s
 }
 
@@ -204,12 +212,23 @@ func (s *Script) When(condition string) *Script {
 	return s
 }
 
+// ContinueOn configures the step to continue even when it fails or errors. Without this,
+// the continueOn field read by Steps stays nil and the feature is unreachable.
+//
+// Example:
+//
+//	script.ContinueOn(&v1alpha1.ContinueOn{Failed: true})
+func (s *Script) ContinueOn(continueOn *v1alpha1.ContinueOn) *Script {
+	s.continueOn = continueOn
+	return s
+}
+
 // WithRetry sets the retry strategy for the script step.
 // The retry strategy overrides any default retry strategy set on the WorkflowBuilder.
 //
 // Example:
 //
-//	retryLimit := intstr.FromInt(3)
+//	retryLimit := intstr.FromInt32(3)
 //	script.WithRetry(&v1alpha1.RetryStrategy{Limit: &retryLimit})
 func (s *Script) WithRetry(strategy *v1alpha1.RetryStrategy) *Script {
 	s.retryStrategy = strategy
@@ -252,10 +271,25 @@ func (s *Script) Templates() ([]v1alpha1.Template, error) {
 		otel.F("name", s.templateName),
 		otel.F("image", s.image))
 
+	// Surface an unknown-language error from NewScript rather than silently running the
+	// source under the wrong interpreter.
+	if s.langErr != nil {
+		logger.Error(s.langErr, "Unknown script language")
+		return nil, s.langErr
+	}
+
 	// Use s.source if set (e.g. from artifact/configmap reference), otherwise fall back to inline scriptContent.
 	source := s.scriptContent
 	if s.source != "" {
 		source = s.source
+	}
+
+	// A script with no source (neither inline content nor an artifact/configmap reference)
+	// builds fine here but is rejected server-side; fail early with a clear message.
+	if source == "" {
+		err := fmt.Errorf("script %q has empty source: set inline content (WithScriptContent) or a source reference (Source)", s.name)
+		logger.Error(err, "Empty script source")
+		return nil, err
 	}
 
 	script := &v1alpha1.ScriptTemplate{
@@ -302,10 +336,12 @@ func WithScriptContent(content string) ScriptOption {
 	}
 }
 
-// WithScriptImage sets the container image.
+// WithScriptImage sets the container image. Providing an explicit image clears any
+// unknown-language error recorded by NewScript.
 func WithScriptImage(image string) ScriptOption {
 	return func(s *Script) {
 		s.image = image
+		s.langErr = nil
 	}
 }
 
@@ -337,6 +373,13 @@ func WithScriptOTelConfig(cfg *otel.Config) ScriptOption {
 func WithScriptWorkingDir(dir string) ScriptOption {
 	return func(s *Script) {
 		s.workingDir = dir
+	}
+}
+
+// WithScriptContinueOn configures the step to continue on failure/error.
+func WithScriptContinueOn(continueOn *v1alpha1.ContinueOn) ScriptOption {
+	return func(s *Script) {
+		s.continueOn = continueOn
 	}
 }
 
