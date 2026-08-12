@@ -49,6 +49,12 @@ type Config struct {
 
 	// ServiceVersion identifies the service version
 	ServiceVersion string
+
+	// loggerProviderSet records whether WithLoggerProvider or WithoutLogging
+	// explicitly configured logging. NewConfig only builds the default logger
+	// provider when the caller did not, so the default is never constructed
+	// and then discarded.
+	loggerProviderSet bool
 }
 
 // Option configures a Config during construction via NewConfig.
@@ -71,11 +77,17 @@ type Option func(*Config)
 //	cfg := otel.NewConfig("my-service", otel.WithLoggerProvider(lp))
 func NewConfig(serviceName string, opts ...Option) *Config {
 	c := &Config{
-		ServiceName:    serviceName,
-		LoggerProvider: defaultLoggerProvider(serviceName, false),
+		ServiceName: serviceName,
 	}
+	// Apply options first, then lazily build the default logger provider only
+	// when the caller did not set one. This avoids constructing a default
+	// provider that WithLoggerProvider or WithoutLogging would immediately
+	// discard.
 	for _, o := range opts {
 		o(c)
+	}
+	if !c.loggerProviderSet {
+		c.LoggerProvider = defaultLoggerProvider(serviceName, false)
 	}
 	return c
 }
@@ -90,9 +102,13 @@ func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(c *Config) { c.MeterProvider = mp }
 }
 
-// WithLoggerProvider sets a custom LoggerProvider, replacing the default stdout logger.
+// WithLoggerProvider sets a custom LoggerProvider, replacing the default
+// console (stderr) logger.
 func WithLoggerProvider(lp log.LoggerProvider) Option {
-	return func(c *Config) { c.LoggerProvider = lp }
+	return func(c *Config) {
+		c.LoggerProvider = lp
+		c.loggerProviderSet = true
+	}
 }
 
 // WithServiceVersion sets the service version for telemetry data.
@@ -112,7 +128,10 @@ func WithoutMetrics() Option {
 
 // WithoutLogging disables the default logging by setting LoggerProvider to nil.
 func WithoutLogging() Option {
-	return func(c *Config) { c.LoggerProvider = nil }
+	return func(c *Config) {
+		c.LoggerProvider = nil
+		c.loggerProviderSet = true
+	}
 }
 
 // ContextWithConfig stores the OTel config in the context.

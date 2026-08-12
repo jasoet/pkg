@@ -35,7 +35,12 @@ type FileConfig struct {
 //
 // When file output is enabled, the returned io.Closer must be closed by the caller
 // to release the file handle (typically via defer). When only console output is used,
-// the returned closer is nil.
+// the returned closer is a true nil interface.
+//
+// Concurrency: this function assigns the process-global zerolog logger. The
+// internal mutex only serializes concurrent initializers; it does not
+// synchronize against concurrent readers of the global logger. Call it once
+// during startup, before any goroutine begins logging.
 //
 // Parameters:
 //   - serviceName: Name of the service, added as a field to all log entries
@@ -67,17 +72,28 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 	initMu.Lock()
 	defer initMu.Unlock()
 
+	// Validate all inputs before mutating any global state. A failed
+	// initialization must not leave the global logger level changed.
+
 	// Reject any bits beyond the known OutputConsole and OutputFile flags.
 	if output&^(OutputConsole|OutputFile) != 0 {
 		return nil, fmt.Errorf("unknown output destination bits: %d", output)
+	}
+
+	// Ensure at least one output is configured.
+	if output&(OutputConsole|OutputFile) == 0 {
+		return nil, fmt.Errorf("at least one output destination must be specified")
+	}
+
+	// File output requires a valid file configuration.
+	if output&OutputFile != 0 && (fileConfig == nil || fileConfig.Path == "") {
+		return nil, fmt.Errorf("fileConfig with Path is required when OutputFile is specified")
 	}
 
 	level := zerolog.InfoLevel
 	if debug {
 		level = zerolog.DebugLevel
 	}
-
-	zerolog.SetGlobalLevel(level)
 
 	var writers []io.Writer
 	var file *os.File
@@ -91,12 +107,9 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 		writers = append(writers, consoleWriter)
 	}
 
-	// File output (JSON, structured)
+	// File output (JSON, structured). Opening the file is the last operation
+	// that can fail; it runs before any global state is mutated.
 	if output&OutputFile != 0 {
-		if fileConfig == nil || fileConfig.Path == "" {
-			return nil, fmt.Errorf("fileConfig with Path is required when OutputFile is specified")
-		}
-
 		var err error
 		file, err = os.OpenFile(fileConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
@@ -106,10 +119,8 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 		writers = append(writers, file)
 	}
 
-	// Ensure at least one output is configured
-	if len(writers) == 0 {
-		return nil, fmt.Errorf("at least one output destination must be specified")
-	}
+	// All inputs are valid; from here on we mutate global state.
+	zerolog.SetGlobalLevel(level)
 
 	// Create multi-writer if multiple outputs
 	var writer io.Writer
@@ -134,6 +145,14 @@ func InitializeWithFile(serviceName string, debug bool, output OutputDestination
 	}
 
 	zlog.Logger = ctx.Logger().Level(level)
+
+	// Return a true nil io.Closer for console-only output. Returning the
+	// typed-nil *os.File here would produce a non-nil io.Closer interface,
+	// causing the documented `if closer != nil { closer.Close() }` guard to
+	// misfire and call Close on a nil file handle.
+	if file == nil {
+		return nil, nil
+	}
 
 	return file, nil
 }

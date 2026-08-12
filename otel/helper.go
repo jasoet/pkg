@@ -86,22 +86,28 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 	if config != nil && config.IsLoggingEnabled() {
 		h.otelLogger = config.GetLogger(scopeName)
 	} else {
-		serviceName := scopeName
-		if config != nil && config.ServiceName != "" {
-			serviceName = config.ServiceName
-		}
-
 		loggerCtx := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
 			With().
 			Timestamp().
-			Str("service", serviceName).
 			Int("pid", os.Getpid())
 
+		// Only label a value as "service" when we actually have a service name.
+		// The scopeName is an instrumentation scope (often a module path) and
+		// must not be mislabeled as the service; record it under "scope".
+		if config != nil && config.ServiceName != "" {
+			loggerCtx = loggerCtx.Str("service", config.ServiceName)
+		}
+		if scopeName != "" {
+			loggerCtx = loggerCtx.Str("scope", scopeName)
+		}
 		if function != "" {
 			loggerCtx = loggerCtx.Str("function", function)
 		}
 
-		h.logger = loggerCtx.Logger()
+		// Default the fallback logger to Info level. Without an explicit level
+		// a fresh zerolog logger emits Debug/Trace, so callers that pass a nil
+		// config (e.g. rest/middleware) would leak Debug logs in production.
+		h.logger = loggerCtx.Logger().Level(zerolog.InfoLevel)
 	}
 
 	return h
@@ -224,6 +230,7 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	record.SetTimestamp(time.Now())
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
+	record.SetSeverityText(severityText(severity))
 
 	if h.function != "" {
 		record.AddAttributes(otellog.String("function", h.function))
@@ -249,6 +256,26 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	}
 
 	h.otelLogger.Emit(h.ctx, record)
+}
+
+// severityText maps an OTel severity to its canonical text label, matching the
+// levels LogHelper emits. Setting SeverityText ensures the "severity" field is
+// present in both console and OTLP output.
+func severityText(severity otellog.Severity) string {
+	switch {
+	case severity >= otellog.SeverityFatal:
+		return "FATAL"
+	case severity >= otellog.SeverityError:
+		return "ERROR"
+	case severity >= otellog.SeverityWarn:
+		return "WARN"
+	case severity >= otellog.SeverityInfo:
+		return "INFO"
+	case severity >= otellog.SeverityDebug:
+		return "DEBUG"
+	default:
+		return "TRACE"
+	}
 }
 
 // addFields adds Field key-value pairs to a zerolog event.

@@ -3,8 +3,12 @@ package otel
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/log/noop"
 )
 
@@ -13,29 +17,16 @@ func TestNewLogHelper(t *testing.T) {
 
 	t.Run("without OTel config", func(t *testing.T) {
 		helper := NewLogHelper(ctx, nil, "", "test.Function")
-		if helper == nil {
-			t.Fatal("expected helper to be created")
-		}
-		if helper.otelLogger != nil {
-			t.Error("expected otelLogger to be nil when config is nil")
-		}
-		if helper.function != "test.Function" {
-			t.Errorf("expected function to be 'test.Function', got '%s'", helper.function)
-		}
+		require.NotNil(t, helper)
+		assert.Nil(t, helper.otelLogger, "otelLogger must be nil when config is nil")
+		assert.Equal(t, "test.Function", helper.function)
 	})
 
 	t.Run("with OTel config but logging disabled", func(t *testing.T) {
-		cfg := &Config{
-			ServiceName: "test-service",
-			// LoggerProvider is nil, so logging is disabled
-		}
+		cfg := &Config{ServiceName: "test-service"} // LoggerProvider nil → disabled
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		if helper == nil {
-			t.Fatal("expected helper to be created")
-		}
-		if helper.otelLogger != nil {
-			t.Error("expected otelLogger to be nil when logging is disabled")
-		}
+		require.NotNil(t, helper)
+		assert.Nil(t, helper.otelLogger, "otelLogger must be nil when logging is disabled")
 	})
 
 	t.Run("with OTel config and logging enabled", func(t *testing.T) {
@@ -44,16 +35,66 @@ func TestNewLogHelper(t *testing.T) {
 			LoggerProvider: noop.NewLoggerProvider(),
 		}
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		if helper == nil {
-			t.Fatal("expected helper to be created")
-		}
-		if helper.otelLogger == nil {
-			t.Error("expected otelLogger to be set when logging is enabled")
-		}
-		if helper.function != "test.Function" {
-			t.Errorf("expected function to be 'test.Function', got '%s'", helper.function)
-		}
+		require.NotNil(t, helper)
+		assert.NotNil(t, helper.otelLogger, "otelLogger must be set when logging is enabled")
+		assert.Equal(t, "test.Function", helper.function)
 	})
+}
+
+// TestNewLogHelper_FallbackLevelAndFields verifies the zerolog fallback used
+// when OTel is not configured: it defaults to Info level (Debug is filtered)
+// and does not mislabel the instrumentation scope as the service name.
+func TestNewLogHelper_FallbackLevelAndFields(t *testing.T) {
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	// nil config → zerolog fallback. scopeName is a module path, not a service.
+	h := NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v3/argo", "argo.Run")
+	h.Debug("debug-should-be-filtered")
+	h.Info("info-should-appear")
+
+	require.NoError(t, w.Close())
+	os.Stderr = origStderr
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	got := string(out)
+
+	// Default level is Info: Debug must be filtered out.
+	assert.NotContains(t, got, "debug-should-be-filtered", "fallback logger must default to Info level")
+	assert.Contains(t, got, "info-should-appear")
+
+	// The scope (a module path) must not be mislabeled as the service field.
+	assert.NotContains(t, got, "service=", "nil-config fallback must not emit a service field")
+	assert.Contains(t, got, "scope=", "fallback must record the scope under a distinct field")
+	assert.Contains(t, got, "github.com/jasoet/pkg/v3/argo")
+	assert.Contains(t, got, "argo.Run")
+}
+
+// TestNewLogHelper_FallbackUsesServiceNameWhenAvailable verifies that when a
+// config carries a ServiceName, the fallback labels it as service (not scope).
+func TestNewLogHelper_FallbackUsesServiceNameWhenAvailable(t *testing.T) {
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	// Config with a ServiceName but logging disabled → zerolog fallback.
+	cfg := &Config{ServiceName: "billing"}
+	h := NewLogHelper(context.Background(), cfg, "service.billing", "")
+	h.Info("service-name-present")
+
+	require.NoError(t, w.Close())
+	os.Stderr = origStderr
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	got := string(out)
+
+	assert.Contains(t, got, "service=")
+	assert.Contains(t, got, "billing")
 }
 
 func TestLogHelper_Debug(t *testing.T) {
@@ -61,20 +102,19 @@ func TestLogHelper_Debug(t *testing.T) {
 
 	t.Run("without OTel", func(t *testing.T) {
 		helper := NewLogHelper(ctx, nil, "", "test.Function")
-		// Should not panic
-		helper.Debug("debug message")
-		helper.Debug("debug message with fields", F("key", "value"), F("count", 42))
+		assert.NotPanics(t, func() {
+			helper.Debug("debug message")
+			helper.Debug("debug message with fields", F("key", "value"), F("count", 42))
+		})
 	})
 
 	t.Run("with OTel", func(t *testing.T) {
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: noop.NewLoggerProvider(),
-		}
+		cfg := &Config{ServiceName: "test-service", LoggerProvider: noop.NewLoggerProvider()}
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		// Should not panic
-		helper.Debug("debug message")
-		helper.Debug("debug message with fields", F("key", "value"), F("count", 42))
+		assert.NotPanics(t, func() {
+			helper.Debug("debug message")
+			helper.Debug("debug message with fields", F("key", "value"), F("count", 42))
+		})
 	})
 }
 
@@ -83,20 +123,19 @@ func TestLogHelper_Info(t *testing.T) {
 
 	t.Run("without OTel", func(t *testing.T) {
 		helper := NewLogHelper(ctx, nil, "", "test.Function")
-		// Should not panic
-		helper.Info("info message")
-		helper.Info("info message with fields", F("key", "value"), F("enabled", true))
+		assert.NotPanics(t, func() {
+			helper.Info("info message")
+			helper.Info("info message with fields", F("key", "value"), F("enabled", true))
+		})
 	})
 
 	t.Run("with OTel", func(t *testing.T) {
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: noop.NewLoggerProvider(),
-		}
+		cfg := &Config{ServiceName: "test-service", LoggerProvider: noop.NewLoggerProvider()}
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		// Should not panic
-		helper.Info("info message")
-		helper.Info("info message with fields", F("key", "value"), F("enabled", true))
+		assert.NotPanics(t, func() {
+			helper.Info("info message")
+			helper.Info("info message with fields", F("key", "value"), F("enabled", true))
+		})
 	})
 }
 
@@ -105,20 +144,19 @@ func TestLogHelper_Warn(t *testing.T) {
 
 	t.Run("without OTel", func(t *testing.T) {
 		helper := NewLogHelper(ctx, nil, "", "test.Function")
-		// Should not panic
-		helper.Warn("warning message")
-		helper.Warn("warning message with fields", F("key", "value"), F("ratio", 0.75))
+		assert.NotPanics(t, func() {
+			helper.Warn("warning message")
+			helper.Warn("warning message with fields", F("key", "value"), F("ratio", 0.75))
+		})
 	})
 
 	t.Run("with OTel", func(t *testing.T) {
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: noop.NewLoggerProvider(),
-		}
+		cfg := &Config{ServiceName: "test-service", LoggerProvider: noop.NewLoggerProvider()}
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		// Should not panic
-		helper.Warn("warning message")
-		helper.Warn("warning message with fields", F("key", "value"), F("ratio", 0.75))
+		assert.NotPanics(t, func() {
+			helper.Warn("warning message")
+			helper.Warn("warning message with fields", F("key", "value"), F("ratio", 0.75))
+		})
 	})
 }
 
@@ -128,20 +166,19 @@ func TestLogHelper_Error(t *testing.T) {
 
 	t.Run("without OTel", func(t *testing.T) {
 		helper := NewLogHelper(ctx, nil, "", "test.Function")
-		// Should not panic
-		helper.Error(testErr, "error message")
-		helper.Error(testErr, "error message with fields", F("key", "value"), F("code", 500))
+		assert.NotPanics(t, func() {
+			helper.Error(testErr, "error message")
+			helper.Error(testErr, "error message with fields", F("key", "value"), F("code", 500))
+		})
 	})
 
 	t.Run("with OTel", func(t *testing.T) {
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: noop.NewLoggerProvider(),
-		}
+		cfg := &Config{ServiceName: "test-service", LoggerProvider: noop.NewLoggerProvider()}
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		// Should not panic
-		helper.Error(testErr, "error message")
-		helper.Error(testErr, "error message with fields", F("key", "value"), F("code", 500))
+		assert.NotPanics(t, func() {
+			helper.Error(testErr, "error message")
+			helper.Error(testErr, "error message with fields", F("key", "value"), F("code", 500))
+		})
 	})
 }
 
@@ -150,94 +187,73 @@ func TestLogHelper_MixedTypes(t *testing.T) {
 
 	t.Run("various data types without OTel", func(t *testing.T) {
 		helper := NewLogHelper(ctx, nil, "", "test.Function")
-		helper.Info("mixed types",
-			F("string", "value"),
-			F("int", 123),
-			F("int64", int64(456)),
-			F("bool", true),
-			F("float64", 3.14),
-		)
+		assert.NotPanics(t, func() {
+			helper.Info("mixed types",
+				F("string", "value"),
+				F("int", 123),
+				F("int64", int64(456)),
+				F("bool", true),
+				F("float64", 3.14),
+			)
+		})
 	})
 
 	t.Run("various data types with OTel", func(t *testing.T) {
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: noop.NewLoggerProvider(),
-		}
+		cfg := &Config{ServiceName: "test-service", LoggerProvider: noop.NewLoggerProvider()}
 		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-		helper.Info("mixed types",
-			F("string", "value"),
-			F("int", 123),
-			F("int64", int64(456)),
-			F("bool", true),
-			F("float64", 3.14),
-		)
+		assert.NotPanics(t, func() {
+			helper.Info("mixed types",
+				F("string", "value"),
+				F("int", 123),
+				F("int64", int64(456)),
+				F("bool", true),
+				F("float64", 3.14),
+			)
+		})
 	})
 }
 
-// TestLogHelper_LogLevelFiltering tests that logs are filtered based on configured level
+// TestLogHelper_LogLevelFiltering tests that logs are filtered based on the
+// configured level without panicking.
 func TestLogHelper_LogLevelFiltering(t *testing.T) {
 	ctx := context.Background()
 
+	newCfg := func(t *testing.T, level LogLevel) *Config {
+		t.Helper()
+		lp, err := NewLoggerProviderWithOptions("test-service", WithLogLevel(level))
+		require.NoError(t, err)
+		shutdownProvider(t, lp)
+		return &Config{ServiceName: "test-service", LoggerProvider: lp}
+	}
+
 	t.Run("warn level filters info and debug", func(t *testing.T) {
-		// Create logger provider with WARN level
-		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
-			WithLogLevel(LogLevelWarn))
-
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: loggerProvider,
-		}
-
-		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-
-		// These should be filtered (not panic, but not emit)
-		helper.Debug("This debug should be filtered")
-		helper.Info("This info should be filtered")
-
-		// These should be emitted
-		helper.Warn("This warning should appear")
-		helper.Error(errors.New("test error"), "This error should appear")
+		helper := NewLogHelper(ctx, newCfg(t, LogLevelWarn), "test-scope", "test.Function")
+		assert.NotPanics(t, func() {
+			helper.Debug("filtered")
+			helper.Info("filtered")
+			helper.Warn("appears")
+			helper.Error(errors.New("test error"), "appears")
+		})
 	})
 
 	t.Run("info level filters debug only", func(t *testing.T) {
-		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
-			WithLogLevel(LogLevelInfo))
-
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: loggerProvider,
-		}
-
-		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-
-		// This should be filtered
-		helper.Debug("This debug should be filtered")
-
-		// These should be emitted
-		helper.Info("This info should appear")
-		helper.Warn("This warning should appear")
-		helper.Error(errors.New("test error"), "This error should appear")
+		helper := NewLogHelper(ctx, newCfg(t, LogLevelInfo), "test-scope", "test.Function")
+		assert.NotPanics(t, func() {
+			helper.Debug("filtered")
+			helper.Info("appears")
+			helper.Warn("appears")
+			helper.Error(errors.New("test error"), "appears")
+		})
 	})
 
 	t.Run("error level filters all except errors", func(t *testing.T) {
-		loggerProvider, _ := NewLoggerProviderWithOptions("test-service",
-			WithLogLevel(LogLevelError))
-
-		cfg := &Config{
-			ServiceName:    "test-service",
-			LoggerProvider: loggerProvider,
-		}
-
-		helper := NewLogHelper(ctx, cfg, "test-scope", "test.Function")
-
-		// These should be filtered
-		helper.Debug("This debug should be filtered")
-		helper.Info("This info should be filtered")
-		helper.Warn("This warning should be filtered")
-
-		// This should be emitted
-		helper.Error(errors.New("test error"), "This error should appear")
+		helper := NewLogHelper(ctx, newCfg(t, LogLevelError), "test-scope", "test.Function")
+		assert.NotPanics(t, func() {
+			helper.Debug("filtered")
+			helper.Info("filtered")
+			helper.Warn("filtered")
+			helper.Error(errors.New("test error"), "appears")
+		})
 	})
 }
 
@@ -251,29 +267,13 @@ func TestLogHelper_WithFields_SliceIsolation(t *testing.T) {
 		child1 := parent.WithFields(F("child", "one"))
 		child2 := parent.WithFields(F("child", "two"))
 
-		// Verify each helper has the correct number of fields
-		if len(parent.baseFields) != 1 {
-			t.Errorf("expected parent to have 1 field, got %d", len(parent.baseFields))
-		}
-		if len(child1.baseFields) != 2 {
-			t.Errorf("expected child1 to have 2 fields, got %d", len(child1.baseFields))
-		}
-		if len(child2.baseFields) != 2 {
-			t.Errorf("expected child2 to have 2 fields, got %d", len(child2.baseFields))
-		}
+		require.Len(t, parent.baseFields, 1)
+		require.Len(t, child1.baseFields, 2)
+		require.Len(t, child2.baseFields, 2)
 
-		// Verify child fields don't bleed into each other
-		if child1.baseFields[1].Value != "one" {
-			t.Errorf("expected child1 field to be 'one', got '%v'", child1.baseFields[1].Value)
-		}
-		if child2.baseFields[1].Value != "two" {
-			t.Errorf("expected child2 field to be 'two', got '%v'", child2.baseFields[1].Value)
-		}
-
-		// Verify parent is unchanged after creating children
-		if parent.baseFields[0].Value != "value" {
-			t.Errorf("expected parent field to be 'value', got '%v'", parent.baseFields[0].Value)
-		}
+		assert.Equal(t, "one", child1.baseFields[1].Value)
+		assert.Equal(t, "two", child2.baseFields[1].Value)
+		assert.Equal(t, "value", parent.baseFields[0].Value)
 	})
 
 	t.Run("log calls do not mutate baseFields", func(t *testing.T) {
@@ -286,8 +286,6 @@ func TestLogHelper_WithFields_SliceIsolation(t *testing.T) {
 		helper.Info("msg2", F("extra", "b"))
 		helper.Error(errors.New("err"), "msg3", F("extra", "c"))
 
-		if len(helper.baseFields) != originalLen {
-			t.Errorf("expected baseFields length to remain %d, got %d", originalLen, len(helper.baseFields))
-		}
+		assert.Len(t, helper.baseFields, originalLen)
 	})
 }

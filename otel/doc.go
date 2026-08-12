@@ -43,7 +43,8 @@
 //	if err := repo.Save(lc.Context(), data); err != nil {
 //	    return lc.Error(err, "save failed")
 //	}
-//	return lc.Success("User created")
+//	lc.Success("User created")
+//	return nil
 //
 // Available layers: StartHandler, StartMiddleware, StartOperations, StartService, StartRepository
 //

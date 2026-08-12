@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestStartHandler_NoSliceAliasing verifies that StartHandler does not alias
@@ -90,83 +91,56 @@ func TestStartRepository_NoSliceAliasing(t *testing.T) {
 	assert.Equal(t, "val2", baseFields[1].Value)
 }
 
-// TestLayerContext_WithoutConfig verifies that LayerContext works without config in context
+// TestLayerContext_WithoutConfig verifies that LayerContext works without config in context.
 func TestLayerContext_WithoutConfig(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("StartService without config creates zerolog fallback", func(t *testing.T) {
-		lc := Layers.StartService(ctx, "user", "CreateUser",
-			F("user.id", "123"))
+		lc := Layers.StartService(ctx, "user", "CreateUser", F("user.id", "123"))
 		defer lc.End()
-
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set (zerolog fallback)")
-		}
+		assert.NotNil(t, lc.Logger, "expected Logger to be set (zerolog fallback)")
 	})
 
 	t.Run("StartRepository without config creates zerolog fallback", func(t *testing.T) {
-		lc := Layers.StartRepository(ctx, "user", "FindByID",
-			F("user.id", "123"))
+		lc := Layers.StartRepository(ctx, "user", "FindByID", F("user.id", "123"))
 		defer lc.End()
-
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set (zerolog fallback)")
-		}
+		assert.NotNil(t, lc.Logger, "expected Logger to be set (zerolog fallback)")
 	})
 
 	t.Run("StartHandler without config creates zerolog fallback", func(t *testing.T) {
-		lc := Layers.StartHandler(ctx, "user", "GetUser",
-			F("http.method", "GET"))
+		lc := Layers.StartHandler(ctx, "user", "GetUser", F("http.method", "GET"))
 		defer lc.End()
-
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set (zerolog fallback)")
-		}
+		assert.NotNil(t, lc.Logger, "expected Logger to be set (zerolog fallback)")
 	})
 
 	t.Run("StartOperations without config creates zerolog fallback", func(t *testing.T) {
-		lc := Layers.StartOperations(ctx, "user", "ProcessQueue",
-			F("queue.name", "user-events"))
+		lc := Layers.StartOperations(ctx, "user", "ProcessQueue", F("queue.name", "user-events"))
 		defer lc.End()
-
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set (zerolog fallback)")
-		}
+		assert.NotNil(t, lc.Logger, "expected Logger to be set (zerolog fallback)")
 	})
 }
 
-// TestLayerContext_WithConfig verifies LayerContext works with proper OTel config
+// TestLayerContext_WithConfig verifies LayerContext works with proper OTel config.
 func TestLayerContext_WithConfig(t *testing.T) {
 	cfg := NewConfig("test-service")
 	ctx := ContextWithConfig(context.Background(), cfg)
 
 	t.Run("StartService with config uses OTel logging", func(t *testing.T) {
-		lc := Layers.StartService(ctx, "user", "CreateUser",
-			F("user.id", "123"))
+		lc := Layers.StartService(ctx, "user", "CreateUser", F("user.id", "123"))
 		defer lc.End()
 
-		// Should not panic
-		if lc.Logger != nil {
+		require.NotNil(t, lc.Logger, "expected Logger to be set when config in context")
+		require.NotNil(t, lc.Span, "expected Span to be set")
+
+		assert.NotPanics(t, func() {
 			lc.Logger.Info("Creating user", F("email", "test@example.com"))
-		}
-
-		if lc.Span == nil {
-			t.Error("Expected Span to be set")
-		}
-
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set when config in context")
-		}
+		})
 	})
 
 	t.Run("Context returns span context", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
-
-		spanCtx := lc.Context()
-		if spanCtx == nil {
-			t.Error("Expected context to be returned")
-		}
+		assert.NotNil(t, lc.Context())
 	})
 
 	t.Run("Error records to both span and log", func(t *testing.T) {
@@ -175,63 +149,47 @@ func TestLayerContext_WithConfig(t *testing.T) {
 
 		err := errors.New("test error")
 		returnedErr := lc.Error(err, "Failed to create user", F("user.id", "123"))
-
-		if returnedErr != err {
-			t.Errorf("Expected Error to return the same error, got %v", returnedErr)
-		}
+		assert.ErrorIs(t, returnedErr, err)
 	})
 
 	t.Run("Success adds span event and attributes", func(t *testing.T) {
 		lc := Layers.StartService(ctx, "user", "CreateUser")
 		defer lc.End()
 
-		// Success should not panic and should add fields as span attributes
-		lc.Success("User created", F("user.id", "123"))
+		assert.NotPanics(t, func() {
+			lc.Success("User created", F("user.id", "123"))
+		})
 	})
 }
 
-// TestLayerContext_NestedCalls verifies context propagation through layers
+// TestLayerContext_NestedCalls verifies context propagation through layers.
 func TestLayerContext_NestedCalls(t *testing.T) {
 	cfg := NewConfig("test-service")
 	ctx := ContextWithConfig(context.Background(), cfg)
 
-	// Handler layer
 	handlerCtx := Layers.StartHandler(ctx, "user", "GetUser")
 	defer handlerCtx.End()
+	require.NotNil(t, handlerCtx.Logger)
+	handlerCtx.Logger.Info("Handler started")
 
-	if handlerCtx.Logger != nil {
-		handlerCtx.Logger.Info("Handler started")
-	}
-
-	// Operations layer (uses handler context - config is propagated via context)
 	opsCtx := Layers.StartOperations(handlerCtx.Context(), "user", "ProcessRequest")
 	defer opsCtx.End()
+	require.NotNil(t, opsCtx.Logger)
+	opsCtx.Logger.Info("Operations started")
 
-	if opsCtx.Logger != nil {
-		opsCtx.Logger.Info("Operations started")
-	}
-
-	// Service layer (uses operations context - config is still there)
 	serviceCtx := Layers.StartService(opsCtx.Context(), "user", "GetUser")
 	defer serviceCtx.End()
+	require.NotNil(t, serviceCtx.Logger)
+	serviceCtx.Logger.Info("Service started")
 
-	if serviceCtx.Logger != nil {
-		serviceCtx.Logger.Info("Service started")
-	}
-
-	// Repository layer (uses service context - config is still there)
 	repoCtx := Layers.StartRepository(serviceCtx.Context(), "user", "FindByID")
 	defer repoCtx.End()
-
-	if repoCtx.Logger != nil {
-		repoCtx.Logger.Info("Repository query")
-	}
+	require.NotNil(t, repoCtx.Logger)
+	repoCtx.Logger.Info("Repository query")
 	repoCtx.Success("User found")
-
-	// All layers should complete without panic
 }
 
-// TestLayerContext_AllLayersWithoutConfig verifies all layers work without config
+// TestLayerContext_AllLayersWithoutConfig verifies all layers work without config.
 func TestLayerContext_AllLayersWithoutConfig(t *testing.T) {
 	ctx := context.Background()
 
@@ -249,34 +207,21 @@ func TestLayerContext_AllLayersWithoutConfig(t *testing.T) {
 	for _, layer := range layers {
 		t.Run(layer.name+" works without config", func(t *testing.T) {
 			defer layer.lc.End()
-
-			// Logger should be set with zerolog fallback
-			if layer.lc.Logger == nil {
-				t.Errorf("%s: Expected Logger to be set (zerolog fallback)", layer.name)
-			}
-
-			if layer.lc.Span == nil {
-				t.Errorf("%s: Expected Span to be set", layer.name)
-			}
+			assert.NotNil(t, layer.lc.Logger, "%s: expected Logger to be set (zerolog fallback)", layer.name)
+			assert.NotNil(t, layer.lc.Span, "%s: expected Span to be set", layer.name)
 		})
 	}
 }
 
-// TestMiddlewareLayer verifies middleware layer specific functionality
+// TestMiddlewareLayer verifies middleware layer specific functionality.
 func TestMiddlewareLayer(t *testing.T) {
 	t.Run("StartMiddleware without config creates zerolog fallback", func(t *testing.T) {
 		ctx := context.Background()
-		lc := Layers.StartMiddleware(ctx, "auth", "ValidateToken",
-			F("http.path", "/api/users"))
+		lc := Layers.StartMiddleware(ctx, "auth", "ValidateToken", F("http.path", "/api/users"))
 		defer lc.End()
 
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set (zerolog fallback)")
-		}
-
-		if lc.Span == nil {
-			t.Error("Expected Span to be set")
-		}
+		assert.NotNil(t, lc.Logger, "expected Logger to be set (zerolog fallback)")
+		assert.NotNil(t, lc.Span, "expected Span to be set")
 	})
 
 	t.Run("StartMiddleware with config creates logger", func(t *testing.T) {
@@ -288,18 +233,12 @@ func TestMiddlewareLayer(t *testing.T) {
 			F("http.method", "GET"))
 		defer lc.End()
 
-		if lc.Logger == nil {
-			t.Error("Expected Logger to be set when config in context")
-		}
+		require.NotNil(t, lc.Logger, "expected Logger to be set when config in context")
+		require.NotNil(t, lc.Span, "expected Span to be set")
 
-		if lc.Span == nil {
-			t.Error("Expected Span to be set")
-		}
-
-		// Should not panic
-		if lc.Logger != nil {
+		assert.NotPanics(t, func() {
 			lc.Logger.Info("Validating token", F("user_id", "123"))
-		}
+		})
 	})
 
 	t.Run("Middleware error handling", func(t *testing.T) {
@@ -311,10 +250,7 @@ func TestMiddlewareLayer(t *testing.T) {
 
 		err := errors.New("invalid token")
 		returnedErr := lc.Error(err, "Authentication failed", F("reason", "expired"))
-
-		if returnedErr != err {
-			t.Errorf("Expected Error to return the same error, got %v", returnedErr)
-		}
+		assert.ErrorIs(t, returnedErr, err)
 	})
 
 	t.Run("Middleware success handling", func(t *testing.T) {
@@ -324,78 +260,56 @@ func TestMiddlewareLayer(t *testing.T) {
 		lc := Layers.StartMiddleware(ctx, "cors", "SetHeaders")
 		defer lc.End()
 
-		// Success should not panic and should add fields as span attributes
-		lc.Success("CORS headers set", F("origin", "https://example.com"))
+		assert.NotPanics(t, func() {
+			lc.Success("CORS headers set", F("origin", "https://example.com"))
+		})
 	})
 }
 
-// TestMiddlewareLayerContext verifies middleware context propagation
+// TestMiddlewareLayerContext verifies middleware context propagation.
 func TestMiddlewareLayerContext(t *testing.T) {
 	cfg := NewConfig("test-service")
 	ctx := ContextWithConfig(context.Background(), cfg)
 
-	// Middleware layer
-	middlewareCtx := Layers.StartMiddleware(ctx, "auth", "ValidateToken",
-		F("http.path", "/api/users"))
+	middlewareCtx := Layers.StartMiddleware(ctx, "auth", "ValidateToken", F("http.path", "/api/users"))
 	defer middlewareCtx.End()
+	require.NotNil(t, middlewareCtx.Logger)
+	middlewareCtx.Logger.Info("Middleware started")
 
-	if middlewareCtx.Logger != nil {
-		middlewareCtx.Logger.Info("Middleware started")
-	}
-
-	// Handler layer (uses middleware context)
 	handlerCtx := Layers.StartHandler(middlewareCtx.Context(), "user", "GetUser")
 	defer handlerCtx.End()
+	require.NotNil(t, handlerCtx.Logger)
+	handlerCtx.Logger.Info("Handler started")
 
-	if handlerCtx.Logger != nil {
-		handlerCtx.Logger.Info("Handler started")
-	}
-
-	// Service layer (uses handler context)
 	serviceCtx := Layers.StartService(handlerCtx.Context(), "user", "GetUser")
 	defer serviceCtx.End()
+	require.NotNil(t, serviceCtx.Logger)
+	serviceCtx.Logger.Info("Service started")
 
-	if serviceCtx.Logger != nil {
-		serviceCtx.Logger.Info("Service started")
-	}
-
-	// Repository layer (uses service context)
 	repoCtx := Layers.StartRepository(serviceCtx.Context(), "user", "FindByID")
 	defer repoCtx.End()
-
-	if repoCtx.Logger != nil {
-		repoCtx.Logger.Info("Repository query")
-	}
+	require.NotNil(t, repoCtx.Logger)
+	repoCtx.Logger.Info("Repository query")
 	repoCtx.Success("User found")
 
-	// All layers should complete without panic
 	serviceCtx.Success("Service completed")
 	handlerCtx.Success("Handler completed")
 	middlewareCtx.Success("Middleware completed")
 }
 
-// TestConfigContext verifies config context management
+// TestConfigContext verifies config context management.
 func TestConfigContext(t *testing.T) {
 	t.Run("ContextWithConfig stores config", func(t *testing.T) {
 		cfg := NewConfig("test-service")
 		ctx := ContextWithConfig(context.Background(), cfg)
 
 		retrieved := ConfigFromContext(ctx)
-		if retrieved == nil {
-			t.Error("Expected config to be retrieved from context")
-		}
-
-		if retrieved.ServiceName != "test-service" {
-			t.Errorf("Expected service name 'test-service', got '%s'", retrieved.ServiceName)
-		}
+		require.NotNil(t, retrieved, "expected config to be retrieved from context")
+		assert.Equal(t, "test-service", retrieved.ServiceName)
 	})
 
 	t.Run("ConfigFromContext returns nil without config", func(t *testing.T) {
 		ctx := context.Background()
-		retrieved := ConfigFromContext(ctx)
-
-		if retrieved != nil {
-			t.Error("Expected nil when no config in context")
-		}
+		assert.Nil(t, ConfigFromContext(ctx))
 	})
 }

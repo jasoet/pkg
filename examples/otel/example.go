@@ -1,3 +1,5 @@
+//go:build example
+
 // Package main demonstrates comprehensive usage of the otel package.
 //
 // This example shows:

@@ -115,7 +115,7 @@ loggerProvider, err = otel.NewLoggerProviderWithOptions(
 )
 ```
 
-Note: this package uses `otlploghttp`, so OTLP endpoints are full URLs with scheme.
+Note: this package uses `otlploghttp`. OTLP endpoints may be given as a full URL with scheme (e.g. `https://collector:4318`) or as a bare `host:port` (e.g. `collector:4318`); either form targets the standard `/v1/logs` path. Passing `WithOTLPEndpoint("")` is a configuration error rather than a silent no-op.
 
 ## Global Logger Bootstrap
 
@@ -155,7 +155,7 @@ Global log records are written to stderr (console) and/or the configured file.
 | `WithServiceVersion(v)` | Set service version |
 | `WithoutTracing()` | Disable tracing |
 | `WithoutMetrics()` | Disable metrics |
-| `WithoutLogging()` | Disable default stdout logging |
+| `WithoutLogging()` | Disable default console (stderr) logging |
 
 ### Helper Methods
 
@@ -184,8 +184,8 @@ Create flexible logger providers with `NewLoggerProviderWithOptions`:
 
 | Option | Description |
 |--------|-------------|
-| `WithOTLPEndpoint(endpoint, insecure)` | Enable OTLP log export to collector (full URL with scheme) |
-| `WithConsoleOutput(enabled)` | Enable/disable console logging (default: true) |
+| `WithOTLPEndpoint(endpoint, insecure)` | Enable OTLP log export to collector (full URL with scheme, or bare `host:port`) |
+| `WithConsoleOutput(enabled)` | Enable/disable console (stderr) logging (default: true). When disabled with no OTLP endpoint, the provider is silent (no processors). |
 | `WithLogLevel(level)` | Set log level: `LogLevelDebug`, `LogLevelInfo`, `LogLevelWarn`, `LogLevelError`, `LogLevelNone` |
 
 **Log Level Priority:**
@@ -420,10 +420,10 @@ logger.Info("Work completed", otel.F("duration", elapsed))
 
 ### Design Principles
 
-1. **Zero Dependencies**: Only depends on OTel SDK (no custom exporters)
+1. **Minimal Dependencies**: Depends on the OpenTelemetry SDK, `zerolog`, and the `otlploghttp` exporter. It ships a small zerolog-backed console exporter (`consoleExporter`) for human-readable local output.
 2. **No-op Safety**: Nil providers result in no-op implementations
-3. **Lazy Initialization**: Providers created only when needed
-4. **Immutable Config**: Thread-safe after creation
+3. **Lazy Initialization**: `NewConfig` applies options first and builds the default logger provider only when one was not supplied
+4. **Immutable Config**: Treat as read-only after construction
 
 ### Package Structure
 
@@ -470,7 +470,7 @@ defer cfg.Shutdown(context.Background())
 
 ### Default Logger Too Verbose
 
-**Problem**: Stdout logger creating too much output
+**Problem**: Console (stderr) logger creating too much output
 
 **Solution**:
 ```go
@@ -491,7 +491,7 @@ cfg := otel.NewConfig("my-service",
 ## Version Compatibility
 
 - **OpenTelemetry**: v1.38.0+
-- **Go**: 1.25+
+- **Go**: 1.26+
 - **pkg library**: v3.0.0+
 
 ## Migration from v2

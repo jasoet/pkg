@@ -200,6 +200,13 @@ func TestLayerContext_ErrorSuccessEnd(t *testing.T) {
 		stub := requireSingleSpan(t, exporter)
 		assert.Equal(t, codes.Error, stub.Status.Code)
 
+		// The error must be recorded exactly once. LayerContext.Error records
+		// through both the span helper and the correlated logger, which share
+		// the same underlying span; if both touch the span a duplicate
+		// "exception" event is emitted and every backend double-counts errors.
+		require.Len(t, stub.Events, 1, "LayerContext.Error must record exactly one exception event")
+		assert.Equal(t, "exception", stub.Events[0].Name)
+
 		// Fields passed to Error are added as span attributes.
 		userID, ok := spanAttribute(stub, "user.id")
 		require.True(t, ok)
