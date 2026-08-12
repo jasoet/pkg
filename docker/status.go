@@ -80,14 +80,18 @@ type HealthLog struct {
 // Status retrieves the current container status.
 func (e *Executor) Status(ctx context.Context) (*Status, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return nil, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return nil, fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
@@ -165,14 +169,18 @@ func (e *Executor) ExitCode(ctx context.Context) (int, error) {
 // This provides access to all container metadata.
 func (e *Executor) Inspect(ctx context.Context) (*container.InspectResponse, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return nil, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return nil, fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
@@ -207,7 +215,7 @@ func (e *Executor) WaitForState(ctx context.Context, targetState string, timeout
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for state %s", targetState)
+			return waitCtxError(ctx.Err(), fmt.Sprintf("state %s", targetState))
 		case <-ticker.C:
 			status, err := e.Status(ctx)
 			if err != nil {
@@ -233,7 +241,7 @@ func (e *Executor) WaitHealthy(ctx context.Context, timeout time.Duration) error
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for container to be healthy")
+			return waitCtxError(ctx.Err(), "container to be healthy")
 		case <-ticker.C:
 			health, err := e.HealthCheck(ctx)
 			if err != nil {
@@ -257,15 +265,19 @@ func (e *Executor) WaitHealthy(ctx context.Context, timeout time.Duration) error
 // Remember to close the response body after reading.
 func (e *Executor) GetStats(ctx context.Context) (container.StatsResponseReader, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
 	var emptyStats container.StatsResponseReader
+	if cli == nil {
+		return emptyStats, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return emptyStats, fmt.Errorf("container not started")
 	}
 
-	stats, err := e.client.ContainerStats(ctx, containerID, false)
+	stats, err := cli.ContainerStats(ctx, containerID, false)
 	if err != nil {
 		return emptyStats, fmt.Errorf("failed to get stats: %w", err)
 	}

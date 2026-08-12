@@ -1,3 +1,5 @@
+//go:build integration
+
 package docker_test
 
 import (
@@ -97,8 +99,9 @@ func TestStatus_ExitCode(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	// Wait for container to exit
-	time.Sleep(2 * time.Second)
+	// Wait for container to exit (no AutoRemove, so state remains inspectable)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	exitCode, err := exec.ExitCode(ctx)
 	require.NoError(t, err)
@@ -172,7 +175,7 @@ func TestNetwork_ConnectionString(t *testing.T) {
 
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:8892"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForPort("80").WithStartupTimeout(30*time.Second),
@@ -183,9 +186,14 @@ func TestNetwork_ConnectionString(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
+	host, err := exec.Host(ctx)
+	require.NoError(t, err)
+	port, err := exec.MappedPort(ctx, "80/tcp")
+	require.NoError(t, err)
+
 	connStr, err := exec.ConnectionString(ctx, "80/tcp", "http://{{endpoint}}/api")
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:8892/api", connStr)
+	assert.Equal(t, "http://"+host+":"+port+"/api", connStr)
 }
 
 func TestExecutor_NewFromRequest(t *testing.T) {
@@ -250,7 +258,8 @@ func TestExecutor_NewFromRequest_WithOTel(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 	assert.NotEmpty(t, exec.ContainerID())
 }
 

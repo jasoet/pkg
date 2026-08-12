@@ -1,3 +1,5 @@
+//go:build integration
+
 package docker_test
 
 import (
@@ -41,7 +43,8 @@ func TestIntegration_WithOTel(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx)
 	require.NoError(t, err)
@@ -56,7 +59,7 @@ func TestIntegration_ComplexLifecycle(t *testing.T) {
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
 		docker.WithPorts("80:0"),
-		docker.WithName("test-lifecycle-complex"),
+		docker.WithName(uniqueName(t, "lifecycle-complex")),
 		docker.WithLabel("test", "integration"),
 		docker.WithEnv("NGINX_HOST=localhost"),
 	)
@@ -109,8 +112,9 @@ func TestIntegration_ComplexLifecycle(t *testing.T) {
 	err = exec.Stop(ctx)
 	require.NoError(t, err)
 
-	// Wait a bit
-	time.Sleep(2 * time.Second)
+	// Wait for the stop to take effect
+	err = exec.WaitForState(ctx, "exited", 15*time.Second)
+	require.NoError(t, err)
 
 	// Verify stopped
 	running, err := exec.IsRunning(ctx)
@@ -121,7 +125,8 @@ func TestIntegration_ComplexLifecycle(t *testing.T) {
 	err = exec.Restart(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(2 * time.Second)
+	err = exec.WaitForState(ctx, "running", 15*time.Second)
+	require.NoError(t, err)
 
 	// Verify running again
 	running, _ = exec.IsRunning(ctx)
@@ -195,7 +200,8 @@ func TestIntegration_VolumeMounts(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	// Container should have run successfully
 	exitCode, err := exec.ExitCode(ctx)
@@ -243,7 +249,8 @@ func TestIntegration_Labels(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	inspect, err := exec.Inspect(ctx)
 	require.NoError(t, err)
@@ -271,7 +278,8 @@ func TestIntegration_EnvironmentVars(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx)
 	require.NoError(t, err)

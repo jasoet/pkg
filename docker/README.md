@@ -18,7 +18,7 @@ The `docker` package provides production-ready Docker container management with 
 - **Log Streaming**: Real-time log access with filtering and following
 - **Status Monitoring**: Container state, health checks, resource stats
 - **Network Helpers**: Easy access to host, ports, endpoints
-- **OpenTelemetry v2**: Built-in observability with traces and metrics
+- **OpenTelemetry**: Built-in observability with traces and metrics (v3 instrumentation)
 - **Simple & Powerful**: Easy for simple cases, flexible for complex scenarios
 
 ## Installation
@@ -26,6 +26,33 @@ The `docker` package provides production-ready Docker container management with 
 ```bash
 go get github.com/jasoet/pkg/v3/docker
 ```
+
+## Docker & Podman (Local and Remote Daemons)
+
+The executor talks to any Docker-API-compatible daemon through the standard Docker
+Go client, so it works with **Docker** and **Podman** interchangeably. The daemon
+is selected from the environment (`client.FromEnv`), primarily via `DOCKER_HOST`:
+
+```bash
+# Docker (default): unix socket, nothing to set
+# unix:///var/run/docker.sock
+
+# Podman (rootless) — point DOCKER_HOST at the Podman socket
+export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+# or, if you started the API service explicitly:
+#   podman system service --time=0 unix://$XDG_RUNTIME_DIR/podman/podman.sock &
+
+# Remote daemon over TCP or SSH (Docker or podman-remote)
+export DOCKER_HOST="tcp://192.168.1.10:2375"
+export DOCKER_HOST="ssh://user@remote-host"
+```
+
+`Host()`, `Endpoint()`, and `ConnectionString()` derive the reachable host from the
+daemon URL: local transports (`unix://`, `npipe://`) resolve to `localhost`, while
+remote transports (`tcp://`, `ssh://`) resolve to the daemon's hostname — so a
+published port is reachable at the address these helpers return even against a
+remote engine. TLS-verified remote daemons additionally honor `DOCKER_TLS_VERIFY`
+and `DOCKER_CERT_PATH`.
 
 ## Quick Start
 
@@ -425,14 +452,29 @@ logs, err := exec.Logs(ctx)
 
 ### Stream Logs
 
+Use a **cancelable** context and cancel it when you stop reading — especially with
+`WithFollow()`, streaming blocks until the log stream ends or the context is
+canceled. Abandoning the channels without canceling `ctx` leaks the background
+goroutine and its connection. The error channel is buffered and closed alongside
+the log channel, so it is safe to drain or ignore.
+
 ```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel() // releases the streaming goroutine
+
 logCh, errCh := exec.StreamLogs(ctx, docker.WithFollow())
 for log := range logCh {
-    fmt.Println(log.Content) // LogEntry{Stream, Content}
+    fmt.Printf("[%s] %s\n", log.Stream, log.Content) // LogEntry{Stream, Content}
+}
+if err := <-errCh; err != nil {
+    fmt.Println("stream error:", err)
 }
 ```
 
-`LogEntry` carries the stream name (`stdout`/`stderr`) and the frame content. To get timestamps, enable `WithTimestamps()` — they are embedded as a prefix in `Content`.
+`LogEntry` carries the stream name (`stdout`/`stderr`) and the log line. Docker's
+multiplexed stream is demultiplexed with `stdcopy`, so `stdout` and `stderr` are
+labeled correctly. To get timestamps, enable `WithTimestamps()` — they are embedded
+as a prefix in `Content`.
 
 ### Follow Logs to Writer
 
@@ -522,7 +564,8 @@ Note: the executor method is `WaitHealthy` (verb phrase); the wait *strategy* co
 
 ```go
 host, err := exec.Host(ctx)
-// Returns "localhost" for local Docker
+// "localhost" for a local daemon (unix/npipe socket);
+// the daemon hostname for a remote daemon (DOCKER_HOST=tcp://... or ssh://...).
 ```
 
 ### Get Mapped Port
@@ -726,11 +769,31 @@ docker.WithAutoRemove(true) // Clean up automatically
 
 ### 5. Handle Errors
 
+`Start` cleans up after itself: if the image pull, container start, or wait
+strategy fails, the container it created is removed before `Start` returns and the
+executor is left with no container. The returned error wraps the root cause
+(including the wait-strategy failure), so log it directly — calling `GetStderr` or
+`Status` afterwards only reports `container not started`.
+
 ```go
 if err := exec.Start(ctx); err != nil {
-    logs, _ := exec.GetStderr(ctx)
-    log.Fatalf("Failed to start: %v\nLogs: %s", err, logs)
+    log.Fatalf("failed to start container: %v", err)
 }
+```
+
+To inspect the logs of a container that fails its readiness check, start it
+*without* a wait strategy so `Start` does not auto-remove it, then read the logs
+while it is up:
+
+```go
+exec, _ := docker.New(docker.WithImage("myimage")) // no WithWaitStrategy
+if err := exec.Start(ctx); err != nil {
+    log.Fatalf("failed to start container: %v", err)
+}
+defer exec.Terminate(ctx)
+
+logs, _ := exec.GetStderr(ctx)
+log.Printf("container logs:\n%s", logs)
 ```
 
 ### 6. Use Context for Cancellation
@@ -757,7 +820,8 @@ if !running {
 
 ## OpenTelemetry Integration
 
-The docker package includes full OpenTelemetry v2 instrumentation for observability.
+The docker package includes full OpenTelemetry instrumentation for observability
+(instrumentation version `v3.0.0`, tracking the module major version).
 
 ```go
 import (
@@ -810,26 +874,39 @@ Breaking changes in v3:
 
 ## Testing
 
-The package has comprehensive unit and integration tests.
+The package splits its tests in two: fast **unit tests** (pure configuration,
+host derivation, timeout rounding, closed-executor guards, OTel) that need no
+container runtime, and **integration tests** that spin up real containers and are
+gated behind the `integration` build tag.
 
 ```bash
-# Run all tests (requires Docker)
-go test ./docker -v
+# Unit tests only — no Docker/Podman required, runs fast
+go test ./docker
 
-# With coverage
-go test ./docker -cover
+# Unit tests under the race detector (closed-executor guards, etc.)
+go test -race ./docker
 
-# Run specific test
-go test ./docker -run TestExecutor_FunctionalOptions -v
+# Integration tests — requires a running Docker or Podman daemon
+go test -tags integration ./docker -v
 
-# Run benchmarks
-go test ./docker -bench=. -benchmem
+# With coverage (integration)
+go test -tags integration ./docker -cover
+
+# Run a specific integration test
+go test -tags integration ./docker -run TestExecutor_FunctionalOptions -v
+
+# Benchmarks (integration)
+go test -tags integration ./docker -bench=. -benchmem
 ```
 
-**Test Requirements:**
-- Docker daemon running
+**Integration test requirements:**
+- Docker or Podman daemon running (set `DOCKER_HOST` for Podman/remote)
 - Docker API accessible
 - Internet access (for pulling images)
+
+Integration tests publish to auto-assigned host ports (`WithPorts("80:0")` +
+`MappedPort`) and use unique container names, so repeated or parallel runs do not
+collide on fixed ports or names.
 
 ## Examples
 
@@ -856,7 +933,7 @@ go run -tags=example ./examples/docker/multi_container
 | Simplicity | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
 | Flexibility | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 | Dependencies | Minimal | Many |
-| OTel Support | Built-in v2 | No |
+| OTel Support | Built-in v3 | No |
 | Learning Curve | Low | Medium |
 | Use Case | General purpose | Testing focus |
 
@@ -870,7 +947,7 @@ go run -tags=example ./examples/docker/multi_container
 - **Network** - Port mapping and endpoint resolution
 - **Logs** - Log streaming and filtering
 - **Status** - Container state monitoring
-- **OTel** - OpenTelemetry v2 instrumentation
+- **OTel** - OpenTelemetry instrumentation (v3)
 
 ### Design Principles
 
@@ -878,22 +955,40 @@ go run -tags=example ./examples/docker/multi_container
 2. **Two API styles** - Functional options for Go idioms, structs for testcontainers compatibility
 3. **No client leakage** - Public API never exposes the Docker client; strategies work against `ContainerTarget`
 4. **Context-aware** - All operations respect context cancellation and timeouts
-5. **Observable** - Built-in OpenTelemetry v2 support for production monitoring
+5. **Observable** - Built-in OpenTelemetry support for production monitoring
 
 ## Troubleshooting
 
 ### Container fails to start
 
+On failure `Start` removes the container it created and clears its ID, so the
+executor holds no container afterwards — `GetStderr`/`Status` would return
+`container not started`. The error returned by `Start` already wraps the root
+cause, so inspect it first:
+
 ```go
 if err := exec.Start(ctx); err != nil {
-    // Check logs for startup errors
-    logs, _ := exec.GetStderr(ctx)
-    fmt.Println("Error logs:", logs)
-
-    // Check container status
-    status, _ := exec.Status(ctx)
-    fmt.Printf("State: %s, Error: %s\n", status.State, status.Error)
+    fmt.Println("start failed:", err) // wraps the pull / start / wait error
 }
+```
+
+To keep the container around for inspection, omit the wait strategy so `Start`
+does not auto-clean on a readiness failure, then read logs and status while it is
+still present:
+
+```go
+exec, _ := docker.New(docker.WithImage("myimage")) // no WithWaitStrategy
+if err := exec.Start(ctx); err != nil {
+    fmt.Println("start failed:", err)
+    return
+}
+defer exec.Terminate(ctx)
+
+logs, _ := exec.GetStderr(ctx)
+fmt.Println("error logs:", logs)
+
+status, _ := exec.Status(ctx)
+fmt.Printf("state: %s, error: %s\n", status.State, status.Error)
 ```
 
 ### Port already in use

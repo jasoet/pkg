@@ -101,9 +101,13 @@ func WithUntil(until string) LogOption {
 //	err := exec.FollowLogs(ctx, os.Stdout)
 func (e *Executor) FollowLogs(ctx context.Context, w io.Writer, opts ...LogOption) error {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return fmt.Errorf("container not started")
 	}
@@ -124,15 +128,17 @@ func (e *Executor) FollowLogs(ctx context.Context, w io.Writer, opts ...LogOptio
 		Until:      logOpts.until,
 	}
 
-	logs, err := e.client.ContainerLogs(ctx, containerID, options)
+	logs, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
 		return fmt.Errorf("failed to get logs: %w", err)
 	}
 	defer func() { _ = logs.Close() }()
 
-	// Copy logs to writer (handles Docker's multiplexed stream format)
-	_, err = stdcopy.StdCopy(w, w, logs)
-	if err != nil && err != io.EOF {
+	// Copy logs to writer (handles Docker's multiplexed stream format). StdCopy
+	// returns nil at a clean EOF; a non-nil error while ctx is still live is a real
+	// streaming failure. When ctx is canceled/expired the returned error is just the
+	// cancellation, which is the caller's intent, so it is not reported.
+	if _, err := stdcopy.StdCopy(w, w, logs); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("error streaming logs: %w", err)
 	}
 

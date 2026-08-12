@@ -3,6 +3,7 @@ package docker
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,10 +12,25 @@ import (
 	"time"
 )
 
+// maxLogLineBytes bounds a single log line read by WaitForLog's scanner so long
+// lines (default bufio.Scanner cap is 64KB) do not abort the wait with an error.
+const maxLogLineBytes = 1024 * 1024
+
 // WaitStrategy defines how to wait for a container to be ready.
 type WaitStrategy interface {
 	// WaitUntilReady blocks until the container is ready or timeout occurs.
 	WaitUntilReady(ctx context.Context, target ContainerTarget) error
+}
+
+// waitCtxError formats a wait-strategy context error, distinguishing an explicit
+// cancellation (parent ctx canceled) from a timeout (deadline exceeded) so the
+// two are not conflated under a misleading "timeout" message. activity describes
+// what was being awaited, e.g. `fmt.Sprintf("port %s", port)`.
+func waitCtxError(err error, activity string) error {
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("canceled while waiting for %s: %w", activity, err)
+	}
+	return fmt.Errorf("timeout waiting for %s: %w", activity, err)
 }
 
 // waitForLog waits for a specific log pattern to appear.
@@ -60,7 +76,9 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, target ContainerTarget)
 	// Use bufio.Scanner to read complete lines, avoiding chunk-boundary false negatives
 	// where a pattern could be split across two Read calls.
 	// Logs respects context cancellation, so Scan() will unblock when the timeout fires.
+	// Raise the token limit above the 64KB default so long log lines don't abort the scan.
 	scanner := bufio.NewScanner(logs)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes)
 	for scanner.Scan() {
 		if w.pattern.MatchString(scanner.Text()) {
 			return nil
@@ -68,7 +86,7 @@ func (w *waitForLog) WaitUntilReady(ctx context.Context, target ContainerTarget)
 	}
 
 	if ctx.Err() != nil {
-		return fmt.Errorf("timeout waiting for log pattern: %s", w.pattern.String())
+		return waitCtxError(ctx.Err(), fmt.Sprintf("log pattern %q", w.pattern.String()))
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error reading logs: %w", err)
@@ -113,7 +131,7 @@ func (w *waitForPort) WaitUntilReady(ctx context.Context, target ContainerTarget
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for port %s", w.port)
+			return waitCtxError(ctx.Err(), fmt.Sprintf("port %s", w.port))
 		case <-ticker.C:
 			state, err := target.State(ctx)
 			if err != nil {
@@ -127,7 +145,7 @@ func (w *waitForPort) WaitUntilReady(ctx context.Context, target ContainerTarget
 
 			// Try to connect to the mapped port
 			if hostPorts := state.Ports[w.port]; len(hostPorts) > 0 {
-				addr := net.JoinHostPort("localhost", hostPorts[0])
+				addr := net.JoinHostPort(target.Host(), hostPorts[0])
 				conn, err := (&net.Dialer{Timeout: 1 * time.Second}).DialContext(ctx, "tcp", addr)
 				if err == nil {
 					_ = conn.Close()
@@ -188,7 +206,7 @@ func (w *waitForHTTP) WaitUntilReady(ctx context.Context, target ContainerTarget
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for HTTP %s on port %s", w.path, w.port)
+			return waitCtxError(ctx.Err(), fmt.Sprintf("HTTP %s on port %s", w.path, w.port))
 		case <-ticker.C:
 			state, err := target.State(ctx)
 			if err != nil {
@@ -202,7 +220,7 @@ func (w *waitForHTTP) WaitUntilReady(ctx context.Context, target ContainerTarget
 
 			// Probe the endpoint on the mapped port
 			if hostPorts := state.Ports[w.port]; len(hostPorts) > 0 {
-				url := fmt.Sprintf("http://%s%s", net.JoinHostPort("localhost", hostPorts[0]), w.path)
+				url := fmt.Sprintf("http://%s%s", net.JoinHostPort(target.Host(), hostPorts[0]), w.path)
 				req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 				if err != nil {
 					continue
@@ -249,7 +267,7 @@ func (w *waitForHealthy) WaitUntilReady(ctx context.Context, target ContainerTar
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for container to be healthy")
+			return waitCtxError(ctx.Err(), "container to be healthy")
 		case <-ticker.C:
 			state, err := target.State(ctx)
 			if err != nil {

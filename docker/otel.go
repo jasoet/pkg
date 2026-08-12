@@ -11,6 +11,10 @@ import (
 	"github.com/jasoet/pkg/v3/otel"
 )
 
+// instrumentationVersion is the version reported to the OTel tracer/meter for
+// this package. It tracks the module major version (v3).
+const instrumentationVersion = "v3.0.0"
+
 // otelInstrumentation holds OpenTelemetry instrumentation components.
 type otelInstrumentation struct {
 	tracer  trace.Tracer
@@ -41,7 +45,7 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 	if cfg.TracerProvider != nil {
 		inst.tracer = cfg.TracerProvider.Tracer(
 			"github.com/jasoet/pkg/v3/docker",
-			trace.WithInstrumentationVersion("v2.0.0"),
+			trace.WithInstrumentationVersion(instrumentationVersion),
 		)
 	}
 
@@ -49,7 +53,7 @@ func newOTelInstrumentation(cfg *otel.Config) *otelInstrumentation {
 	if cfg.MeterProvider != nil {
 		inst.meter = cfg.MeterProvider.Meter(
 			"github.com/jasoet/pkg/v3/docker",
-			metric.WithInstrumentationVersion("v2.0.0"),
+			metric.WithInstrumentationVersion(instrumentationVersion),
 		)
 
 		// Create counters (errors intentionally ignored - metrics are optional)

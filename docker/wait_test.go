@@ -1,3 +1,5 @@
+//go:build integration
+
 package docker_test
 
 import (
@@ -39,7 +41,7 @@ func TestWaitStrategy_WaitForPort(t *testing.T) {
 
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:8889"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForPort("80").WithStartupTimeout(30*time.Second),
@@ -50,8 +52,9 @@ func TestWaitStrategy_WaitForPort(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	port, _ := exec.MappedPort(ctx, "80/tcp")
-	assert.Equal(t, "8889", port)
+	port, err := exec.MappedPort(ctx, "80/tcp")
+	require.NoError(t, err)
+	assert.NotEmpty(t, port)
 }
 
 func TestWaitStrategy_WaitForHTTP(t *testing.T) {
@@ -82,7 +85,7 @@ func TestWaitStrategy_ForListeningPort(t *testing.T) {
 
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:8891"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.ForListeningPort("80/tcp").
@@ -94,8 +97,9 @@ func TestWaitStrategy_ForListeningPort(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	port, _ := exec.MappedPort(ctx, "80/tcp")
-	assert.Equal(t, "8891", port)
+	port, err := exec.MappedPort(ctx, "80/tcp")
+	require.NoError(t, err)
+	assert.NotEmpty(t, port)
 }
 
 func TestWaitStrategy_WaitForFunc(t *testing.T) {

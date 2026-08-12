@@ -39,6 +39,17 @@ func (t ContainerTarget) ID() string {
 	return t.containerID
 }
 
+// Host returns a reachable host for the container's published ports, derived
+// from the Docker daemon host. It is "localhost" for local transports (unix,
+// npipe) and the daemon hostname for remote transports (tcp://, ssh://), so
+// port/HTTP wait strategies probe the correct address against a remote daemon.
+func (t ContainerTarget) Host() string {
+	if t.cli == nil {
+		return defaultHost
+	}
+	return deriveHost(t.cli.DaemonHost())
+}
+
 // Logs streams the container's stdout and stderr (follow mode).
 // The caller is responsible for closing the returned reader.
 func (t ContainerTarget) Logs(ctx context.Context) (io.ReadCloser, error) {

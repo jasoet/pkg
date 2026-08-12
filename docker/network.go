@@ -3,21 +3,53 @@ package docker
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
+// deriveHost extracts a reachable host from a Docker daemon host URL.
+// For remote transports (tcp://, ssh://, http(s)://) it returns the hostname;
+// for local transports (unix, npipe) or an empty/unparseable value it falls back
+// to defaultHost ("localhost"). This ensures Host()/MappedPort()/Endpoint() point
+// at the real daemon when DOCKER_HOST targets a remote engine (e.g. podman-remote).
+func deriveHost(daemonHost string) string {
+	if daemonHost == "" {
+		return defaultHost
+	}
+
+	u, err := url.Parse(daemonHost)
+	if err != nil {
+		return defaultHost
+	}
+
+	switch u.Scheme {
+	case "tcp", "ssh", "http", "https":
+		if h := u.Hostname(); h != "" {
+			return h
+		}
+	}
+
+	return defaultHost
+}
+
 // Host returns the container host address.
-// For local Docker, this is always "localhost" since containers use port forwarding.
+// For local Docker/Podman this is "localhost"; for a remote daemon (DOCKER_HOST
+// set to tcp:// or ssh://) it is the daemon's hostname, since published ports are
+// reachable on the daemon host, not the client.
 func (e *Executor) Host(_ context.Context) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
 
-	return defaultHost, nil
+	return deriveHost(cli.DaemonHost()), nil
 }
 
 // MappedPort returns the host port mapped to a container port.
@@ -29,9 +61,13 @@ func (e *Executor) Host(_ context.Context) (string, error) {
 //	// hostPort might be "32768" (randomly assigned by Docker)
 func (e *Executor) MappedPort(ctx context.Context, containerPort string) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
@@ -41,7 +77,7 @@ func (e *Executor) MappedPort(ctx context.Context, containerPort string) (string
 		containerPort = containerPort + "/tcp"
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
@@ -91,14 +127,18 @@ func (e *Executor) Endpoint(ctx context.Context, containerPort string) (string, 
 //	}
 func (e *Executor) GetAllPorts(ctx context.Context) (map[string]string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return nil, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return nil, fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
@@ -116,14 +156,18 @@ func (e *Executor) GetAllPorts(ctx context.Context) (map[string]string, error) {
 // GetNetworks returns all networks the container is connected to.
 func (e *Executor) GetNetworks(ctx context.Context) ([]string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return nil, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return nil, fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
@@ -140,14 +184,18 @@ func (e *Executor) GetNetworks(ctx context.Context) ([]string, error) {
 // If network is empty, returns the IP from the first available network.
 func (e *Executor) GetIPAddress(ctx context.Context, network string) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
