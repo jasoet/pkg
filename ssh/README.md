@@ -378,9 +378,10 @@ defer tunnel.Close()
 
 ### With Context
 
-`Start(ctx)` uses the context for the local listener and logger creation; the
-SSH dial itself is bounded by `Config.Timeout`. Cancelling the context does
-**not** stop a running tunnel — call `Close`:
+`Start(ctx)` uses the context for the local listener, logger creation, and the
+SSH dial: cancelling the context aborts the TCP connect. The SSH handshake
+itself is bounded by `Config.Timeout`. Cancelling the context does **not** stop
+an already-running tunnel — call `Close`:
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())

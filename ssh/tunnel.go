@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -62,6 +63,10 @@ type Tunnel struct {
 	client   *ssh.Client
 	listener net.Listener
 	mu       sync.Mutex
+	// starting is set under mu at the very start of Start, before the (unlocked)
+	// dial/listen, so two concurrent Start calls cannot both pass the
+	// already-started guard. It is cleared on success and on any failure.
+	starting bool
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
 }
@@ -140,7 +145,12 @@ func (t *Tunnel) getAuthMethods() ([]ssh.AuthMethod, error) {
 }
 
 // Start establishes the SSH connection and begins forwarding traffic.
-// The provided ctx is used for logger creation and SSH dial operations.
+//
+// The provided ctx is used for logger creation, the local listener, and the
+// SSH dial: cancelling ctx aborts the TCP connect. The SSH handshake itself is
+// bounded by Config.Timeout. Cancelling ctx does not stop an already-running
+// tunnel — call Close for that. Start is not reentrant; a second concurrent
+// Start returns "tunnel already started".
 func (t *Tunnel) Start(ctx context.Context) error {
 	if t.config.OTelConfig != nil {
 		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
@@ -149,12 +159,26 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	defer lc.End()
 
 	t.mu.Lock()
-	if t.client != nil {
+	if t.client != nil || t.starting {
 		t.mu.Unlock()
 		return lc.Error(fmt.Errorf("tunnel already started"), "tunnel already started")
 	}
+	// Reserve the "starting" state under the lock up front so a second
+	// concurrent Start is rejected before this one has dialed/listened.
+	t.starting = true
 	t.stopCh = make(chan struct{})
 	t.mu.Unlock()
+
+	// Roll back the reservation unless Start reaches its successful commit, so a
+	// failed Start never permanently blocks a subsequent Start.
+	success := false
+	defer func() {
+		if !success {
+			t.mu.Lock()
+			t.starting = false
+			t.mu.Unlock()
+		}
+	}()
 
 	// Input validation
 	if t.config.Host == "" {
@@ -197,10 +221,27 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	serverEndpoint := fmt.Sprintf("%s:%d", t.config.Host, t.config.Port)
 	lc.Logger.Debug("Connecting to SSH server", otel.F("endpoint", serverEndpoint))
 
-	client, err := ssh.Dial("tcp", serverEndpoint, sshConfig)
+	// Dial with the caller's context so cancellation aborts the TCP connect;
+	// ssh.Dial would ignore ctx entirely. The SSH handshake is then bounded by
+	// Config.Timeout via a read deadline, mirroring what ssh.Dial does
+	// internally.
+	dialer := net.Dialer{Timeout: t.config.Timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", serverEndpoint)
 	if err != nil {
 		return lc.Error(fmt.Errorf("SSH dial error: %w", err), "SSH dial failed")
 	}
+	if t.config.Timeout > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(t.config.Timeout))
+	}
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, serverEndpoint, sshConfig)
+	if err != nil {
+		_ = conn.Close()
+		return lc.Error(fmt.Errorf("SSH dial error: %w", err), "SSH dial failed")
+	}
+	if t.config.Timeout > 0 {
+		_ = conn.SetReadDeadline(time.Time{}) // clear the handshake deadline
+	}
+	client := ssh.NewClient(sshConn, chans, reqs)
 
 	t.mu.Lock()
 	t.client = client
@@ -218,37 +259,86 @@ func (t *Tunnel) Start(ctx context.Context) error {
 		return lc.Error(fmt.Errorf("local listen error: %w", err), "local listen failed")
 	}
 
+	// Successful commit: publish the listener and release the "starting"
+	// reservation atomically so the double-start guard now keys off t.client.
 	t.mu.Lock()
 	t.listener = listener
+	t.starting = false
+	success = true
 	t.mu.Unlock()
 
 	lc.Logger.Debug("SSH tunnel listening",
 		otel.F("local", localEndpoint),
 		otel.F("remote", remoteEndpoint))
 
-	go func() {
-		for {
-			localConn, err := listener.Accept()
-			if err != nil {
-				select {
-				case <-t.stopCh:
-					return
-				default:
-					continue
-				}
-			}
-			t.wg.Add(1)
-			go func() {
-				defer t.wg.Done()
-				t.forward(localConn, remoteEndpoint)
-			}()
-		}
-	}()
+	go t.acceptLoop(listener, remoteEndpoint)
 
 	lc.Success("SSH tunnel ready",
 		otel.F("local", listener.Addr().String()),
 		otel.F("remote", remoteEndpoint))
 	return nil
+}
+
+// acceptLoop accepts inbound local connections and forwards each through the
+// SSH tunnel until the tunnel is closed or the listener fails permanently.
+//
+// On Accept errors it never busy-spins: a normal shutdown (stopCh closed) or a
+// permanently closed listener (net.ErrClosed) exits the loop, while transient
+// errors (e.g. EMFILE) are retried with a capped exponential backoff, mirroring
+// net/http.Server.Serve.
+func (t *Tunnel) acceptLoop(listener net.Listener, remoteEndpoint string) {
+	ctx := context.Background()
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	logger := otel.NewLogHelper(ctx, t.config.OTelConfig, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.acceptLoop")
+
+	var backoff time.Duration
+	for {
+		localConn, err := listener.Accept()
+		if err != nil {
+			// Normal shutdown via Close.
+			select {
+			case <-t.stopCh:
+				return
+			default:
+			}
+
+			// Listener permanently closed out-of-band: stop instead of spinning.
+			if errors.Is(err, net.ErrClosed) {
+				logger.Warn("accept loop stopping: listener closed", otel.F("err", err.Error()))
+				return
+			}
+
+			// Transient error (e.g. too many open files): back off and retry with
+			// a cap so we never consume 100% CPU.
+			if backoff == 0 {
+				backoff = 5 * time.Millisecond
+			} else {
+				backoff *= 2
+			}
+			if maxBackoff := time.Second; backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			logger.Warn("accept error, backing off",
+				otel.F("err", err.Error()),
+				otel.F("backoff", backoff.String()))
+			timer := time.NewTimer(backoff)
+			select {
+			case <-t.stopCh:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			continue
+		}
+		backoff = 0
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
+			t.forward(localConn, remoteEndpoint)
+		}()
+	}
 }
 
 // LocalAddr returns the local address the tunnel listener is bound to.

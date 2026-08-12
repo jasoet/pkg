@@ -330,6 +330,45 @@ func TestTunnel_DoubleStartGuard(t *testing.T) {
 	})
 }
 
+func TestTunnel_StartGuardWhenStarting(t *testing.T) {
+	t.Run("rejects concurrent Start while one is in progress", func(t *testing.T) {
+		// Simulate a Start that has reserved the "starting" state under the lock
+		// but has not yet dialed. A second Start must be rejected up front.
+		tunnel := &Tunnel{}
+		tunnel.starting = true
+
+		err := tunnel.Start(context.Background())
+		require.Error(t, err)
+		assert.Equal(t, "tunnel already started", err.Error())
+	})
+}
+
+func TestTunnel_AcceptLoopExitsOnListenerClose(t *testing.T) {
+	t.Run("does not busy-spin when the listener is closed out-of-band", func(t *testing.T) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+
+		tunnel := &Tunnel{stopCh: make(chan struct{})}
+
+		done := make(chan struct{})
+		go func() {
+			tunnel.acceptLoop(listener, "")
+			close(done)
+		}()
+
+		// Close the listener out-of-band (not via Close/stopCh). The accept loop
+		// must exit promptly instead of spinning at 100% CPU on Accept errors.
+		require.NoError(t, listener.Close())
+
+		select {
+		case <-done:
+			// Loop exited as expected.
+		case <-time.After(2 * time.Second):
+			t.Fatal("acceptLoop did not exit after out-of-band listener close (busy-spin)")
+		}
+	})
+}
+
 func TestLocalAddr(t *testing.T) {
 	t.Run("returns empty string before Start", func(t *testing.T) {
 		// Zero state: listener is nil, so LocalAddr documents and returns "".
