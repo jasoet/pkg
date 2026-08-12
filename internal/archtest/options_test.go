@@ -2,6 +2,7 @@ package archtest
 
 import (
 	"github.com/jasoet/pkg/v3/argo"
+	"github.com/jasoet/pkg/v3/db"
 	"github.com/jasoet/pkg/v3/docker"
 	"github.com/jasoet/pkg/v3/grpc"
 	"github.com/jasoet/pkg/v3/otel"
@@ -16,10 +17,15 @@ import (
 // Add a package here when it is unified onto the v3 conventions.
 //
 // Signature contract: WithOTelConfig takes *otel.Config and returns the
-// package's option type. Note rest's option type is ClientOption (sanctioned
-// deviation until the v3 rest phase unifies it).
+// package's option type.
+//
+// Sanctioned deviations:
+//   - rest's option type is named ClientOption rather than Option. The v3 rest
+//     phase completed without renaming it, so ClientOption is the accepted,
+//     permanent name for the v3 series (not a pending unification).
 var (
 	_ func(*otel.Config) argo.Option       = argo.WithOTelConfig
+	_ func(*otel.Config) db.Option         = db.WithOTelConfig
 	_ func(*otel.Config) docker.Option     = docker.WithOTelConfig
 	_ func(*otel.Config) grpc.Option       = grpc.WithOTelConfig
 	_ func(*otel.Config) rest.ClientOption = rest.WithOTelConfig
