@@ -3,37 +3,29 @@ package rest
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultRestConfig(t *testing.T) {
 	config := DefaultRestConfig()
 
-	if config == nil {
-		t.Fatal("DefaultRestConfig() returned nil")
-	}
-
-	if config.RetryCount != 1 {
-		t.Errorf("Expected RetryCount to be 1, got %d", config.RetryCount)
-	}
-
-	if config.RetryWaitTime != 2*time.Second {
-		t.Errorf("Expected RetryWaitTime to be 2s, got %s", config.RetryWaitTime)
-	}
-
-	if config.RetryMaxWaitTime != 10*time.Second {
-		t.Errorf("Expected RetryMaxWaitTime to be 10s, got %s", config.RetryMaxWaitTime)
-	}
-
-	if config.Timeout != 30*time.Second {
-		t.Errorf("Expected Timeout to be 30s, got %s", config.Timeout)
-	}
+	require.NotNil(t, config)
+	assert.Equal(t, 1, config.RetryCount)
+	assert.Equal(t, 2*time.Second, config.RetryWaitTime)
+	assert.Equal(t, 10*time.Second, config.RetryMaxWaitTime)
+	assert.Equal(t, 30*time.Second, config.Timeout)
 }
 
 func TestDefaultRestConfig_MaxResponseBodyLog(t *testing.T) {
 	config := DefaultRestConfig()
-	if config.MaxResponseBodyLog != 1024 {
-		t.Errorf("Expected MaxResponseBodyLog to be 1024, got %d", config.MaxResponseBodyLog)
-	}
+	assert.Equal(t, 1024, config.MaxResponseBodyLog)
+}
+
+func TestDefaultRestConfig_RetryNonIdempotent(t *testing.T) {
+	config := DefaultRestConfig()
+	assert.False(t, config.RetryNonIdempotent, "non-idempotent retries must be off by default")
 }
 
 func TestConfigStructFields(t *testing.T) {
@@ -44,19 +36,8 @@ func TestConfigStructFields(t *testing.T) {
 		Timeout:          10 * time.Second,
 	}
 
-	if config.RetryCount != 3 {
-		t.Errorf("Expected RetryCount to be 3, got %d", config.RetryCount)
-	}
-
-	if config.RetryWaitTime != 5*time.Second {
-		t.Errorf("Expected RetryWaitTime to be 5s, got %s", config.RetryWaitTime)
-	}
-
-	if config.RetryMaxWaitTime != 60*time.Second {
-		t.Errorf("Expected RetryMaxWaitTime to be 60s, got %s", config.RetryMaxWaitTime)
-	}
-
-	if config.Timeout != 10*time.Second {
-		t.Errorf("Expected Timeout to be 10s, got %s", config.Timeout)
-	}
+	assert.Equal(t, 3, config.RetryCount)
+	assert.Equal(t, 5*time.Second, config.RetryWaitTime)
+	assert.Equal(t, 60*time.Second, config.RetryMaxWaitTime)
+	assert.Equal(t, 10*time.Second, config.Timeout)
 }

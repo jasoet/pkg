@@ -10,7 +10,7 @@ The `rest` package provides a production-ready HTTP client with built-in resilie
 
 ## Features
 
-- **Automatic Retries**: Configurable retry logic with exponential backoff (network errors and HTTP 5xx)
+- **Automatic Retries**: Idempotent methods retried on transient network errors, HTTP 5xx, and 429 (honoring `Retry-After`), with jittered exponential backoff; non-idempotent methods opt-in via `RetryNonIdempotent`
 - **Library-Owned Response**: `rest.Response` with status predicates — no resty types in the public API
 - **Typed Errors**: `errors.As`-friendly error types for 401/403, 404, 5xx, other 4xx, and execution failures
 - **OpenTelemetry Integration**: Distributed tracing and metrics
@@ -90,10 +90,11 @@ import (
     "github.com/jasoet/pkg/v3/rest"
 )
 
-// Setup OTel
-otelConfig := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+// Setup OTel (functional options)
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+)
 
 // Create client with OTel
 client := rest.NewClient(
@@ -118,6 +119,10 @@ type Config struct {
     // Limits bytes of response body stored in logs/errors. 0 = unlimited.
     MaxResponseBodyLog int
 
+    // Retry non-idempotent methods (POST/PATCH) too. Default false: only
+    // idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS) are retried.
+    RetryNonIdempotent bool
+
     // Optional: Enable OpenTelemetry (nil = disabled)
     OTelConfig       *otel.Config
 }
@@ -132,6 +137,28 @@ type Config struct {
 - RetryMaxWaitTime: 10 seconds
 - Timeout: 30 seconds
 - MaxResponseBodyLog: 1024
+- RetryNonIdempotent: false
+
+### Retry Behavior
+
+Retries are applied only when they are safe and can plausibly succeed:
+
+- **Methods**: only idempotent methods (`GET`, `HEAD`, `PUT`, `DELETE`,
+  `OPTIONS`) are retried by default. Set `RetryNonIdempotent: true` (or pass
+  `rest.WithRetryNonIdempotent()`) to also retry `POST`/`PATCH` — do this only
+  when the endpoint is safe to repeat, since retrying a non-idempotent request
+  can duplicate side effects (e.g. a double charge).
+- **Status codes**: `429 Too Many Requests` and any `5xx`. A `Retry-After`
+  header (delta-seconds or HTTP-date) is honored for the retry delay; otherwise
+  the jittered exponential backoff between `RetryWaitTime` and
+  `RetryMaxWaitTime` is used.
+- **Transport errors**: transient network failures are retried. Permanent
+  failures are **not** retried — malformed URL / unsupported scheme,
+  x509/TLS certificate errors, and context cancellation or deadline
+  (including the client `Timeout`) fail fast instead of burning the backoff
+  budget.
+- **Not retried**: `4xx` other than `429` (client errors that will not change
+  on retry).
 
 ## Response Type
 
@@ -219,8 +246,12 @@ WithMiddleware(middleware Middleware)
 // Set multiple middlewares (replaces the chain, including the default LoggingMiddleware)
 WithMiddlewares(middlewares ...Middleware)
 
-// Enable OpenTelemetry
+// Enable OpenTelemetry. Order-independent with WithRestConfig: the OTel config
+// is merged after all options run, so it is never discarded by option order.
 WithOTelConfig(cfg *otel.Config)
+
+// Opt in to retrying non-idempotent methods (POST/PATCH). Also order-independent.
+WithRetryNonIdempotent()
 ```
 
 ### Methods
@@ -312,6 +343,11 @@ Automatically prepended when `OTelConfig` is provided (the default
 2. **OTelMetricsMiddleware** - HTTP client metrics
 3. **OTelLoggingMiddleware** - Structured logging
 
+> **Warning:** `SetMiddlewares` (and `WithMiddlewares`) replace the *entire*
+> chain, including these auto-installed OTel middlewares — after calling them,
+> tracing/metrics/logging middleware are gone. Use `AddMiddleware` to append
+> without disturbing the chain, or re-add the OTel middlewares explicitly.
+
 ### Custom Middleware
 
 Implement the `Middleware` interface:
@@ -372,8 +408,9 @@ client := rest.NewClient(
 When `OTelConfig` is provided, all requests are traced:
 
 ```go
-otelConfig := otel.NewConfig("my-client").
-    WithTracerProvider(tracerProvider)
+otelConfig := otel.NewConfig("my-client",
+    otel.WithTracerProvider(tracerProvider),
+)
 
 client := rest.NewClient(
     rest.WithOTelConfig(otelConfig),
@@ -421,7 +458,7 @@ Metric Attributes:
 ```
 
 `http.client.retry.count` is wired into resty's retry hook, so it increments
-on both transport errors and status-based (5xx) retries; it also carries an
+on both transport errors and status-based (5xx / 429) retries; it also carries an
 `http.retry.attempt` attribute with the resty attempt number. The counter
 counts failed retryable attempts (retries actually performed), and retries
 triggered by transport errors lose trace-exemplar correlation because they
@@ -532,8 +569,11 @@ config := rest.Config{
 }
 ```
 
-Retries trigger on network errors and HTTP 5xx responses — not on 4xx client
-errors.
+By default retries trigger only for idempotent methods on transient network
+errors, HTTP 5xx, and 429 (honoring `Retry-After`). Non-idempotent methods
+(POST/PATCH) are retried only when you set `RetryNonIdempotent: true`. Permanent
+transport errors (bad URL/scheme, x509/TLS, context cancel/deadline) and 4xx
+other than 429 are never retried. See [Retry Behavior](#retry-behavior).
 
 ### 3. Always Enable OTel in Production
 
@@ -661,9 +701,12 @@ config := rest.Config{
     RetryMaxWaitTime: 5 * time.Second,
 }
 
-// 2. Verify error is retryable
-// The client retries on network errors and 5xx status codes.
-// It does NOT retry on 4xx client errors.
+// 2. Verify the request is retryable
+// By default only idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS) are retried,
+// on transient network errors, 5xx, and 429. POST/PATCH require
+// RetryNonIdempotent: true (or rest.WithRetryNonIdempotent()). Permanent errors
+// (bad URL/scheme, x509/TLS, context cancel/deadline) and 4xx other than 429
+// are never retried.
 ```
 
 ### OTel Not Tracing

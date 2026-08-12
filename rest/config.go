@@ -17,6 +17,12 @@ type Config struct {
 	// 0 means unlimited. Default is 1024.
 	MaxResponseBodyLog int `yaml:"maxResponseBodyLog" mapstructure:"maxResponseBodyLog"`
 
+	// RetryNonIdempotent, when true, retries non-idempotent methods (POST, PATCH,
+	// and custom methods) in addition to the idempotent ones. It defaults to false
+	// so that, by default, only idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS)
+	// are retried and non-idempotent side effects are not accidentally duplicated.
+	RetryNonIdempotent bool `yaml:"retryNonIdempotent" mapstructure:"retryNonIdempotent"`
+
 	// OpenTelemetry Configuration (optional - nil disables telemetry)
 	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"` // Not serializable from config files
 }

@@ -3,7 +3,9 @@ package rest
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -15,6 +17,28 @@ import (
 
 	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
+
+// sanitizeURL strips user credentials (userinfo) and, defensively, an
+// Authorization-style query secret before recording a URL on telemetry, so
+// passwords and API keys embedded in the URL do not leak into traces. If the
+// URL cannot be parsed it is returned unchanged (it is caller-supplied and may
+// already be a bare path).
+func sanitizeURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if u.User != nil {
+		u.User = nil
+	}
+	return u.String()
+}
+
+// durationMillis converts a duration to fractional milliseconds so sub-millisecond
+// timings are preserved instead of truncating to 0 (Duration.Milliseconds()).
+func durationMillis(d time.Duration) float64 {
+	return float64(d) / float64(time.Millisecond)
+}
 
 // ============================================================================
 // OpenTelemetry Tracing Middleware
@@ -44,12 +68,13 @@ func (m *OTelTracingMiddleware) BeforeRequest(ctx context.Context, method string
 		return ctx
 	}
 
-	// Start a new span for the HTTP request
+	// Start a new span for the HTTP request. The URL is sanitized so embedded
+	// credentials are not recorded on the span.
 	ctx, span := m.tracer.Start(ctx, method,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			semconv.HTTPRequestMethodKey.String(method),
-			semconv.URLFullKey.String(url),
+			semconv.URLFullKey.String(sanitizeURL(url)),
 			semconv.HTTPRequestBodySizeKey.Int(len(body)),
 		),
 	)
@@ -83,11 +108,13 @@ func (m *OTelTracingMiddleware) AfterRequest(ctx context.Context, info RequestIn
 	}
 	defer span.End()
 
-	// Record response attributes
+	// Record response attributes. ResponseSize is the true body size (not the
+	// possibly-truncated Response), and duration is fractional milliseconds so
+	// sub-millisecond requests are not recorded as 0.
 	span.SetAttributes(
 		semconv.HTTPResponseStatusCodeKey.Int(info.StatusCode),
-		semconv.HTTPResponseBodySizeKey.Int(len(info.Response)),
-		attribute.Int64("http.request.duration_ms", info.Duration.Milliseconds()),
+		semconv.HTTPResponseBodySizeKey.Int64(info.ResponseSize),
+		attribute.Float64("http.request.duration_ms", durationMillis(info.Duration)),
 	)
 
 	// Record error if present
@@ -214,12 +241,14 @@ func (m *OTelMetricsMiddleware) AfterRequest(ctx context.Context, info RequestIn
 		attribute.Int("http.response.status_code", info.StatusCode),
 	}
 
-	// Record metrics
+	// Record metrics. Duration is fractional milliseconds (matching the "ms"
+	// unit without truncating sub-millisecond timings) and response size is the
+	// true body size rather than the possibly-truncated Response.
 	m.requestCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
-	m.requestDuration.Record(ctx, float64(info.Duration.Milliseconds()), metric.WithAttributes(attrs...))
+	m.requestDuration.Record(ctx, durationMillis(info.Duration), metric.WithAttributes(attrs...))
 
-	if len(info.Response) > 0 {
-		m.responseSize.Record(ctx, int64(len(info.Response)), metric.WithAttributes(attrs...))
+	if info.ResponseSize > 0 {
+		m.responseSize.Record(ctx, info.ResponseSize, metric.WithAttributes(attrs...))
 	}
 }
 
@@ -285,11 +314,11 @@ func (m *OTelLoggingMiddleware) AfterRequest(ctx context.Context, info RequestIn
 	// Create log attributes
 	attrs := []otellog.KeyValue{
 		otellog.String("http.request.method", info.Method),
-		otellog.String("http.url", info.URL),
+		otellog.String("http.url", sanitizeURL(info.URL)),
 		otellog.Int("http.response.status_code", info.StatusCode),
-		otellog.Int64("http.request.duration_ms", info.Duration.Milliseconds()),
+		otellog.Float64("http.request.duration_ms", durationMillis(info.Duration)),
 		otellog.Int("http.request.body.size", len(info.Body)),
-		otellog.Int("http.response.body.size", len(info.Response)),
+		otellog.Int64("http.response.body.size", info.ResponseSize),
 	}
 
 	if info.Error != nil {

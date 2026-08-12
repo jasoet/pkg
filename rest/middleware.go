@@ -43,8 +43,12 @@ type RequestInfo struct {
 	Duration   time.Duration
 	StatusCode int
 	Response   string
-	Error      error
-	TraceInfo  TraceInfo
+	// ResponseSize is the true response body size in bytes as reported by the
+	// transport. Unlike len(Response), it is not affected by MaxResponseBodyLog
+	// truncation, so telemetry reports the real payload size.
+	ResponseSize int64
+	Error        error
+	TraceInfo    TraceInfo
 }
 
 type Middleware interface {
@@ -53,11 +57,20 @@ type Middleware interface {
 }
 
 // LoggingMiddleware logs HTTP requests and responses
-type LoggingMiddleware struct{}
+type LoggingMiddleware struct {
+	logger *otel.LogHelper
+}
 
-// NewLoggingMiddleware creates a new LoggingMiddleware instance
+// NewLoggingMiddleware creates a new LoggingMiddleware instance.
+// The underlying zerolog-backed LogHelper is constructed once and reused across
+// requests to avoid allocating a console writer on every AfterRequest call.
+// This middleware is only active when OTel is not configured; when OTel logging
+// is enabled the client swaps in OTelLoggingMiddleware, which carries its own
+// per-request trace correlation.
 func NewLoggingMiddleware() *LoggingMiddleware {
-	return &LoggingMiddleware{}
+	return &LoggingMiddleware{
+		logger: otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v3/rest", "LoggingMiddleware.AfterRequest"),
+	}
 }
 
 // BeforeRequest returns the context unchanged; timing is handled via RequestInfo.
@@ -67,7 +80,12 @@ func (m *LoggingMiddleware) BeforeRequest(ctx context.Context, method string, ur
 
 // AfterRequest logs the completion of the request with timing information
 func (m *LoggingMiddleware) AfterRequest(ctx context.Context, info RequestInfo) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/rest", "LoggingMiddleware.AfterRequest")
+	logger := m.logger
+	if logger == nil {
+		// Defensive fallback for a zero-value middleware constructed without
+		// NewLoggingMiddleware.
+		logger = otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/rest", "LoggingMiddleware.AfterRequest")
+	}
 
 	if info.Error != nil {
 		logger.Error(info.Error, "Request failed",

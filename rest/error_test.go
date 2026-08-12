@@ -3,6 +3,9 @@ package rest
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnauthorizedError(t *testing.T) {
@@ -13,42 +16,26 @@ func TestUnauthorizedError(t *testing.T) {
 
 		err := newUnauthorizedError(statusCode, msg, respBody)
 
-		if err == nil {
-			t.Fatal("newUnauthorizedError() returned nil")
-		}
-
-		if err.StatusCode != statusCode {
-			t.Errorf("Expected StatusCode %d, got %d", statusCode, err.StatusCode)
-		}
-
-		if err.Msg != msg {
-			t.Errorf("Expected Msg %q, got %q", msg, err.Msg)
-		}
-
-		if err.RespBody != respBody {
-			t.Errorf("Expected RespBody %q, got %q", respBody, err.RespBody)
-		}
+		require.NotNil(t, err)
+		assert.Equal(t, statusCode, err.StatusCode)
+		assert.Equal(t, msg, err.Msg)
+		assert.Equal(t, respBody, err.RespBody)
 	})
 
-	t.Run("Error method", func(t *testing.T) {
-		msg := "Unauthorized access"
+	t.Run("Error method includes response body", func(t *testing.T) {
 		err := &UnauthorizedError{
 			StatusCode: 401,
-			Msg:        msg,
+			Msg:        "Unauthorized access",
 			RespBody:   `{"error":"invalid_token"}`,
 		}
 
-		expected := "unauthorized (HTTP 401): Unauthorized access"
-		if err.Error() != expected {
-			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
-		}
+		expected := `unauthorized (HTTP 401): Unauthorized access: {"error":"invalid_token"}`
+		assert.Equal(t, expected, err.Error())
 	})
 
 	t.Run("Unwrap returns sentinel", func(t *testing.T) {
 		err := newUnauthorizedError(401, "test", "body")
-		if !errors.Is(err, ErrUnauthorized) {
-			t.Error("Expected errors.Is(err, ErrUnauthorized) to be true")
-		}
+		assert.ErrorIs(t, err, ErrUnauthorized)
 	})
 }
 
@@ -59,29 +46,23 @@ func TestExecutionError(t *testing.T) {
 
 		err := newExecutionError(msg, cause)
 
-		if err == nil {
-			t.Fatal("newExecutionError() returned nil")
-		}
-
-		if err.Msg != msg {
-			t.Errorf("Expected Msg %q, got %q", msg, err.Msg)
-		}
-
-		if err.Err != cause {
-			t.Errorf("Expected Err %v, got %v", cause, err.Err)
-		}
+		require.NotNil(t, err)
+		assert.Equal(t, msg, err.Msg)
+		assert.Equal(t, cause, err.Err)
 	})
 
-	t.Run("Error method", func(t *testing.T) {
-		msg := "Failed to execute request"
+	t.Run("Error method includes cause", func(t *testing.T) {
 		err := &ExecutionError{
-			Msg: msg,
+			Msg: "Failed to execute request",
 			Err: errors.New("network error"),
 		}
 
-		if err.Error() != msg {
-			t.Errorf("Expected Error() to return %q, got %q", msg, err.Error())
-		}
+		assert.Equal(t, "Failed to execute request: network error", err.Error())
+	})
+
+	t.Run("Error method without cause", func(t *testing.T) {
+		err := &ExecutionError{Msg: "Failed to execute request"}
+		assert.Equal(t, "Failed to execute request", err.Error())
 	})
 
 	t.Run("Unwrap method", func(t *testing.T) {
@@ -91,15 +72,8 @@ func TestExecutionError(t *testing.T) {
 			Err: cause,
 		}
 
-		unwrapped := err.Unwrap()
-		if unwrapped != cause {
-			t.Errorf("Expected Unwrap() to return %v, got %v", cause, unwrapped)
-		}
-
-		// Test with errors.Is
-		if !errors.Is(err, cause) {
-			t.Errorf("Expected errors.Is(err, cause) to be true")
-		}
+		assert.Equal(t, cause, err.Unwrap())
+		assert.ErrorIs(t, err, cause)
 	})
 }
 
@@ -111,43 +85,23 @@ func TestServerError(t *testing.T) {
 
 		err := newServerError(statusCode, msg, respBody)
 
-		if err == nil {
-			t.Fatal("newServerError() returned nil")
-		}
-
-		if err.StatusCode != statusCode {
-			t.Errorf("Expected StatusCode %d, got %d", statusCode, err.StatusCode)
-		}
-
-		if err.Msg != msg {
-			t.Errorf("Expected Msg %q, got %q", msg, err.Msg)
-		}
-
-		if err.RespBody != respBody {
-			t.Errorf("Expected RespBody %q, got %q", respBody, err.RespBody)
-		}
+		require.NotNil(t, err)
+		assert.Equal(t, statusCode, err.StatusCode)
+		assert.Equal(t, msg, err.Msg)
+		assert.Equal(t, respBody, err.RespBody)
 	})
 
 	t.Run("Error method", func(t *testing.T) {
 		msg := "Internal server error"
 		respBody := `{"error":"server_error"}`
-		err := &ServerError{
-			StatusCode: 500,
-			Msg:        msg,
-			RespBody:   respBody,
-		}
+		err := &ServerError{StatusCode: 500, Msg: msg, RespBody: respBody}
 
-		expected := msg + ": " + respBody
-		if err.Error() != expected {
-			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
-		}
+		assert.Equal(t, msg+": "+respBody, err.Error())
 	})
 
 	t.Run("Unwrap returns sentinel", func(t *testing.T) {
 		err := newServerError(500, "test", "body")
-		if !errors.Is(err, ErrServer) {
-			t.Error("Expected errors.Is(err, ErrServer) to be true")
-		}
+		assert.ErrorIs(t, err, ErrServer)
 	})
 }
 
@@ -159,43 +113,23 @@ func TestResponseError(t *testing.T) {
 
 		err := newResponseError(statusCode, msg, respBody)
 
-		if err == nil {
-			t.Fatal("newResponseError() returned nil")
-		}
-
-		if err.StatusCode != statusCode {
-			t.Errorf("Expected StatusCode %d, got %d", statusCode, err.StatusCode)
-		}
-
-		if err.Msg != msg {
-			t.Errorf("Expected Msg %q, got %q", msg, err.Msg)
-		}
-
-		if err.RespBody != respBody {
-			t.Errorf("Expected RespBody %q, got %q", respBody, err.RespBody)
-		}
+		require.NotNil(t, err)
+		assert.Equal(t, statusCode, err.StatusCode)
+		assert.Equal(t, msg, err.Msg)
+		assert.Equal(t, respBody, err.RespBody)
 	})
 
 	t.Run("Error method", func(t *testing.T) {
 		msg := "Bad request"
 		respBody := `{"error":"invalid_request"}`
-		err := &ResponseError{
-			StatusCode: 400,
-			Msg:        msg,
-			RespBody:   respBody,
-		}
+		err := &ResponseError{StatusCode: 400, Msg: msg, RespBody: respBody}
 
-		expected := msg + ": " + respBody
-		if err.Error() != expected {
-			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
-		}
+		assert.Equal(t, msg+": "+respBody, err.Error())
 	})
 
 	t.Run("Unwrap returns sentinel", func(t *testing.T) {
 		err := newResponseError(400, "test", "body")
-		if !errors.Is(err, ErrResponse) {
-			t.Error("Expected errors.Is(err, ErrResponse) to be true")
-		}
+		assert.ErrorIs(t, err, ErrResponse)
 	})
 }
 
@@ -207,42 +141,22 @@ func TestResourceNotFoundError(t *testing.T) {
 
 		err := newResourceNotFoundError(statusCode, msg, respBody)
 
-		if err == nil {
-			t.Fatal("newResourceNotFoundError() returned nil")
-		}
-
-		if err.StatusCode != statusCode {
-			t.Errorf("Expected StatusCode %d, got %d", statusCode, err.StatusCode)
-		}
-
-		if err.Msg != msg {
-			t.Errorf("Expected Msg %q, got %q", msg, err.Msg)
-		}
-
-		if err.RespBody != respBody {
-			t.Errorf("Expected RespBody %q, got %q", respBody, err.RespBody)
-		}
+		require.NotNil(t, err)
+		assert.Equal(t, statusCode, err.StatusCode)
+		assert.Equal(t, msg, err.Msg)
+		assert.Equal(t, respBody, err.RespBody)
 	})
 
 	t.Run("Error method", func(t *testing.T) {
 		msg := "Resource not found"
 		respBody := `{"error":"not_found"}`
-		err := &ResourceNotFoundError{
-			StatusCode: 404,
-			Msg:        msg,
-			RespBody:   respBody,
-		}
+		err := &ResourceNotFoundError{StatusCode: 404, Msg: msg, RespBody: respBody}
 
-		expected := msg + ": " + respBody
-		if err.Error() != expected {
-			t.Errorf("Expected Error() to return %q, got %q", expected, err.Error())
-		}
+		assert.Equal(t, msg+": "+respBody, err.Error())
 	})
 
 	t.Run("Unwrap returns sentinel", func(t *testing.T) {
 		err := newResourceNotFoundError(404, "test", "body")
-		if !errors.Is(err, ErrResourceNotFound) {
-			t.Error("Expected errors.Is(err, ErrResourceNotFound) to be true")
-		}
+		assert.ErrorIs(t, err, ErrResourceNotFound)
 	})
 }

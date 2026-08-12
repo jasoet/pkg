@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMiddlewareInterface(t *testing.T) {
@@ -18,20 +21,14 @@ func TestLoggingMiddleware(t *testing.T) {
 
 	t.Run("BeforeRequest", func(t *testing.T) {
 		ctx := context.Background()
-		method := "GET"
-		url := "https://example.com"
-		body := `{"key":"value"}`
 		headers := map[string]string{"Content-Type": "application/json"}
 
-		// Call BeforeRequest - should return context unchanged
-		newCtx := middleware.BeforeRequest(ctx, method, url, body, headers)
-		if newCtx != ctx {
-			t.Error("Expected context to be unchanged")
-		}
+		newCtx := middleware.BeforeRequest(ctx, "GET", "https://example.com", `{"key":"value"}`, headers)
+		assert.Equal(t, ctx, newCtx, "context should be unchanged")
 	})
 
 	t.Run("AfterRequest", func(t *testing.T) {
-		// This is mostly a smoke test since the function logs but doesn't return anything
+		// Smoke test: the function logs but returns nothing.
 		ctx := context.Background()
 		info := RequestInfo{
 			Method:     "GET",
@@ -43,15 +40,19 @@ func TestLoggingMiddleware(t *testing.T) {
 			Duration:   100 * time.Millisecond,
 			StatusCode: 200,
 			Response:   `{"result":"success"}`,
-			Error:      nil,
 		}
 
-		// Should not panic
-		middleware.AfterRequest(ctx, info)
+		require.NotPanics(t, func() {
+			middleware.AfterRequest(ctx, info)
+			info.Error = errors.New("test error")
+			middleware.AfterRequest(ctx, info)
+		})
+	})
 
-		// Test with error
-		info.Error = errors.New("test error")
-		middleware.AfterRequest(ctx, info)
+	t.Run("reuses a single LogHelper", func(t *testing.T) {
+		// The LogHelper is constructed once in NewLoggingMiddleware to avoid a
+		// per-request allocation.
+		assert.NotNil(t, middleware.logger)
 	})
 }
 
@@ -60,30 +61,15 @@ func TestNoOpMiddleware(t *testing.T) {
 
 	t.Run("BeforeRequest", func(t *testing.T) {
 		ctx := context.Background()
-		method := "GET"
-		url := "https://example.com"
-		body := `{"key":"value"}`
 		headers := map[string]string{"Content-Type": "application/json"}
 
-		// Call BeforeRequest
-		newCtx := middleware.BeforeRequest(ctx, method, url, body, headers)
-
-		// Verify that the context is unchanged
-		if newCtx != ctx {
-			t.Error("Expected context to be unchanged, but it was modified")
-		}
+		newCtx := middleware.BeforeRequest(ctx, "GET", "https://example.com", `{"key":"value"}`, headers)
+		assert.Equal(t, ctx, newCtx, "context should be unchanged")
 	})
 
 	t.Run("AfterRequest", func(t *testing.T) {
-		// This is a smoke test since the function does nothing
 		ctx := context.Background()
-		info := RequestInfo{
-			Method:     "GET",
-			URL:        "https://example.com",
-			StatusCode: 200,
-		}
-
-		// Should not panic
-		middleware.AfterRequest(ctx, info)
+		info := RequestInfo{Method: "GET", URL: "https://example.com", StatusCode: 200}
+		require.NotPanics(t, func() { middleware.AfterRequest(ctx, info) })
 	})
 }

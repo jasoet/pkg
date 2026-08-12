@@ -21,7 +21,7 @@ type UnauthorizedError struct {
 }
 
 func (e *UnauthorizedError) Error() string {
-	return fmt.Sprintf("unauthorized (HTTP %d): %s", e.StatusCode, e.Msg)
+	return fmt.Sprintf("unauthorized (HTTP %d): %s: %s", e.StatusCode, e.Msg, e.RespBody)
 }
 func (e *UnauthorizedError) Unwrap() error { return ErrUnauthorized }
 
@@ -40,7 +40,12 @@ type ExecutionError struct {
 	Err error
 }
 
-func (e *ExecutionError) Error() string { return e.Msg }
+func (e *ExecutionError) Error() string {
+	if e.Err == nil {
+		return e.Msg
+	}
+	return fmt.Sprintf("%s: %v", e.Msg, e.Err)
+}
 func (e *ExecutionError) Unwrap() error { return e.Err }
 
 func newExecutionError(msg string, err error) *ExecutionError {

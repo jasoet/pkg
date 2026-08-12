@@ -8,15 +8,39 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/jasoet/pkg/v3/otel"
 )
 
-// This test covers status-based retries (5xx responses). Note the resty retry
-// hook also fires after the final failed attempt; the client filters that
-// extra fire so the counter only counts retries actually performed.
+// sumRetryCounter collects the http.client.retry.count metric and returns its total.
+func sumRetryCounter(t *testing.T, reader sdkmetric.Reader) int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	var total int64
+	found := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "http.client.retry.count" {
+				continue
+			}
+			found = true
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok, "expected Sum[int64] data for retry counter, got %T", m.Data)
+			for _, dp := range sum.DataPoints {
+				total += dp.Value
+			}
+		}
+	}
+	require.True(t, found, "http.client.retry.count metric not found")
+	return total
+}
+
 // TestRetryMetricWiring verifies that the http.client.retry.count counter is
 // actually incremented when resty retries a failed request. The server fails
 // with 500 twice, then succeeds; with RetryCount=2 the counter must be 2.
@@ -47,45 +71,11 @@ func TestRetryMetricWiring(t *testing.T) {
 	client := NewClient(WithRestConfig(*restConfig))
 
 	resp, err := client.MakeRequest(context.Background(), http.MethodGet, server.URL, "", nil)
-	if err != nil {
-		t.Fatalf("expected request to succeed after retries, got error: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp.StatusCode)
-	}
-	if got := calls.Load(); got != 3 {
-		t.Fatalf("expected 3 server calls (1 initial + 2 retries), got %d", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, int32(3), calls.Load(), "expected 3 server calls (1 initial + 2 retries)")
 
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatalf("failed to collect metrics: %v", err)
-	}
-
-	var retryTotal int64
-	found := false
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			if m.Name != "http.client.retry.count" {
-				continue
-			}
-			found = true
-			sum, ok := m.Data.(metricdata.Sum[int64])
-			if !ok {
-				t.Fatalf("expected Sum[int64] data for retry counter, got %T", m.Data)
-			}
-			for _, dp := range sum.DataPoints {
-				retryTotal += dp.Value
-			}
-		}
-	}
-
-	if !found {
-		t.Fatal("http.client.retry.count metric not found")
-	}
-	if retryTotal != 2 {
-		t.Errorf("expected retry counter == 2, got %d", retryTotal)
-	}
+	assert.Equal(t, int64(2), sumRetryCounter(t, reader))
 }
 
 // TestRetryMetricAllAttemptsFail verifies that when every attempt fails (the
@@ -113,40 +103,9 @@ func TestRetryMetricAllAttemptsFail(t *testing.T) {
 	client := NewClient(WithRestConfig(*restConfig))
 
 	resp, err := client.MakeRequest(context.Background(), http.MethodGet, server.URL, "", nil)
-	if err == nil {
-		t.Fatal("expected a typed error for the persistent 500 response")
-	}
-	if resp == nil || resp.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("expected non-nil response with status 500, got %+v", resp)
-	}
+	require.Error(t, err, "expected a typed error for the persistent 500 response")
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 
-	var rm metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &rm); err != nil {
-		t.Fatalf("failed to collect metrics: %v", err)
-	}
-
-	var retryTotal int64
-	found := false
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			if m.Name != "http.client.retry.count" {
-				continue
-			}
-			found = true
-			sum, ok := m.Data.(metricdata.Sum[int64])
-			if !ok {
-				t.Fatalf("expected Sum[int64] data for retry counter, got %T", m.Data)
-			}
-			for _, dp := range sum.DataPoints {
-				retryTotal += dp.Value
-			}
-		}
-	}
-
-	if !found {
-		t.Fatal("http.client.retry.count metric not found")
-	}
-	if retryTotal != 2 {
-		t.Errorf("expected retry counter == 2 (only performed retries), got %d", retryTotal)
-	}
+	assert.Equal(t, int64(2), sumRetryCounter(t, reader), "only performed retries must be counted")
 }
