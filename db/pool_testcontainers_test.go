@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -69,15 +70,14 @@ func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig
 		mysql.WithUsername("testuser"),
 		mysql.WithPassword("testpass"),
 		mysql.WithScripts(filepath.Join("..", "scripts", "compose", "mariadb", "backup", "default.sql")),
+		// Wait until the server actually answers a query, rather than a fixed sleep.
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("port: 3306  MySQL Community Server").
-				WithStartupTimeout(90*time.Second),
+			wait.ForSQL("3306/tcp", "mysql", func(host string, port nat.Port) string {
+				return fmt.Sprintf("testuser:testpass@tcp(%s:%s)/testdb", host, port.Port())
+			}).WithStartupTimeout(90*time.Second),
 		),
 	)
 	require.NoError(t, err, "Failed to start MySQL container")
-
-	// Wait a bit more for MySQL to be fully ready
-	time.Sleep(3 * time.Second)
 
 	host, err := mysqlContainer.Host(ctx)
 	require.NoError(t, err, "Failed to get host")
@@ -116,15 +116,14 @@ func setupMSSQLContainer(t *testing.T) (*mssql.MSSQLServerContainer, *Connection
 		image,
 		mssql.WithAcceptEULA(),
 		mssql.WithPassword("StrongPass123!"),
+		// Wait until the server actually answers a query, rather than a fixed sleep.
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("SQL Server is now ready for client connections").
-				WithStartupTimeout(90*time.Second),
+			wait.ForSQL("1433/tcp", "sqlserver", func(host string, port nat.Port) string {
+				return fmt.Sprintf("sqlserver://sa:StrongPass123!@%s:%s?database=master&encrypt=disable", host, port.Port())
+			}).WithStartupTimeout(120*time.Second),
 		),
 	)
 	require.NoError(t, err, "Failed to start MSSQL container")
-
-	// Wait a bit more for SQL Server to be fully ready
-	time.Sleep(5 * time.Second)
 
 	host, err := mssqlContainer.Host(ctx)
 	require.NoError(t, err, "Failed to get host")
@@ -156,11 +155,11 @@ func TestPostgresPoolWithTestcontainers(t *testing.T) {
 		}
 	}()
 
-	// Test the DSN generation
+	// Test the DSN generation (values are single-quoted for safe escaping)
 	dsn := config.dsn()
-	assert.Contains(t, dsn, "user=testuser")
-	assert.Contains(t, dsn, "password=testpass")
-	assert.Contains(t, dsn, "dbname=testdb")
+	assert.Contains(t, dsn, "user='testuser'")
+	assert.Contains(t, dsn, "password='testpass'")
+	assert.Contains(t, dsn, "dbname='testdb'")
 	assert.Contains(t, dsn, "sslmode=disable")
 
 	// Test connection to the database using NewPool()
@@ -282,9 +281,9 @@ func TestMSSQLPoolWithTestcontainers(t *testing.T) {
 		}
 	}()
 
-	// Test the DSN generation
+	// Test the DSN generation (userinfo is percent-encoded: "!" -> "%21")
 	dsn := config.dsn()
-	assert.Contains(t, dsn, fmt.Sprintf("sqlserver://sa:StrongPass123!@%s:%d", config.Host, config.Port))
+	assert.Contains(t, dsn, fmt.Sprintf("sqlserver://sa:StrongPass123%%21@%s:%d", config.Host, config.Port))
 	assert.Contains(t, dsn, "database=master")
 	assert.Contains(t, dsn, "encrypt=disable")
 

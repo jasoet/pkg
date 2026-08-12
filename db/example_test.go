@@ -18,7 +18,7 @@ func ExampleConnectionConfig_RedactedDsn() {
 	}
 	fmt.Println(cfg.RedactedDsn())
 
-	// Output: user=admin password=*** host=localhost port=5432 dbname=myapp sslmode=require connect_timeout=30
+	// Output: user='admin' password='***' host='localhost' port=5432 dbname='myapp' sslmode=require connect_timeout=30
 }
 
 // Validate rejects configs with missing required fields.

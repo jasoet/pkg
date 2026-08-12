@@ -99,7 +99,7 @@ func TestConnectionConfig_dsn(t *testing.T) {
 				DBName:   "test",
 				Timeout:  3 * time.Second,
 			},
-			wantDsn: "user=postgres password=password host=localhost port=5432 dbname=test sslmode=require connect_timeout=3",
+			wantDsn: "user='postgres' password='password' host='localhost' port=5432 dbname='test' sslmode=require connect_timeout=3",
 		},
 		{
 			name: "Different port",
@@ -138,7 +138,7 @@ func TestConnectionConfig_dsn(t *testing.T) {
 				DBName:   "test",
 				Timeout:  5 * time.Second,
 			},
-			wantDsn: "sqlserver://sa:password@localhost:1433?database=test&connectTimeout=5s&encrypt=require",
+			wantDsn: "sqlserver://sa:password@localhost:1433?connection+timeout=5&database=test&encrypt=true",
 		},
 		{
 			name: "Postgres with custom SSLMode",
@@ -152,7 +152,7 @@ func TestConnectionConfig_dsn(t *testing.T) {
 				Timeout:  3 * time.Second,
 				SSLMode:  "require",
 			},
-			wantDsn: "user=postgres password=password host=localhost port=5432 dbname=test sslmode=require connect_timeout=3",
+			wantDsn: "user='postgres' password='password' host='localhost' port=5432 dbname='test' sslmode=require connect_timeout=3",
 		},
 		{
 			name: "Zero timeout uses default 30s",
@@ -174,6 +174,145 @@ func TestConnectionConfig_dsn(t *testing.T) {
 			gotDsn := tt.config.dsn()
 			assert.Equal(t, tt.wantDsn, gotDsn)
 		})
+	}
+}
+
+// TestConnectionConfig_dsn_SpecialCharacters verifies that credentials containing
+// special characters (spaces, @, #, %, quotes, backslashes) and DSN-injection
+// payloads are safely escaped so they cannot alter connection parameters.
+//
+// The golden strings below were verified to round-trip correctly through the real
+// driver parsers (jackc/pgx pgconn.ParseConfig and microsoft/go-mssqldb msdsn.Parse):
+// the payloads are parsed back verbatim as the password, and the host/sslmode/encrypt
+// remain untouched — i.e. no TLS downgrade or host redirection is possible.
+func TestConnectionConfig_dsn_SpecialCharacters(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  ConnectionConfig
+		wantDsn string
+	}{
+		{
+			name: "Postgres password with spaces and injection attempt",
+			config: ConnectionConfig{
+				DBType:   Postgresql,
+				Host:     "localhost",
+				Port:     5432,
+				Username: "postgres",
+				Password: "x sslmode=disable host=evil",
+				DBName:   "test",
+				Timeout:  3 * time.Second,
+			},
+			// The injection payload is contained inside the single-quoted password
+			// field; sslmode=require and host='localhost' are unaffected.
+			wantDsn: "user='postgres' password='x sslmode=disable host=evil' host='localhost' port=5432 dbname='test' sslmode=require connect_timeout=3",
+		},
+		{
+			name: "Postgres password with quote and backslash",
+			config: ConnectionConfig{
+				DBType:   Postgresql,
+				Host:     "localhost",
+				Port:     5432,
+				Username: "postgres",
+				Password: `he'llo\world`,
+				DBName:   "test",
+				Timeout:  3 * time.Second,
+			},
+			wantDsn: `user='postgres' password='he\'llo\\world' host='localhost' port=5432 dbname='test' sslmode=require connect_timeout=3`,
+		},
+		{
+			name: "MSSQL password with @ # % and space",
+			config: ConnectionConfig{
+				DBType:   MSSQL,
+				Host:     "localhost",
+				Port:     1433,
+				Username: "sa",
+				Password: "p@ss w#rd%50",
+				DBName:   "test",
+				Timeout:  5 * time.Second,
+			},
+			wantDsn: "sqlserver://sa:p%40ss%20w%23rd%2550@localhost:1433?connection+timeout=5&database=test&encrypt=true",
+		},
+		{
+			name: "MSSQL password with injection attempt",
+			config: ConnectionConfig{
+				DBType:   MSSQL,
+				Host:     "localhost",
+				Port:     1433,
+				Username: "sa",
+				Password: "x sslmode=disable host=evil",
+				DBName:   "test",
+				Timeout:  5 * time.Second,
+			},
+			wantDsn: "sqlserver://sa:x%20sslmode=disable%20host=evil@localhost:1433?connection+timeout=5&database=test&encrypt=true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantDsn, tt.config.dsn())
+		})
+	}
+}
+
+// TestConnectionConfig_dsn_SubSecondTimeout verifies that sub-second timeouts do
+// not truncate to zero in the DSN (which would mean "no dial timeout" for MySQL or
+// an indefinite connect_timeout for PostgreSQL).
+func TestConnectionConfig_dsn_SubSecondTimeout(t *testing.T) {
+	mysqlCfg := ConnectionConfig{
+		DBType: Mysql, Host: "localhost", Port: 3306,
+		Username: "root", Password: "password", DBName: "test",
+		Timeout: 500 * time.Millisecond,
+	}
+	// MySQL accepts Go duration strings, so the sub-second value is preserved.
+	assert.Equal(t, "root:password@tcp(localhost:3306)/test?parseTime=true&timeout=500ms", mysqlCfg.dsn())
+
+	pgCfg := ConnectionConfig{
+		DBType: Postgresql, Host: "localhost", Port: 5432,
+		Username: "postgres", Password: "password", DBName: "test",
+		Timeout: 500 * time.Millisecond,
+	}
+	// connect_timeout is integer seconds; a sub-second timeout rounds up to 1
+	// rather than truncating to 0 (which Postgres treats as indefinite).
+	assert.Equal(t, "user='postgres' password='password' host='localhost' port=5432 dbname='test' sslmode=require connect_timeout=1", pgCfg.dsn())
+}
+
+// TestConnectionConfig_Validate_MSSQLSSLMode verifies MSSQL SSLMode validation and
+// that valid modes map to encrypt values go-mssqldb accepts.
+func TestConnectionConfig_Validate_MSSQLSSLMode(t *testing.T) {
+	base := ConnectionConfig{
+		DBType: MSSQL, Host: "localhost", Port: 1433,
+		Username: "sa", Password: "pw", DBName: "test",
+		MaxIdleConns: 5, MaxOpenConns: 10,
+	}
+
+	for _, mode := range []string{"disable", "false", "true", "require", "strict"} {
+		cfg := base
+		cfg.SSLMode = mode
+		assert.NoError(t, cfg.Validate(), "SSLMode %q should be valid for MSSQL", mode)
+	}
+
+	for _, mode := range []string{"verify-full", "prefer", "yes", "1", "enable"} {
+		cfg := base
+		cfg.SSLMode = mode
+		assert.Error(t, cfg.Validate(), "SSLMode %q should be rejected for MSSQL", mode)
+	}
+}
+
+// TestConnectionConfig_mssqlEncrypt verifies the SSLMode -> encrypt mapping used in
+// the MSSQL DSN. In particular the default ("require") maps to "true", not the
+// invalid go-mssqldb value "require".
+func TestConnectionConfig_mssqlEncrypt(t *testing.T) {
+	cases := map[string]string{
+		"":        "true", // default require -> true
+		"require": "true",
+		"true":    "true",
+		"disable": "disable",
+		"false":   "false",
+		"strict":  "strict",
+	}
+	for mode, want := range cases {
+		cfg := ConnectionConfig{DBType: MSSQL, SSLMode: mode}
+		assert.Equal(t, want, cfg.mssqlEncrypt(), "SSLMode %q", mode)
 	}
 }
 
@@ -205,6 +344,38 @@ func TestEffectiveGormLogLevel(t *testing.T) {
 
 	c.GormLogLevel = 99 // Invalid value
 	assert.Equal(t, logger.Silent, c.effectiveGormLogLevel())
+}
+
+func TestConnectionConfig_effectiveMaxConns(t *testing.T) {
+	// Zero-value config: sane defaults are applied so idle pooling still works
+	// and every query does not dial a fresh TCP connection.
+	zero := &ConnectionConfig{}
+	assert.Equal(t, defaultMaxIdleConns, zero.effectiveMaxIdleConns())
+	assert.Equal(t, defaultMaxOpenConns, zero.effectiveMaxOpenConns())
+
+	// Explicit values are honored.
+	c := &ConnectionConfig{MaxIdleConns: 3, MaxOpenConns: 7}
+	assert.Equal(t, 3, c.effectiveMaxIdleConns())
+	assert.Equal(t, 7, c.effectiveMaxOpenConns())
+}
+
+func TestConnectionConfig_Validate_MaxOpenConnsZeroAllowed(t *testing.T) {
+	// MaxOpenConns == 0 must not be rejected by the MaxIdle > MaxOpen check;
+	// a zero value means "unset" (defaulted), not "smaller than idle".
+	cfg := &ConnectionConfig{
+		DBType: Postgresql, Host: "localhost", Port: 5432,
+		Username: "u", Password: "p", DBName: "db",
+		MaxIdleConns: 5, MaxOpenConns: 0,
+	}
+	assert.NoError(t, cfg.Validate())
+
+	// Explicit idle > explicit open is still rejected.
+	bad := &ConnectionConfig{
+		DBType: Postgresql, Host: "localhost", Port: 5432,
+		Username: "u", Password: "p", DBName: "db",
+		MaxIdleConns: 20, MaxOpenConns: 10,
+	}
+	assert.Error(t, bad.Validate())
 }
 
 func TestConnectionConfig_collectPoolMetrics_NilOTelConfig(t *testing.T) {

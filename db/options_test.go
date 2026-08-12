@@ -20,9 +20,9 @@ func TestRedactedDsn_SubstringCollision(t *testing.T) {
 		Username: "user", Password: "4321", DBName: "mydb",
 	}
 	redacted := cfg.RedactedDsn()
-	assert.Contains(t, redacted, "password=***")
+	assert.Contains(t, redacted, "password='***'")
 	assert.Contains(t, redacted, "port=54321") // naive ReplaceAll would corrupt this
-	assert.NotContains(t, redacted, "password=4321")
+	assert.NotContains(t, redacted, "password='4321'")
 }
 
 func TestRedactedDsn_EmptyPassword(t *testing.T) {
@@ -32,5 +32,5 @@ func TestRedactedDsn_EmptyPassword(t *testing.T) {
 	}
 	redacted := cfg.RedactedDsn()
 	assert.NotContains(t, redacted, "***")
-	assert.Contains(t, redacted, "user=user")
+	assert.Contains(t, redacted, "user='user'")
 }

@@ -79,10 +79,10 @@ func TestRunPostgresMigrations_ConnectionError(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Should fail when trying to create database driver
+	// Should fail when acquiring a connection from the unreachable database.
 	err = RunPostgresMigrations(ctx, db, emptyMigrationsFS, "testdata/empty_migrations")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create database driver")
+	assert.Contains(t, err.Error(), "failed to acquire database connection")
 }
 
 // TestRunPostgresMigrationsDown_ConnectionError tests that RunPostgresMigrationsDown
@@ -95,10 +95,10 @@ func TestRunPostgresMigrationsDown_ConnectionError(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Should fail when trying to create database driver
+	// Should fail when acquiring a connection from the unreachable database.
 	err = RunPostgresMigrationsDown(ctx, db, emptyMigrationsFS, "testdata/empty_migrations")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create database driver")
+	assert.Contains(t, err.Error(), "failed to acquire database connection")
 }
 
 // TestSetupMigration_ConnectionError tests that setupMigration returns an error
@@ -109,8 +109,8 @@ func TestSetupMigration_ConnectionError(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Should fail when trying to create database driver
-	_, err = setupMigration(db, emptyMigrationsFS, "testdata/empty_migrations")
+	// Should fail when acquiring a connection from the unreachable database.
+	_, err = setupMigration(context.Background(), db, emptyMigrationsFS, "testdata/empty_migrations")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create database driver")
+	assert.Contains(t, err.Error(), "failed to acquire database connection")
 }

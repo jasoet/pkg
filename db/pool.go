@@ -6,8 +6,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
+	"runtime"
+	"strconv"
+	"strings"
 	"time"
+	"weak"
 
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"go.opentelemetry.io/otel/attribute"
@@ -38,7 +44,27 @@ const (
 
 	// defaultTimeout is applied when Timeout is zero to avoid immediate connection failure.
 	defaultTimeout = 30 * time.Second
+
+	// defaultMaxIdleConns is applied when MaxIdleConns is unset (<= 0) so a
+	// zero-value config still keeps idle connections instead of dialling a fresh
+	// TCP connection for every query.
+	defaultMaxIdleConns = 10
+
+	// defaultMaxOpenConns is applied when MaxOpenConns is unset (<= 0) to cap the
+	// pool at a sane upper bound rather than leaving it effectively unbounded.
+	defaultMaxOpenConns = 100
 )
+
+// validMSSQLSSL maps the accepted SSLMode values for MSSQL to the corresponding
+// go-mssqldb "encrypt" DSN value. The Postgres-style "require" (and the default,
+// empty SSLMode) map to "true"; go-mssqldb does not accept "require" itself.
+var validMSSQLSSL = map[string]string{
+	"disable": "disable",
+	"false":   "false",
+	"true":    "true",
+	"require": "true",
+	"strict":  "strict",
+}
 
 // ConnectionConfig holds the connection parameters for a database pool.
 type ConnectionConfig struct {
@@ -61,8 +87,10 @@ type ConnectionConfig struct {
 	ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime" mapstructure:"connMaxIdleTime"`
 
 	// SSLMode configures TLS for the connection.
-	// PostgreSQL: "disable", "require", "verify-ca", "verify-full" (default: "require")
-	// MSSQL: "disable", "true", "false" (default: "require")
+	// PostgreSQL: "disable", "require", "verify-ca", "verify-full", "prefer", "allow" (default: "require")
+	// MSSQL: "disable", "false", "true", "require", "strict" (default: "require").
+	//   "require" and "true" both request mandatory encryption; go-mssqldb's own
+	//   "encrypt" values are used in the DSN ("require" is mapped to "true").
 	// MySQL: handled via DSN parameters (this field is ignored for MySQL)
 	SSLMode string `yaml:"sslMode" mapstructure:"sslMode"`
 
@@ -88,6 +116,44 @@ func (c *ConnectionConfig) effectiveSSLMode() string {
 		return "require"
 	}
 	return c.SSLMode
+}
+
+// mssqlEncrypt maps the configured SSLMode to a valid go-mssqldb "encrypt" value.
+// Unknown modes fall back to "true" (mandatory encryption); Validate() rejects
+// unknown modes before this is reached on the NewPool path.
+func (c *ConnectionConfig) mssqlEncrypt() string {
+	if v, ok := validMSSQLSSL[c.effectiveSSLMode()]; ok {
+		return v
+	}
+	return "true"
+}
+
+// connectTimeoutSeconds returns the effective timeout rounded up to whole seconds,
+// with a floor of 1. Rounding up avoids a sub-second timeout truncating to 0, which
+// PostgreSQL treats as "no timeout" (indefinite wait).
+func (c *ConnectionConfig) connectTimeoutSeconds() int {
+	d := c.effectiveTimeout()
+	secs := int((d + time.Second - 1) / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	return secs
+}
+
+// effectiveMaxIdleConns returns MaxIdleConns or the default when unset (<= 0).
+func (c *ConnectionConfig) effectiveMaxIdleConns() int {
+	if c.MaxIdleConns <= 0 {
+		return defaultMaxIdleConns
+	}
+	return c.MaxIdleConns
+}
+
+// effectiveMaxOpenConns returns MaxOpenConns or the default when unset (<= 0).
+func (c *ConnectionConfig) effectiveMaxOpenConns() int {
+	if c.MaxOpenConns <= 0 {
+		return defaultMaxOpenConns
+	}
+	return c.MaxOpenConns
 }
 
 // effectiveGormLogLevel returns the configured GORM log level or Silent if unset.
@@ -123,7 +189,14 @@ func (c *ConnectionConfig) Validate() error {
 	if c.DBType == Postgresql && c.SSLMode != "" && !validPostgresSSL[c.SSLMode] {
 		return fmt.Errorf("invalid SSLMode %q for PostgreSQL", c.SSLMode)
 	}
-	if c.MaxIdleConns > c.MaxOpenConns {
+	if c.DBType == MSSQL && c.SSLMode != "" {
+		if _, ok := validMSSQLSSL[c.SSLMode]; !ok {
+			return fmt.Errorf("invalid SSLMode %q for MSSQL (valid: disable, false, true, require, strict)", c.SSLMode)
+		}
+	}
+	// MaxOpenConns <= 0 means "unset" (a default is applied); only reject when an
+	// explicit open limit is smaller than the requested idle count.
+	if c.MaxOpenConns > 0 && c.MaxIdleConns > c.MaxOpenConns {
 		return fmt.Errorf("MaxIdleConns (%d) cannot exceed MaxOpenConns (%d)", c.MaxIdleConns, c.MaxOpenConns)
 	}
 	return nil
@@ -136,25 +209,47 @@ func (c *ConnectionConfig) dsn() string {
 	return c.dsnWithPassword(c.Password)
 }
 
+// quotePostgresValue escapes a value for the PostgreSQL keyword/value DSN format.
+// It backslash-escapes backslashes and single quotes, then wraps the value in
+// single quotes. This is the libpq/pgx quoting convention and prevents a value
+// (e.g. a password) from being interpreted as additional connection parameters.
+func quotePostgresValue(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `'`, `\'`)
+	return "'" + v + "'"
+}
+
 // dsnWithPassword builds the DSN using pw in the password position, so callers
 // can substitute a mask without corrupting other fields that happen to contain
 // the real password as a substring.
+//
+// All user-controlled values are escaped for their driver's DSN grammar so that
+// credentials containing special characters cannot inject or override connection
+// parameters (e.g. a password cannot smuggle sslmode=disable or a different host).
 func (c *ConnectionConfig) dsnWithPassword(pw string) string {
-	timeout := c.effectiveTimeout()
-	sslMode := c.effectiveSSLMode()
-
 	switch c.DBType {
 	case Mysql:
-		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
+		// go-sql-driver accepts Go duration strings, so the effective timeout is
+		// formatted directly (preserving sub-second values instead of truncating).
 		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&timeout=%s",
-			c.Username, pw, c.Host, c.Port, c.DBName, timeoutStr)
+			c.Username, pw, c.Host, c.Port, c.DBName, c.effectiveTimeout().String())
 	case Postgresql:
 		return fmt.Sprintf("user=%s password=%s host=%s port=%d dbname=%s sslmode=%s connect_timeout=%d",
-			c.Username, pw, c.Host, c.Port, c.DBName, sslMode, int(timeout.Seconds()))
+			quotePostgresValue(c.Username), quotePostgresValue(pw), quotePostgresValue(c.Host),
+			c.Port, quotePostgresValue(c.DBName), c.effectiveSSLMode(), c.connectTimeoutSeconds())
 	case MSSQL:
-		timeoutStr := fmt.Sprintf("%ds", timeout/time.Second)
-		return fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connectTimeout=%s&encrypt=%s",
-			c.Username, pw, c.Host, c.Port, c.DBName, timeoutStr, sslMode)
+		// Build via net/url so the userinfo and query values are percent-encoded.
+		query := url.Values{}
+		query.Set("database", c.DBName)
+		query.Set("connection timeout", strconv.Itoa(c.connectTimeoutSeconds()))
+		query.Set("encrypt", c.mssqlEncrypt())
+		u := url.URL{
+			Scheme:   "sqlserver",
+			User:     url.UserPassword(c.Username, pw),
+			Host:     net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
+			RawQuery: query.Encode(),
+		}
+		return u.String()
 	default:
 		return ""
 	}
@@ -224,8 +319,13 @@ func (c *ConnectionConfig) openPool() (*gorm.DB, error) {
 		return nil, fmt.Errorf("unsupported database type: %s", c.DBType)
 	}
 
+	// DisableAutomaticPing: gorm.Open would otherwise open the pool and immediately
+	// ping it, so a failure there leaks the underlying sql.DB (we never receive a
+	// handle to close). We disable that ping and run our own below, on a handle we
+	// can close on failure.
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(c.effectiveGormLogLevel()),
+		Logger:               logger.Default.LogMode(c.effectiveGormLogLevel()),
+		DisableAutomaticPing: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection to %s:%d/%s: %w", c.Host, c.Port, c.DBName, err)
@@ -236,9 +336,10 @@ func (c *ConnectionConfig) openPool() (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	// Configure connection pool
-	sqlDB.SetMaxIdleConns(c.MaxIdleConns)
-	sqlDB.SetMaxOpenConns(c.MaxOpenConns)
+	// Configure connection pool. Zero-value config fields fall back to sane
+	// defaults so idle pooling is not silently disabled.
+	sqlDB.SetMaxIdleConns(c.effectiveMaxIdleConns())
+	sqlDB.SetMaxOpenConns(c.effectiveMaxOpenConns())
 	if c.ConnMaxLifetime > 0 {
 		sqlDB.SetConnMaxLifetime(c.ConnMaxLifetime)
 	}
@@ -249,6 +350,7 @@ func (c *ConnectionConfig) openPool() (*gorm.DB, error) {
 	pingCtx, cancel := context.WithTimeout(context.Background(), c.effectiveTimeout())
 	defer cancel()
 	if err := sqlDB.PingContext(pingCtx); err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("failed to ping database at %s:%d/%s: %w", c.Host, c.Port, c.DBName, err)
 	}
 
@@ -256,7 +358,12 @@ func (c *ConnectionConfig) openPool() (*gorm.DB, error) {
 	// Tracing and metrics are gated independently: the otelgorm plugin requires
 	// tracing, while pool metrics only require a MeterProvider.
 	if c.OTelConfig != nil && c.OTelConfig.IsTracingEnabled() {
-		// Configure otelgorm plugin options
+		// Configure otelgorm plugin options.
+		//
+		// WithoutMetrics is always passed: otelgorm reports DBStats via otelsql on
+		// the GLOBAL meter provider, whereas collectPoolMetrics below reports pool
+		// metrics on the configured provider. Enabling both would emit duplicate
+		// connection-pool metrics under different names/providers.
 		opts := []otelgorm.Option{
 			otelgorm.WithDBName(c.DBName),
 			otelgorm.WithAttributes(
@@ -264,16 +371,12 @@ func (c *ConnectionConfig) openPool() (*gorm.DB, error) {
 				semconv.ServerAddressKey.String(c.Host),
 				semconv.ServerPortKey.Int(c.Port),
 			),
+			otelgorm.WithoutMetrics(),
 		}
 
 		// Use the TracerProvider from OTelConfig
 		if c.OTelConfig.TracerProvider != nil {
 			opts = append(opts, otelgorm.WithTracerProvider(c.OTelConfig.TracerProvider))
-		}
-
-		// Disable metrics if not enabled in config
-		if !c.OTelConfig.IsMetricsEnabled() {
-			opts = append(opts, otelgorm.WithoutMetrics())
 		}
 
 		// Install the uptrace otelgorm plugin
@@ -346,17 +449,27 @@ func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 		return
 	}
 
-	// Register callback to collect metrics
-	_, err = meter.RegisterCallback(
-		func(ctx context.Context, observer metric.Observer) error {
-			stats := sqlDB.Stats()
+	attrs := []attribute.KeyValue{
+		attribute.String("db.system", string(c.DBType)),
+		attribute.String("db.name", c.DBName),
+		attribute.String("server.address", c.Host),
+		attribute.Int("server.port", c.Port),
+	}
 
-			attrs := []attribute.KeyValue{
-				attribute.String("db.system", string(c.DBType)),
-				attribute.String("db.name", c.DBName),
-				attribute.String("server.address", c.Host),
-				attribute.Int("server.port", c.Port),
+	// Hold sqlDB weakly inside the callback so that the callback (retained by the
+	// meter provider via its Registration) does not keep the pool reachable after
+	// the caller drops it. Once the pool is garbage-collected the runtime cleanup
+	// below unregisters the callback, so repeated NewPool calls do not accumulate
+	// callbacks emitting stale gauges from closed pools.
+	weakDB := weak.Make(sqlDB)
+
+	reg, err := meter.RegisterCallback(
+		func(ctx context.Context, observer metric.Observer) error {
+			db := weakDB.Value()
+			if db == nil {
+				return nil
 			}
+			stats := db.Stats()
 
 			observer.ObserveInt64(idleConns, int64(stats.Idle), metric.WithAttributes(attrs...))
 			observer.ObserveInt64(activeConns, int64(stats.InUse), metric.WithAttributes(attrs...))
@@ -373,5 +486,11 @@ func (c *ConnectionConfig) collectPoolMetrics(sqlDB *sql.DB) {
 		logger := pkgotel.NewLogHelper(context.Background(), c.OTelConfig,
 			"github.com/jasoet/pkg/v3/db", "db.collectPoolMetrics")
 		logger.Error(err, "Failed to register pool metrics callback")
+		return
 	}
+
+	// Retain the Registration so the callback is unregistered when the pool is no
+	// longer reachable. arg (reg) must not be reachable from sqlDB for the cleanup
+	// to run; it is only referenced by the meter provider, so this holds.
+	runtime.AddCleanup(sqlDB, func(r metric.Registration) { _ = r.Unregister() }, reg)
 }

@@ -359,7 +359,7 @@ config := db.ConnectionConfig{
 }
 ```
 
-**Connection String Format**: `user=username password=password host=host port=5432 dbname=database sslmode=require connect_timeout=30`
+**Connection String Format**: `user='username' password='password' host='host' port=5432 dbname='database' sslmode=require connect_timeout=30` (values are single-quoted and escaped so special characters cannot alter connection parameters)
 
 ### MySQL
 
@@ -397,7 +397,7 @@ config := db.ConnectionConfig{
 }
 ```
 
-**Connection String Format**: `sqlserver://username:password@host:1433?database=myapp&connectTimeout=30s&encrypt=require`
+**Connection String Format**: `sqlserver://username:password@host:1433?connection+timeout=30&database=myapp&encrypt=true` (built with `net/url`; `SSLMode: "require"`/`"true"` maps to `encrypt=true` — go-mssqldb does not accept `encrypt=require`)
 
 ## Integration with OTel Logging
 

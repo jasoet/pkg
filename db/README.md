@@ -32,6 +32,7 @@ go get github.com/jasoet/pkg/v3/db
 package main
 
 import (
+    "os"
     "time"
 
     "github.com/jasoet/pkg/v3/db"
@@ -43,7 +44,7 @@ func main() {
         Host:         "localhost",
         Port:         5432,
         Username:     "admin",
-        Password:     "${DB_PASSWORD}",
+        Password:     os.Getenv("DB_PASSWORD"), // read the secret from the environment
         DBName:       "myapp",
         Timeout:      5 * time.Second,
         MaxIdleConns: 5,
@@ -63,6 +64,9 @@ func main() {
 
 ```go
 import (
+    "os"
+    "time"
+
     "github.com/jasoet/pkg/v3/db"
     "github.com/jasoet/pkg/v3/otel"
 )
@@ -78,7 +82,7 @@ pool, err := db.NewPool(
         Host:         "localhost",
         Port:         5432,
         Username:     "admin",
-        Password:     "${DB_PASSWORD}",
+        Password:     os.Getenv("DB_PASSWORD"), // read the secret from the environment
         DBName:       "myapp",
         Timeout:      5 * time.Second,
         MaxIdleConns: 5,
@@ -112,7 +116,9 @@ db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
 }))
 ```
 
-**DSN Format:** `user=admin password=*** host=localhost port=5432 dbname=myapp sslmode=require connect_timeout=5`
+**DSN Format:** `user='admin' password='***' host='localhost' port=5432 dbname='myapp' sslmode=require connect_timeout=5`
+
+> Values are single-quoted and backslash-escaped so credentials containing spaces or special characters cannot alter connection parameters.
 
 ### MySQL
 
@@ -140,7 +146,9 @@ db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
 }))
 ```
 
-**DSN Format:** `sqlserver://admin:***@localhost:1433?database=myapp&connectTimeout=5s&encrypt=require`
+**DSN Format:** `sqlserver://admin:***@localhost:1433?connection+timeout=5&database=myapp&encrypt=true`
+
+> The DSN is built with `net/url`, so the username/password are percent-encoded. `SSLMode` maps to go-mssqldb's `encrypt` value: the default `"require"` (and `"true"`) become `encrypt=true` — go-mssqldb does not accept `encrypt=require`.
 
 ## Configuration
 
@@ -173,9 +181,11 @@ type ConnectionConfig struct {
 }
 ```
 
-> **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev or test databases without TLS, set `SSLMode: "disable"` explicitly. MySQL ignores `SSLMode`.
+> **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev or test databases without TLS, set `SSLMode: "disable"` explicitly. MySQL ignores `SSLMode`. For MSSQL the value maps to go-mssqldb's `encrypt` DSN key (`"require"`/`"true"` → `encrypt=true`); valid MSSQL modes are `disable`, `false`, `true`, `require`, `strict`.
 >
-> **Timeout default:** a zero `Timeout` falls back to 30 seconds.
+> **Timeout default:** a zero `Timeout` falls back to 30 seconds. Sub-second timeouts are rounded up to 1 second in the DSN so they are never truncated to 0 (which some drivers treat as "no timeout").
+>
+> **Pool sizing defaults:** an unset (zero) `MaxIdleConns` defaults to 10 and an unset `MaxOpenConns` defaults to 100, so a zero-value config still pools connections instead of dialling a fresh connection per query.
 
 ### Functions and Methods
 
@@ -220,7 +230,7 @@ Span Attributes:
   server.port: 5432
 ```
 
-> **Security note:** by default otelgorm includes the full SQL statement text — including query variable values — in spans. If your statements may contain sensitive data, configure your own otelgorm plugin with its `excludeQueryVars` option instead of relying on the default.
+> **Security note:** by default otelgorm includes the full SQL statement text — including query variable values — in spans. If your statements may contain sensitive data, configure your own otelgorm plugin with its `otelgorm.WithoutQueryVariables()` option instead of relying on the default.
 
 ### Metrics Collection
 
@@ -242,6 +252,8 @@ Attributes:
 ## Database Migrations
 
 Only PostgreSQL is supported. The migration API works on a raw `*sql.DB`; GORM users obtain one via `gormDB.DB()` at the call site.
+
+Each run checks out a dedicated connection from the pool (via `db.Conn`) and releases it when finished, so it never permanently pins a pool slot and never closes the caller's `*sql.DB`.
 
 Both functions are instrumented through `otel.Layers.StartOperations`, producing a span named `db.RunPostgresMigrations` (or `db.RunPostgresMigrationsDown`) under the `operations.db` scope, with structured success/error logging.
 
@@ -384,7 +396,9 @@ database:
   host: localhost
   port: 5432
   username: admin
-  password: ${DB_PASSWORD}
+  # NOTE: the config loader does NOT expand ${VAR}. Provide the password via an
+  # environment variable (see "Use Environment Variables for Secrets" below) or
+  # inline a literal value here.
   dbName: myapp
   timeout: 5s
   maxIdleConns: 5
@@ -535,34 +549,52 @@ go test ./db -tags=integration -cover
 
 ```go
 import (
+    "context"
+    "testing"
+
     "github.com/jasoet/pkg/v3/db"
     "github.com/jasoet/pkg/v3/otel"
-    noopt "go.opentelemetry.io/otel/trace/noop"
+    "github.com/stretchr/testify/require"
+    "github.com/testcontainers/testcontainers-go/modules/postgres"
     noopm "go.opentelemetry.io/otel/metric/noop"
+    noopt "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestWithTestcontainer(t *testing.T) {
-    // Use testcontainers for integration tests
     ctx := context.Background()
-    container, _ := setupPostgresContainer(ctx)
-    defer container.Terminate(ctx)
+
+    // Start a container (see the integration tests for a reusable helper).
+    container, err := postgres.Run(ctx, "postgres:18-alpine",
+        postgres.WithDatabase("testdb"),
+        postgres.WithUsername("test"),
+        postgres.WithPassword("test"),
+    )
+    require.NoError(t, err)
+    defer func() { _ = container.Terminate(ctx) }()
+
+    host, err := container.Host(ctx)
+    require.NoError(t, err)
+    port, err := container.MappedPort(ctx, "5432")
+    require.NoError(t, err)
 
     pool, err := db.NewPool(
         db.WithConnectionConfig(db.ConnectionConfig{
             DBType:   db.Postgresql,
-            Host:     container.Host(ctx),
-            Port:     container.MappedPort(ctx, "5432").Int(),
+            Host:     host,
+            Port:     port.Int(),
             Username: "test",
             Password: "test",
             DBName:   "testdb",
+            SSLMode:  "disable", // container has no TLS
         }),
         db.WithOTelConfig(otel.NewConfig("test",
             otel.WithTracerProvider(noopt.NewTracerProvider()),
             otel.WithMeterProvider(noopm.NewMeterProvider()))),
     )
-    assert.NoError(t, err)
+    require.NoError(t, err)
 
-    // Test your code
+    // Test your code with pool ...
+    _ = pool
 }
 ```
 
@@ -660,7 +692,7 @@ err := db.RunPostgresMigrations(
 ## Performance
 
 - **Connection Pooling**: Efficiently reuses connections
-- **Prepared Statements**: GORM uses prepared statements by default
+- **Prepared Statements**: not enabled by default. This package does not set GORM's `PrepareStmt`; enable prepared-statement caching yourself if you need it.
 - **Query Optimization**: Use indexes and EXPLAIN ANALYZE
 - **Batch Operations**: Use GORM's batch features for bulk inserts
 

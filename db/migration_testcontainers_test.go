@@ -11,6 +11,8 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -19,11 +21,11 @@ import (
 //go:embed migrations_test
 var testMigrationFs embed.FS
 
-func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
+func startPostgresForMigrations(t *testing.T) *postgres.PostgresContainer {
+	t.Helper()
 	ctx := context.Background()
 
-	// Start PostgreSQL container
-	postgresContainer, err := postgres.Run(ctx,
+	container, err := postgres.Run(ctx,
 		"postgres:18-alpine",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
@@ -32,28 +34,21 @@ func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
 			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
 		),
 	)
-	if err != nil {
-		t.Fatalf("Failed to start PostgreSQL container: %v", err)
-	}
-	defer func() {
-		if err := postgresContainer.Terminate(ctx); err != nil {
-			t.Logf("Failed to terminate container: %v", err)
-		}
-	}()
+	require.NoError(t, err, "Failed to start PostgreSQL container")
+	return container
+}
 
-	// Get connection details
-	host, err := postgresContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get host: %v", err)
-	}
+func migrationTestConfig(t *testing.T, container *postgres.PostgresContainer) *ConnectionConfig {
+	t.Helper()
+	ctx := context.Background()
 
-	port, err := postgresContainer.MappedPort(ctx, "5432")
-	if err != nil {
-		t.Fatalf("Failed to get port: %v", err)
-	}
+	host, err := container.Host(ctx)
+	require.NoError(t, err, "Failed to get host")
 
-	// Create connection config
-	config := &ConnectionConfig{
+	port, err := container.MappedPort(ctx, "5432")
+	require.NoError(t, err, "Failed to get port")
+
+	return &ConnectionConfig{
 		DBType:       Postgresql,
 		Host:         host,
 		Port:         port.Int(),
@@ -65,35 +60,31 @@ func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
 		MaxIdleConns: 5,
 		MaxOpenConns: 10,
 	}
+}
 
-	// Connect to the database
+func TestPostgresMigrationsWithTestcontainers(t *testing.T) {
+	ctx := context.Background()
+
+	container := startPostgresForMigrations(t)
+	defer func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
+
+	config := migrationTestConfig(t, container)
+
 	db, err := config.SQLDB()
-	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
-	}
+	require.NoError(t, err, "Failed to connect to database")
 	defer db.Close()
 
 	// Run migrations UP
-	err = RunPostgresMigrations(ctx, db, testMigrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations UP: %v", err)
-	}
-
-	// Verify migrations were applied
-	if err := verifyTestMigrations(db); err != nil {
-		t.Fatalf("Migration verification failed after UP: %v", err)
-	}
+	require.NoError(t, RunPostgresMigrations(ctx, db, testMigrationFs, "migrations_test"), "Failed to run migrations UP")
+	require.NoError(t, verifyTestMigrations(db), "Migration verification failed after UP")
 
 	// Run migrations DOWN
-	err = RunPostgresMigrationsDown(ctx, db, testMigrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations DOWN: %v", err)
-	}
-
-	// Verify tables were dropped
-	if err := verifyTestTablesDropped(db); err != nil {
-		t.Fatalf("Migration DOWN verification failed: %v", err)
-	}
+	require.NoError(t, RunPostgresMigrationsDown(ctx, db, testMigrationFs, "migrations_test"), "Failed to run migrations DOWN")
+	require.NoError(t, verifyTestTablesDropped(db), "Migration DOWN verification failed")
 }
 
 func verifyTestMigrations(db *sql.DB) error {
@@ -101,8 +92,8 @@ func verifyTestMigrations(db *sql.DB) error {
 	var exists bool
 	err := db.QueryRow(`
 		SELECT EXISTS (
-			SELECT FROM pg_tables 
-			WHERE schemaname = 'public' AND 
+			SELECT FROM pg_tables
+			WHERE schemaname = 'public' AND
 			tablename = 'schema_migrations'
 		)
 	`).Scan(&exists)
@@ -130,8 +121,8 @@ func verifyTestMigrations(db *sql.DB) error {
 	for _, table := range tables {
 		err := db.QueryRow(`
 			SELECT EXISTS (
-				SELECT FROM pg_tables 
-				WHERE schemaname = 'public' AND 
+				SELECT FROM pg_tables
+				WHERE schemaname = 'public' AND
 				tablename = $1
 			)
 		`, table).Scan(&exists)
@@ -226,147 +217,59 @@ func verifyTestTablesDropped(db *sql.DB) error {
 func TestPostgresMigrationsFromGormPool(t *testing.T) {
 	ctx := context.Background()
 
-	// Start PostgreSQL container
-	postgresContainer, err := postgres.Run(ctx,
-		"postgres:18-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("testuser"),
-		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to start PostgreSQL container: %v", err)
-	}
+	container := startPostgresForMigrations(t)
 	defer func() {
-		if err := postgresContainer.Terminate(ctx); err != nil {
+		if err := container.Terminate(ctx); err != nil {
 			t.Logf("Failed to terminate container: %v", err)
 		}
 	}()
 
-	// Get connection details
-	host, err := postgresContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get host: %v", err)
-	}
-
-	port, err := postgresContainer.MappedPort(ctx, "5432")
-	if err != nil {
-		t.Fatalf("Failed to get port: %v", err)
-	}
-
-	// Create connection config
-	config := &ConnectionConfig{
-		DBType:       Postgresql,
-		Host:         host,
-		Port:         port.Int(),
-		Username:     "testuser",
-		Password:     "testpass",
-		DBName:       "testdb",
-		SSLMode:      "disable", // testcontainer has no TLS
-		Timeout:      10 * time.Second,
-		MaxIdleConns: 5,
-		MaxOpenConns: 10,
-	}
+	config := migrationTestConfig(t, container)
 
 	// Connect to the database using NewPool (GORM)
 	gormDB, err := NewPool(WithConnectionConfig(*config))
-	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
-	}
+	require.NoError(t, err, "Failed to connect to database")
 
 	// Get underlying sql.DB — the call-site pattern for GORM users
 	sqlDB, err := gormDB.DB()
-	if err != nil {
-		t.Fatalf("Failed to get sql.DB: %v", err)
-	}
+	require.NoError(t, err, "Failed to get sql.DB")
 	defer sqlDB.Close()
 
 	// Run migrations UP via the sql.DB variant
-	err = RunPostgresMigrations(ctx, sqlDB, testMigrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations UP: %v", err)
-	}
-
-	// Verify migrations were applied
-	if err := verifyTestMigrations(sqlDB); err != nil {
-		t.Fatalf("Migration verification failed after UP: %v", err)
-	}
+	require.NoError(t, RunPostgresMigrations(ctx, sqlDB, testMigrationFs, "migrations_test"), "Failed to run migrations UP")
+	require.NoError(t, verifyTestMigrations(sqlDB), "Migration verification failed after UP")
 
 	// Run migrations DOWN via the sql.DB variant
-	err = RunPostgresMigrationsDown(ctx, sqlDB, testMigrationFs, "migrations_test")
-	if err != nil {
-		t.Fatalf("Failed to run migrations DOWN: %v", err)
-	}
+	require.NoError(t, RunPostgresMigrationsDown(ctx, sqlDB, testMigrationFs, "migrations_test"), "Failed to run migrations DOWN")
+	require.NoError(t, verifyTestTablesDropped(sqlDB), "Migration DOWN verification failed")
 
-	// Verify tables were dropped
-	if err := verifyTestTablesDropped(sqlDB); err != nil {
-		t.Fatalf("Migration DOWN verification failed: %v", err)
-	}
+	// The pool must still be usable after migrations: setupMigration checks out a
+	// dedicated connection and releases it, so it never pins a pool slot.
+	require.NoError(t, sqlDB.PingContext(ctx), "pool should still be usable after migrations")
 }
 
 // TestPostgresMigrationsInvalidPath tests error handling with an invalid migration path
 func TestPostgresMigrationsInvalidPath(t *testing.T) {
 	ctx := context.Background()
 
-	// Start PostgreSQL container
-	postgresContainer, err := postgres.Run(ctx,
-		"postgres:18-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("testuser"),
-		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to start PostgreSQL container: %v", err)
-	}
+	container := startPostgresForMigrations(t)
 	defer func() {
-		if err := postgresContainer.Terminate(ctx); err != nil {
+		if err := container.Terminate(ctx); err != nil {
 			t.Logf("Failed to terminate container: %v", err)
 		}
 	}()
 
-	host, err := postgresContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get host: %v", err)
-	}
-
-	port, err := postgresContainer.MappedPort(ctx, "5432")
-	if err != nil {
-		t.Fatalf("Failed to get port: %v", err)
-	}
-
-	config := &ConnectionConfig{
-		DBType:       Postgresql,
-		Host:         host,
-		Port:         port.Int(),
-		Username:     "testuser",
-		Password:     "testpass",
-		DBName:       "testdb",
-		SSLMode:      "disable", // testcontainer has no TLS
-		Timeout:      10 * time.Second,
-		MaxIdleConns: 5,
-		MaxOpenConns: 10,
-	}
+	config := migrationTestConfig(t, container)
 
 	sqlDB, err := config.SQLDB()
-	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
-	}
+	require.NoError(t, err, "Failed to connect to database")
 	defer sqlDB.Close()
 
 	// Try to run migrations with non-existent path
-	err = RunPostgresMigrations(ctx, sqlDB, testMigrationFs, "non_existent_path")
-	if err == nil {
-		t.Error("Expected error with invalid migration path")
-	}
+	assert.Error(t, RunPostgresMigrations(ctx, sqlDB, testMigrationFs, "non_existent_path"),
+		"Expected error with invalid migration path")
 
 	// Try to run migrations down with non-existent path
-	err = RunPostgresMigrationsDown(ctx, sqlDB, testMigrationFs, "non_existent_path")
-	if err == nil {
-		t.Error("Expected error with invalid migration path")
-	}
+	assert.Error(t, RunPostgresMigrationsDown(ctx, sqlDB, testMigrationFs, "non_existent_path"),
+		"Expected error with invalid migration path")
 }
