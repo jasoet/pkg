@@ -24,7 +24,12 @@ jobs:
         run: nix develop --command golangci-lint run ./...
 
       - name: Test
-        run: nix develop --command go test -race -count=1 ./... -tags=!examples
+        run: nix develop --command go test -race -count=1 ./...
+
+      - name: Vet (including build-tagged code)
+        # Compiles and vets example/integration/argo-tagged files that the untagged
+        # build never sees, closing the gap where tagged code regressions slip past CI.
+        run: nix develop --command go vet -tags='example integration argo' ./...
 
       - name: API compatibility check
         # Breaking API changes are intended on `next` (v3 line) — informational there.
