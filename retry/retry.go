@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -95,9 +96,23 @@ func WithName(name string) Option {
 }
 
 // WithMaxRetries sets the maximum number of retries after the initial attempt.
+//
+// Note: WithMaxRetries(0) means unlimited retries (bounded only by context),
+// not "no retries". Use WithUnlimitedRetries for that intent explicitly, and
+// always pair unlimited retries with a context deadline so the loop terminates.
 func WithMaxRetries(maxRetries uint64) Option {
 	return func(c *Config) {
 		c.MaxRetries = maxRetries
+	}
+}
+
+// WithUnlimitedRetries configures the operation to be retried indefinitely,
+// bounded only by context cancellation or deadline. It is an explicit,
+// self-documenting alias for WithMaxRetries(0). Always combine it with a
+// context timeout or deadline so the retry loop terminates.
+func WithUnlimitedRetries() Option {
+	return func(c *Config) {
+		c.MaxRetries = 0
 	}
 }
 
@@ -154,8 +169,22 @@ func (c Config) validate() error {
 
 // doRetry is the shared implementation for Do and DoWithNotify.
 // When notifyFunc is non-nil, backoff.RetryNotify is used; otherwise backoff.Retry.
-// The span (if non-nil) is ended via defer in the caller before this function returns.
+// The span (if non-nil) is ended via defer within this function (see below)
+// before it returns.
 func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc func(error, time.Duration)) error {
+	// Guard against a nil operation before any work: the "never panics"
+	// contract requires an error here rather than a nil-pointer dereference.
+	if operation == nil {
+		return fmt.Errorf("%s: operation must not be nil", cfg.Name)
+	}
+
+	// If the context is already done, return before the first attempt so a
+	// non-idempotent operation is never called. backoff.Retry would otherwise
+	// invoke the operation once before observing the cancellation.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s canceled before first attempt: %w", cfg.Name, err)
+	}
+
 	// Setup OTel tracing if enabled.
 	var span trace.Span
 	if cfg.OTelConfig != nil && cfg.OTelConfig.IsTracingEnabled() {
@@ -253,7 +282,10 @@ func doRetry(ctx context.Context, cfg Config, operation Operation, notifyFunc fu
 				pkgotel.F("attempts", attempt),
 			)
 		}
-		return fmt.Errorf("%s canceled after %d attempts: %w", cfg.Name, attempt, ctx.Err())
+		// Wrap both the cancellation cause and the real underlying operation
+		// error so errors.Is finds either. errors.Join drops a nil lastErr.
+		return fmt.Errorf("%s canceled after %d attempts: %w",
+			cfg.Name, attempt, errors.Join(ctx.Err(), lastErr))
 	}
 
 	// Failed after retries.

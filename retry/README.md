@@ -11,7 +11,7 @@ Production-ready retry mechanism with exponential backoff using `cenkalti/backof
 - **OpenTelemetry Integration**: Automatic tracing and logging
 - **Permanent Errors**: Stop retrying for non-transient errors
 - **Functional Options**: Sensible defaults via `DefaultConfig`, overridden with `retry.New(...)` options
-- **No Panics**: Invalid configuration is reported as an error by `Do`/`DoWithNotify` before the first attempt
+- **No Panics**: Invalid configuration and a nil operation are reported as an error by `Do`/`DoWithNotify` before the first attempt
 
 ## Installation
 
@@ -91,7 +91,15 @@ Backed by [`ExampleDoWithNotify`](./example_test.go).
 
 ### Unlimited retries (use with a timeout)
 
-`retry.WithMaxRetries(0)` means unlimited retries — the loop ends only when the operation succeeds or the context is done. Always combine it with `context.WithTimeout` (or a deadline) so the loop terminates.
+`retry.WithMaxRetries(0)` means unlimited retries — the loop ends only when the operation succeeds or the context is done. Prefer the self-documenting `retry.WithUnlimitedRetries()`, which is an explicit alias for `WithMaxRetries(0)`. Always combine unlimited retries with `context.WithTimeout` (or a deadline) so the loop terminates.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+
+cfg := retry.New(retry.WithUnlimitedRetries())
+err := retry.Do(ctx, cfg, operation)
+```
 
 ## Configuration
 
@@ -113,6 +121,7 @@ All fields are exported and carry `yaml`/`mapstructure` tags (camelCase), so a `
 
 - `WithName(name string)` — operation name for logging/tracing
 - `WithMaxRetries(n uint64)` — max retries after the initial attempt (0 = unlimited)
+- `WithUnlimitedRetries()` — explicit alias for `WithMaxRetries(0)`; pair with a context deadline
 - `WithInitialInterval(d time.Duration)` — initial retry interval
 - `WithMaxInterval(d time.Duration)` — retry interval cap
 - `WithMultiplier(m float64)` — exponential backoff multiplier
@@ -128,11 +137,13 @@ Options never panic. `Do` and `DoWithNotify` validate the config before the firs
 - `MaxInterval` must be >= `InitialInterval`
 - `RandomizationFactor` must be in `[0, 1]`
 
+A nil `operation` is likewise reported as an error before the first attempt rather than panicking.
+
 ## How It Works
 
 1. **Exponential backoff**: each retry waits `InitialInterval × Multiplier^(retry-1)`, capped at `MaxInterval`. There is no overall time limit (`MaxElapsedTime` is disabled); termination is governed by `MaxRetries` and context.
 2. **Jitter**: `RandomizationFactor` spreads intervals to prevent a thundering herd.
-3. **Context awareness**: cancellation and deadlines stop the retry loop immediately; the returned error wraps `ctx.Err()`.
+3. **Context awareness**: cancellation and deadlines stop the retry loop immediately. If the context is already done when `Do`/`DoWithNotify` is called, the operation is not invoked at all (safe for non-idempotent operations). On cancellation the returned error wraps both `ctx.Err()` and the last operation error (via `errors.Join`), so `errors.Is` finds either the cancellation cause or the real underlying failure.
 4. **Permanent errors**: `retry.Permanent(err)` short-circuits the retry loop on the current attempt.
 
 ## Examples
