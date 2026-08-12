@@ -187,6 +187,11 @@ func TestNoHomeEndpoint(t *testing.T) {
 }
 
 func TestIntegration(t *testing.T) {
+	// Binds a real socket and makes an outbound HTTP request; skip under -short.
+	if testing.Short() {
+		t.Skip("binds a socket and dials it; skipped in -short mode")
+	}
+
 	var operationCalled atomic.Bool
 	var shutdownCalled atomic.Bool
 

@@ -27,20 +27,29 @@ type (
 )
 
 // Config holds the HTTP server configuration.
+//
+// Function-typed and other non-serializable fields carry `yaml:"-"
+// mapstructure:"-"` so that decoding a YAML document (e.g. via the config
+// package) that happens to contain keys like `operation:` does not fail; only
+// Port, BindAddress and ShutdownTimeout are populated from configuration.
 type Config struct {
 	// Port specifies the listen port. Use 0 for OS-assigned ephemeral port.
 	Port int `yaml:"port" mapstructure:"port"`
 
+	// BindAddress specifies the interface address to bind to (e.g. "127.0.0.1"
+	// for loopback-only). Empty binds all interfaces.
+	BindAddress string `yaml:"bindAddress" mapstructure:"bindAddress"`
+
 	// Operation is called synchronously before the server starts listening. Panics in Operation will propagate to the caller of Start.
-	Operation Operation
+	Operation Operation `yaml:"-" mapstructure:"-"`
 
-	Shutdown Shutdown
+	Shutdown Shutdown `yaml:"-" mapstructure:"-"`
 
-	Middleware []echo.MiddlewareFunc
+	Middleware []echo.MiddlewareFunc `yaml:"-" mapstructure:"-"`
 
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout" mapstructure:"shutdownTimeout"`
 
-	EchoConfigurer EchoConfigurer
+	EchoConfigurer EchoConfigurer `yaml:"-" mapstructure:"-"`
 
 	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
 }
@@ -51,6 +60,12 @@ type Option func(*Config)
 // WithPort sets the server listen port.
 func WithPort(port int) Option {
 	return func(c *Config) { c.Port = port }
+}
+
+// WithBindAddress sets the interface address to bind to (e.g. "127.0.0.1" to
+// listen on loopback only). The empty string (the default) binds all interfaces.
+func WithBindAddress(addr string) Option {
+	return func(c *Config) { c.BindAddress = addr }
 }
 
 // WithOperation sets the Operation callback.
@@ -68,7 +83,9 @@ func WithMiddleware(m ...echo.MiddlewareFunc) Option {
 	return func(c *Config) { c.Middleware = append(c.Middleware, m...) }
 }
 
-// WithShutdownTimeout sets the graceful-shutdown deadline.
+// WithShutdownTimeout sets the graceful-shutdown deadline. A value of 0 (or
+// negative) disables the additional deadline, so Shutdown honors only the
+// caller-supplied context instead of expiring immediately.
 func WithShutdownTimeout(d time.Duration) Option {
 	return func(c *Config) { c.ShutdownTimeout = d }
 }
@@ -175,9 +192,10 @@ func (s *Server) Start() error {
 	logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "Server.Start")
 
 	// Use a real listener to detect bind errors immediately instead of a racy timer.
-	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", fmt.Sprintf(":%v", s.config.Port))
+	address := fmt.Sprintf("%s:%d", s.config.BindAddress, s.config.Port)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", address)
 	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", s.config.Port, err)
+		return fmt.Errorf("failed to listen on %s: %w", address, err)
 	}
 	s.mu.Lock()
 	s.listener = ln
@@ -215,8 +233,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		logger := otel.NewLogHelper(context.Background(), s.config.OTelConfig, "github.com/jasoet/pkg/v3/server", "Server.Shutdown")
 		logger.Info("Gracefully shutting down server")
 
-		ctx, cancel := context.WithTimeout(ctx, s.config.ShutdownTimeout)
-		defer cancel()
+		// A non-positive ShutdownTimeout would produce an already-expired
+		// context and force an instant hard shutdown; treat it as "no extra
+		// deadline" and honor only the caller's context instead.
+		if s.config.ShutdownTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, s.config.ShutdownTimeout)
+			defer cancel()
+		}
 
 		if s.config.Shutdown != nil {
 			s.config.Shutdown(s.echo)
@@ -231,6 +255,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func setupEcho(config Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
+	// Suppress Echo's "⇨ http server started on ..." stdout line; the bound
+	// address is already emitted through the structured lifecycle log in Start.
+	e.HidePort = true
 
 	// Set HTTP timeouts to prevent slow-client and resource exhaustion attacks
 	e.Server.ReadHeaderTimeout = 5 * time.Second
@@ -238,10 +265,9 @@ func setupEcho(config Config) *echo.Echo {
 	e.Server.WriteTimeout = 30 * time.Second
 	e.Server.IdleTimeout = 120 * time.Second
 
-	// Enforce a default body size limit to prevent request body attacks
-	e.Use(middleware.BodyLimit("4M"))
-
-	// Auto-install OTel request instrumentation when configured, before user middleware
+	// Auto-install OTel request instrumentation FIRST (outermost) when
+	// configured, so it observes everything installed below it: the 413s emitted
+	// by BodyLimit and the 500s produced by Recover on a panicking handler.
 	if config.OTelConfig != nil {
 		if config.OTelConfig.IsTracingEnabled() {
 			e.Use(otelTracingMiddleware(config.OTelConfig))
@@ -250,6 +276,16 @@ func setupEcho(config Config) *echo.Echo {
 			e.Use(otelMetricsMiddleware(config.OTelConfig))
 		}
 	}
+
+	// Recover from panics in handlers, converting them into 500 responses so a
+	// panicking handler does not drop the connection (and is observed as a 500
+	// by the OTel middleware above rather than silently reported as a success).
+	e.Use(middleware.Recover())
+
+	// Enforce a default body size limit to prevent request body attacks. A body
+	// larger than the limit is rejected with 413, which the OTel middleware
+	// above records.
+	e.Use(middleware.BodyLimit("4M"))
 
 	// Add custom middleware
 	for _, m := range config.Middleware {

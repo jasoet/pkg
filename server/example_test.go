@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"strings"
+	"time"
 )
 
 func ExampleNew() {
@@ -39,13 +40,25 @@ func ExampleServer_Shutdown() {
 		return
 	}
 
-	// Shutdown from another goroutine; Start then returns nil once the server
-	// has drained.
-	go func() {
-		_ = srv.Shutdown(context.Background())
-	}()
+	// Start blocks, so run it in a goroutine and capture its result.
+	startErr := make(chan error, 1)
+	go func() { startErr <- srv.Start() }()
 
-	if err := srv.Start(); err != nil {
-		fmt.Println("error:", err)
+	// Wait until the listener is actually bound before shutting down. Without
+	// this, Shutdown can win the race and run as a no-op (the server was never
+	// started), leaving Start blocking forever.
+	for srv.Addr() == "" {
+		time.Sleep(time.Millisecond)
 	}
+
+	if err := srv.Shutdown(context.Background()); err != nil {
+		fmt.Println("shutdown error:", err)
+	}
+	if err := <-startErr; err != nil {
+		fmt.Println("start error:", err)
+	}
+
+	fmt.Println("stopped cleanly")
+	// Output:
+	// stopped cleanly
 }

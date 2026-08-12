@@ -2,13 +2,16 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -16,6 +19,16 @@ import (
 
 	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
+
+// serve issues an arbitrary request against the server's Echo instance via
+// httptest and returns the recorder.
+func serve(t *testing.T, srv *Server, method, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, nil)
+	rec := httptest.NewRecorder()
+	srv.Echo().ServeHTTP(rec, req)
+	return rec
+}
 
 // serveHealth issues a GET /health against the server's Echo instance via
 // httptest and returns the recorder.
@@ -135,6 +148,145 @@ func TestOTelMetricsMiddleware(t *testing.T) {
 	require.True(t, ok, "http.server.request.duration should be a Histogram[float64]")
 	require.Len(t, durationHist.DataPoints, 1)
 	assert.Equal(t, uint64(1), durationHist.DataPoints[0].Count)
+	// A sub-millisecond health request must still record a non-zero duration;
+	// whole-Milliseconds() truncation would floor it to 0.
+	assert.Positive(t, durationHist.DataPoints[0].Sum, "sub-millisecond request must record non-zero duration")
+}
+
+// TestOTelMiddleware_ErrorStatus is the coverage that was missing: it exercises
+// error-returning handlers and a 404 through the middleware and asserts that the
+// span/metric status is the real HTTP code (not a premature 200) and that the
+// span status is Error for 5xx only.
+func TestOTelMiddleware_ErrorStatus(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() {
+		assert.NoError(t, tp.Shutdown(context.Background()))
+		assert.NoError(t, mp.Shutdown(context.Background()))
+	})
+
+	cfg := pkgotel.NewConfig("test-service",
+		pkgotel.WithTracerProvider(tp),
+		pkgotel.WithMeterProvider(mp),
+	)
+	srv, err := New(WithPort(0), WithOTelConfig(cfg))
+	require.NoError(t, err)
+
+	srv.Echo().GET("/boom", func(c echo.Context) error {
+		return echo.NewHTTPError(http.StatusInternalServerError, "boom")
+	})
+	srv.Echo().GET("/plain-error", func(c echo.Context) error {
+		return errors.New("plain failure")
+	})
+	srv.Echo().GET("/bad", func(c echo.Context) error {
+		return echo.NewHTTPError(http.StatusBadRequest, "bad")
+	})
+
+	t.Run("500 HTTPError records real status and Error span status", func(t *testing.T) {
+		exporter.Reset()
+		rec := serve(t, srv, http.MethodGet, "/boom")
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		span := spans[0]
+		status, ok := spanAttribute(span, "http.response.status_code")
+		require.True(t, ok)
+		assert.Equal(t, int64(http.StatusInternalServerError), status.AsInt64())
+		assert.Equal(t, codes.Error, span.Status.Code)
+		assert.Equal(t, "GET /boom", span.Name)
+	})
+
+	t.Run("plain error maps to 500 and Error span status", func(t *testing.T) {
+		exporter.Reset()
+		rec := serve(t, srv, http.MethodGet, "/plain-error")
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		status, ok := spanAttribute(spans[0], "http.response.status_code")
+		require.True(t, ok)
+		assert.Equal(t, int64(http.StatusInternalServerError), status.AsInt64())
+		assert.Equal(t, codes.Error, spans[0].Status.Code)
+	})
+
+	t.Run("400 HTTPError records real status without Error span status", func(t *testing.T) {
+		exporter.Reset()
+		rec := serve(t, srv, http.MethodGet, "/bad")
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		status, ok := spanAttribute(spans[0], "http.response.status_code")
+		require.True(t, ok)
+		assert.Equal(t, int64(http.StatusBadRequest), status.AsInt64())
+		assert.NotEqual(t, codes.Error, spans[0].Status.Code, "4xx must not mark a server span as error")
+	})
+
+	t.Run("404 records real status and unmatched span name", func(t *testing.T) {
+		exporter.Reset()
+		rec := serve(t, srv, http.MethodGet, "/no-such-route")
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		span := spans[0]
+		status, ok := spanAttribute(span, "http.response.status_code")
+		require.True(t, ok)
+		assert.Equal(t, int64(http.StatusNotFound), status.AsInt64())
+		_, hasRoute := spanAttribute(span, "http.route")
+		assert.False(t, hasRoute, "unmatched route must not set an empty http.route")
+		assert.Equal(t, "GET unmatched", span.Name)
+	})
+
+	t.Run("metrics attribute the real status codes, never a premature 200", func(t *testing.T) {
+		metrics := scopeMetricsByName(t, reader, "http.server")
+		count, ok := metrics["http.server.request.count"]
+		require.True(t, ok)
+		countSum, ok := count.Data.(metricdata.Sum[int64])
+		require.True(t, ok)
+
+		seen := map[int64]bool{}
+		for _, dp := range countSum.DataPoints {
+			if sc, ok := dp.Attributes.Value("http.response.status_code"); ok {
+				seen[sc.AsInt64()] = true
+			}
+		}
+		assert.True(t, seen[http.StatusInternalServerError], "expected a 500 datapoint")
+		assert.True(t, seen[http.StatusBadRequest], "expected a 400 datapoint")
+		assert.True(t, seen[http.StatusNotFound], "expected a 404 datapoint")
+		assert.False(t, seen[http.StatusOK], "no request returned 200; no 200 datapoint must exist")
+	})
+}
+
+// TestOTelTracing_RedactsSensitiveQuery verifies that secret query-parameter
+// values are redacted from the url.full span attribute.
+func TestOTelTracing_RedactsSensitiveQuery(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() {
+		assert.NoError(t, tp.Shutdown(context.Background()))
+	})
+
+	cfg := pkgotel.NewConfig("test-service", pkgotel.WithTracerProvider(tp))
+	srv, err := New(WithPort(0), WithOTelConfig(cfg))
+	require.NoError(t, err)
+	srv.Echo().GET("/data", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	rec := serve(t, srv, http.MethodGet, "/data?access_token=supersecret&page=2")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	fullURL, ok := spanAttribute(spans[0], "url.full")
+	require.True(t, ok)
+	assert.NotContains(t, fullURL.AsString(), "supersecret", "secret query value must be redacted")
+	assert.Contains(t, fullURL.AsString(), "access_token=REDACTED")
+	assert.Contains(t, fullURL.AsString(), "page=2", "non-sensitive query params must be preserved")
 }
 
 func TestOTelNilConfig(t *testing.T) {

@@ -35,6 +35,11 @@ func addrPort(addr string) string {
 }
 
 func TestServerStartShutdown(t *testing.T) {
+	// Binds a real socket and dials it over the loopback interface; skip under -short.
+	if testing.Short() {
+		t.Skip("binds a socket and dials it; skipped in -short mode")
+	}
+
 	srv, err := New(WithPort(0))
 	require.NoError(t, err)
 	require.NotNil(t, srv.Echo(), "Echo instance should be available before Start")
