@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -40,18 +41,28 @@ func NewClient(opts ...Option) (client.Client, error) {
 		Logger:    NewZerologAdapter(zerologLogger),
 	}
 
-	// Add OTel tracing interceptor if configured
+	// Configure TLS / credentials for TLS-enabled servers and Temporal Cloud.
+	if config.TLS != nil {
+		clientOption.ConnectionOptions.TLS = config.TLS
+	}
+	if config.Credentials != nil {
+		clientOption.Credentials = config.Credentials
+	}
+
+	// Add OTel tracing interceptor if configured. Tracing was explicitly opted
+	// into, so a failure to construct the interceptor is fatal — returning it
+	// rather than silently proceeding without tracing.
 	if config.OTelConfig != nil && config.OTelConfig.IsTracingEnabled() {
 		tracerOpts := temporalotel.TracerOptions{
 			Tracer: config.OTelConfig.GetTracer("temporal-sdk-go"),
 		}
 		tracingInterceptor, err := temporalotel.NewTracingInterceptor(tracerOpts)
 		if err != nil {
-			logger.Error(err, "Failed to create OTel tracing interceptor, continuing without tracing")
-		} else {
-			clientOption.Interceptors = append(clientOption.Interceptors, tracingInterceptor)
-			logger.Debug("OTel tracing interceptor added to Temporal client")
+			logger.Error(err, "Failed to create OTel tracing interceptor")
+			return nil, fmt.Errorf("create OTel tracing interceptor: %w", err)
 		}
+		clientOption.Interceptors = append(clientOption.Interceptors, tracingInterceptor)
+		logger.Debug("OTel tracing interceptor added to Temporal client")
 	}
 
 	// Add OTel metrics handler if configured
@@ -68,11 +79,17 @@ func NewClient(opts ...Option) (client.Client, error) {
 		logger.Debug("OTel metrics handler added to Temporal client")
 	}
 
+	// Apply caller-supplied passthrough hooks last so they can override any
+	// option assembled above.
+	for _, hook := range config.clientOptionsHooks {
+		hook(&clientOption)
+	}
+
 	logger.Debug("Connecting to Temporal server")
 	c, err := client.Dial(clientOption)
 	if err != nil {
 		logger.Error(err, "Failed to connect to Temporal server")
-		return nil, err
+		return nil, fmt.Errorf("dial temporal server %q: %w", config.HostPort, err)
 	}
 
 	logger.Debug("Successfully connected to Temporal server")

@@ -2,10 +2,12 @@ package temporal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 
 	"github.com/jasoet/pkg/v3/otel"
@@ -137,39 +139,68 @@ func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleN
 	return handle, nil
 }
 
+// DeleteSchedules deletes every schedule this manager is tracking. It is
+// convergent under partial failure: each schedule is deleted independently,
+// a NotFound response is treated as success (the schedule is already gone),
+// and every successfully-removed schedule is dropped from tracking so a retry
+// converges instead of re-deleting or re-hitting NotFound. Schedules whose
+// deletion genuinely failed are left in tracking and their errors are joined
+// and returned. RPCs are made without holding the manager lock.
 func (sm *ScheduleManager) DeleteSchedules(ctx context.Context) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.DeleteSchedules")
 
+	// Snapshot the tracked handles under the lock, then release it before any
+	// network I/O so concurrent CreateSchedule calls are not blocked and are
+	// not silently discarded by a bulk map reset.
 	sm.mu.RLock()
-	scheduleCount := len(sm.scheduleHandlers)
+	snapshot := make(map[string]client.ScheduleHandle, len(sm.scheduleHandlers))
+	for name, handle := range sm.scheduleHandlers {
+		snapshot[name] = handle
+	}
 	sm.mu.RUnlock()
 
-	logger.Debug("Deleting all Temporal schedules", otel.F("scheduleCount", scheduleCount))
+	logger.Debug("Deleting all Temporal schedules", otel.F("scheduleCount", len(snapshot)))
 
-	if scheduleCount == 0 {
+	if len(snapshot) == 0 {
 		logger.Debug("No schedules to delete")
 		return nil
 	}
 
-	sm.mu.RLock()
-	for name, handle := range sm.scheduleHandlers {
+	var errs []error
+	deleted := 0
+	for name, handle := range snapshot {
 		logger.Debug("Deleting schedule", otel.F("scheduleName", name))
 		err := handle.Delete(ctx)
-		if err != nil {
-			sm.mu.RUnlock()
+		if err != nil && !isScheduleNotFound(err) {
 			logger.Error(err, "Failed to delete schedule", otel.F("scheduleName", name))
-			return fmt.Errorf("delete schedule %q: %w", name, err)
+			// Leave it in tracking so a subsequent retry can converge.
+			errs = append(errs, fmt.Errorf("delete schedule %q: %w", name, err))
+			continue
 		}
+
+		// Success or already-gone: drop it from tracking under the lock. Only
+		// delete the specific entry (never reset the whole map) so schedules
+		// created concurrently are preserved.
+		sm.mu.Lock()
+		delete(sm.scheduleHandlers, name)
+		sm.mu.Unlock()
+		deleted++
 		logger.Debug("Schedule deleted successfully", otel.F("scheduleName", name))
 	}
-	sm.mu.RUnlock()
 
-	sm.mu.Lock()
-	sm.scheduleHandlers = make(map[string]client.ScheduleHandle)
-	sm.mu.Unlock()
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
 
-	logger.Debug("All schedules deleted successfully", otel.F("deletedCount", scheduleCount))
+	logger.Debug("All schedules deleted successfully", otel.F("deletedCount", deleted))
 	return nil
+}
+
+// isScheduleNotFound reports whether err indicates the schedule no longer
+// exists, in which case deletion is already effectively complete.
+func isScheduleNotFound(err error) bool {
+	var notFound *serviceerror.NotFound
+	return errors.As(err, &notFound)
 }
 
 func (sm *ScheduleManager) GetClient() client.Client {

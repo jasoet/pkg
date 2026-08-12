@@ -3,6 +3,7 @@
 package workflows
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/jasoet/pkg/v3/examples/temporal/activities"
@@ -80,7 +81,7 @@ func TimerWorkflow(ctx workflow.Context, duration time.Duration) (string, error)
 			"time", currentTime.Format(time.RFC3339))
 
 		// Add a timestamp to our results
-		results = append(results, "Iteration "+string('A'+i)+": "+currentTime.Format(time.RFC3339))
+		results = append(results, "Iteration "+strconv.Itoa(i+1)+": "+currentTime.Format(time.RFC3339))
 	}
 
 	// Step 4: Implement a timer-based selector
@@ -134,7 +135,7 @@ func TimerWorkflow(ctx workflow.Context, duration time.Duration) (string, error)
 	// Step 5: Combine results and return
 	result := "Timer Workflow Results:\n"
 	for i, r := range results {
-		result += "- Result " + string('0'+i) + ": " + r + "\n"
+		result += "- Result " + strconv.Itoa(i) + ": " + r + "\n"
 	}
 
 	logger.Info("Workflow completed successfully", "result", result)

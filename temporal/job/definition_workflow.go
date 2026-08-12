@@ -45,17 +45,23 @@ func (d *Definition) Describe(ctx context.Context, c client.Client, wfID, runID 
 }
 
 // History returns the activity-event extraction of one run's history.
+//
+// opts.MaxEvents caps how many history events are scanned; a value of zero (or
+// negative) means "no cap" — the full history is iterated (the caller takes
+// responsibility for potentially large histories).
 func (d *Definition) History(ctx context.Context, c client.Client, wfID, runID string, opts HistoryOpts) (RunHistory, error) {
-	limit := opts.MaxEvents
-	if limit == 0 {
-		limit = 500
-	}
+	limit := opts.MaxEvents // <= 0 means no cap
 	iter := c.GetWorkflowHistory(ctx, wfID, runID, false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
 	hist := RunHistory{WorkflowID: wfID, RunID: runID}
-	scheduled := map[int64]*historypb.HistoryEvent{} // event ID -> scheduled event
+	scheduled := map[int64]*historypb.HistoryEvent{} // scheduled event ID -> scheduled event
+	// byScheduledID maps an activity's scheduled-event ID to its index in
+	// hist.Activities, so completion/failure events are attributed to the
+	// correct activity even when several activities run concurrently — the
+	// completion order does not match the start order.
+	byScheduledID := map[int64]int{}
 	count := 0
 	for iter.HasNext() {
-		if count >= limit {
+		if limit > 0 && count >= limit {
 			hist.Truncated = true
 			break
 		}
@@ -68,18 +74,23 @@ func (d *Definition) History(ctx context.Context, c client.Client, wfID, runID s
 		case *historypb.HistoryEvent_ActivityTaskScheduledEventAttributes:
 			scheduled[ev.EventId] = ev
 		case *historypb.HistoryEvent_ActivityTaskStartedEventAttributes:
-			sched := scheduled[attrs.ActivityTaskStartedEventAttributes.GetScheduledEventId()]
-			if sched != nil {
+			schedID := attrs.ActivityTaskStartedEventAttributes.GetScheduledEventId()
+			if sched := scheduled[schedID]; sched != nil {
 				hist.Activities = append(hist.Activities, buildActivityEventFromStarted(sched, ev))
+				byScheduledID[schedID] = len(hist.Activities) - 1
 			}
 		case *historypb.HistoryEvent_ActivityTaskCompletedEventAttributes:
-			updateLatestRunning(&hist, ev.GetEventTime().AsTime(), ActivityCompleted, payloadToBytes(attrs.ActivityTaskCompletedEventAttributes.GetResult()), "")
+			a := attrs.ActivityTaskCompletedEventAttributes
+			closeActivity(&hist, byScheduledID, a.GetScheduledEventId(), ev.GetEventTime().AsTime(), ActivityCompleted, payloadToBytes(a.GetResult()), "")
 		case *historypb.HistoryEvent_ActivityTaskFailedEventAttributes:
-			updateLatestRunning(&hist, ev.GetEventTime().AsTime(), ActivityFailed, nil, attrs.ActivityTaskFailedEventAttributes.GetFailure().GetMessage())
+			a := attrs.ActivityTaskFailedEventAttributes
+			closeActivity(&hist, byScheduledID, a.GetScheduledEventId(), ev.GetEventTime().AsTime(), ActivityFailed, nil, a.GetFailure().GetMessage())
 		case *historypb.HistoryEvent_ActivityTaskTimedOutEventAttributes:
-			updateLatestRunning(&hist, ev.GetEventTime().AsTime(), ActivityTimedOut, nil, attrs.ActivityTaskTimedOutEventAttributes.GetFailure().GetMessage())
+			a := attrs.ActivityTaskTimedOutEventAttributes
+			closeActivity(&hist, byScheduledID, a.GetScheduledEventId(), ev.GetEventTime().AsTime(), ActivityTimedOut, nil, a.GetFailure().GetMessage())
 		case *historypb.HistoryEvent_ActivityTaskCanceledEventAttributes:
-			updateLatestRunning(&hist, ev.GetEventTime().AsTime(), ActivityCanceled, nil, "")
+			a := attrs.ActivityTaskCanceledEventAttributes
+			closeActivity(&hist, byScheduledID, a.GetScheduledEventId(), ev.GetEventTime().AsTime(), ActivityCanceled, nil, "")
 		}
 	}
 	return hist, nil
@@ -96,21 +107,22 @@ func buildActivityEventFromStarted(scheduled, started *historypb.HistoryEvent) A
 	}
 }
 
-// updateLatestRunning closes out the latest ActivityEvent in hist that is still
-// in ActivityStarted state. Temporal emits events in monotonic EventID order so
-// the latest still-running activity is the one being closed.
-func updateLatestRunning(hist *RunHistory, closeTime time.Time, status ActivityStatus, result []byte, errMsg string) {
-	for i := len(hist.Activities) - 1; i >= 0; i-- {
-		a := &hist.Activities[i]
-		if a.Status == ActivityStarted {
-			a.Status = status
-			a.CloseTime = closeTime
-			a.Duration = closeTime.Sub(a.StartTime)
-			a.Result = result
-			a.Error = errMsg
-			return
-		}
+// closeActivity finalizes the activity identified by scheduledID (the
+// scheduled-event ID carried by every activity close event). Matching by
+// scheduled-event ID rather than "the latest still-running activity" is what
+// makes attribution correct under concurrent activities. Unknown IDs (e.g. an
+// activity whose Started event was truncated or never seen) are ignored.
+func closeActivity(hist *RunHistory, byScheduledID map[int64]int, scheduledID int64, closeTime time.Time, status ActivityStatus, result []byte, errMsg string) {
+	idx, ok := byScheduledID[scheduledID]
+	if !ok {
+		return
 	}
+	a := &hist.Activities[idx]
+	a.Status = status
+	a.CloseTime = closeTime
+	a.Duration = closeTime.Sub(a.StartTime)
+	a.Result = result
+	a.Error = errMsg
 }
 
 func payloadToBytes(p *commonpb.Payloads) []byte {
@@ -212,16 +224,27 @@ func (d *Definition) ListRuns(ctx context.Context, c client.Client, opts ListOpt
 	return page, nil
 }
 
-// Stats returns running/completed-today/failed-today counts scoped to this
-// Definition's workflow IDs.
+// Stats returns running plus completed/failed counts scoped to this
+// Definition's workflow IDs. When opts.TodayOnly is true the completed/failed
+// counts are restricted to runs that closed on the current calendar day (in
+// opts.Location, defaulting to UTC); otherwise they cover all completed/failed
+// runs, all-time.
 func (d *Definition) Stats(ctx context.Context, c client.Client, opts StatsOpts) (DefinitionStats, error) {
 	now := time.Now()
-	loc := opts.Location
-	if loc == nil {
-		loc = time.UTC
-	}
-	startOfDay := time.Date(now.In(loc).Year(), now.In(loc).Month(), now.In(loc).Day(), 0, 0, 0, 0, loc)
 	prefix := fmt.Sprintf("WorkflowId STARTS_WITH %q", d.Name+"-")
+
+	// todayFilter is appended to the completed/failed queries only when
+	// TodayOnly is set, so opts.TodayOnly is actually honored.
+	todayFilter := ""
+	if opts.TodayOnly {
+		loc := opts.Location
+		if loc == nil {
+			loc = time.UTC
+		}
+		nowLoc := now.In(loc)
+		startOfDay := time.Date(nowLoc.Year(), nowLoc.Month(), nowLoc.Day(), 0, 0, 0, 0, loc)
+		todayFilter = fmt.Sprintf(" AND CloseTime >= %q", startOfDay.Format(time.RFC3339))
+	}
 
 	countQ := func(q string) (int64, error) {
 		resp, err := c.CountWorkflow(ctx, &workflowservice.CountWorkflowExecutionsRequest{Query: q})
@@ -234,11 +257,11 @@ func (d *Definition) Stats(ctx context.Context, c client.Client, opts StatsOpts)
 	if err != nil {
 		return DefinitionStats{}, err
 	}
-	completed, err := countQ(prefix + fmt.Sprintf(" AND ExecutionStatus = \"Completed\" AND CloseTime >= %q", startOfDay.Format(time.RFC3339)))
+	completed, err := countQ(prefix + " AND ExecutionStatus = \"Completed\"" + todayFilter)
 	if err != nil {
 		return DefinitionStats{}, err
 	}
-	failed, err := countQ(prefix + fmt.Sprintf(" AND ExecutionStatus = \"Failed\" AND CloseTime >= %q", startOfDay.Format(time.RFC3339)))
+	failed, err := countQ(prefix + " AND ExecutionStatus = \"Failed\"" + todayFilter)
 	if err != nil {
 		return DefinitionStats{}, err
 	}

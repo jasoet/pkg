@@ -71,6 +71,24 @@ func main() {
 | `WithHostPort(addr)` | Set the Temporal frontend address (`host:port`) |
 | `WithNamespace(ns)` | Set the Temporal namespace |
 | `WithOTelConfig(otelCfg)` | Attach OTel tracing interceptor and metrics handler |
+| `WithTLS(tlsCfg)` | Connect over TLS (required for Temporal Cloud / TLS-enabled servers) |
+| `WithCredentials(creds)` | Authenticate the client (e.g. Temporal Cloud API key via `client.NewAPIKeyStaticCredentials`, or mTLS) |
+| `WithClientOptions(fn)` | Escape hatch: mutate the assembled `client.Options` before dialing for any SDK option not surfaced above |
+
+If tracing is explicitly enabled via `WithOTelConfig` and the tracing interceptor
+cannot be constructed, `NewClient` returns that error instead of silently
+proceeding without tracing.
+
+Connecting to Temporal Cloud:
+
+```go
+c, err := temporal.NewClient(
+    temporal.WithHostPort("your-namespace.a1b2c.tmprl.cloud:7233"),
+    temporal.WithNamespace("your-namespace.a1b2c"),
+    temporal.WithTLS(&tls.Config{}),
+    temporal.WithCredentials(client.NewAPIKeyStaticCredentials("<api-key>")),
+)
+```
 
 ### 2. Manage Workers
 
@@ -100,7 +118,7 @@ if err := wm.StartAll(ctx); err != nil {
 
 ### 3. Query and Monitor Workflows
 
-`NewWorkflowManager(c)` uses the `default` namespace; use `NewWorkflowManagerWithNamespace(c, ns)` for another one. The manager has no `Close` — there is nothing to release; the client is caller-owned.
+`NewWorkflowManager(c)` inherits the namespace the client was configured with, so every operation (list, count, history, describe, cancel, …) agrees on the namespace. Use `NewWorkflowManagerWithNamespace(c, ns)` only to scope the visibility queries (`ListWorkflows`/`CountWorkflows`) to a *different* namespace; the other operations still target the client's namespace. The manager has no `Close` — there is nothing to release; the client is caller-owned.
 
 ```go
 wfm, err := temporal.NewWorkflowManagerWithNamespace(c, "production")
@@ -201,11 +219,16 @@ Runnable examples live in [examples/temporal](../examples/temporal/):
 - **[Workflows](../examples/temporal/workflows/)** — sample workflow implementations
 - **[Scheduler](../examples/temporal/scheduler/)** — scheduling workflows
 
-The examples are guarded by the `example` build tag:
+The `workflows`, `activities`, `worker`, and `scheduler` example packages are
+guarded by the `example` build tag:
 
 ```bash
 go build -tags=example ./examples/temporal/...
 ```
+
+The **dashboard** (`examples/temporal/dashboard/main.go`) is the exception: it is
+a real `main` package deliberately left untagged so it can be run directly with
+`go run` (see below).
 
 ### Running the Dashboard Example
 

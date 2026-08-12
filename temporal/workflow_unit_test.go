@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -14,10 +13,8 @@ import (
 	"go.temporal.io/api/enums/v1"
 	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
-	"go.temporal.io/api/workflowservicemock/v1"
 	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/mocks"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -114,53 +111,48 @@ func TestQueryWorkflow(t *testing.T) {
 func TestListFailedWorkflows(t *testing.T) {
 	ctx := context.Background()
 
-	newManager := func(t *testing.T, svc *workflowservicemock.MockWorkflowServiceClient) *WorkflowManager {
-		t.Helper()
+	t.Run("SuccessMapsExecutions", func(t *testing.T) {
 		c := mocks.NewClient(t)
-		c.On("WorkflowService").Return(svc)
 		wm, err := NewWorkflowManagerWithNamespace(c, "test-ns")
 		require.NoError(t, err)
-		return wm
-	}
-
-	t.Run("SuccessMapsExecutions", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc := workflowservicemock.NewMockWorkflowServiceClient(ctrl)
-		wm := newManager(t, svc)
 
 		start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 		closed := start.Add(5 * time.Second)
 
-		svc.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, req *workflowservice.ListWorkflowExecutionsRequest, _ ...grpc.CallOption) (*workflowservice.ListWorkflowExecutionsResponse, error) {
-				assert.Equal(t, "test-ns", req.Namespace)
-				assert.Equal(t, "ExecutionStatus='Failed'", req.Query)
-				assert.Equal(t, int32(10), req.PageSize)
-				return &workflowservice.ListWorkflowExecutionsResponse{
-					Executions: []*workflowpb.WorkflowExecutionInfo{
-						{
-							Execution:     &commonpb.WorkflowExecution{WorkflowId: "wf-1", RunId: "run-1"},
-							Type:          &commonpb.WorkflowType{Name: "OrderWorkflow"},
-							Status:        enums.WORKFLOW_EXECUTION_STATUS_FAILED,
-							StartTime:     timestamppb.New(start),
-							CloseTime:     timestamppb.New(closed),
-							HistoryLength: 42,
-						},
-						{
-							// Still running: no CloseTime set.
-							Execution:     &commonpb.WorkflowExecution{WorkflowId: "wf-2", RunId: "run-2"},
-							Type:          &commonpb.WorkflowType{Name: "EmailWorkflow"},
-							Status:        enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
-							StartTime:     timestamppb.New(start),
-							HistoryLength: 7,
-						},
+		var captured *workflowservice.ListWorkflowExecutionsRequest
+		c.On("ListWorkflow", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				captured = args.Get(1).(*workflowservice.ListWorkflowExecutionsRequest)
+			}).
+			Return(&workflowservice.ListWorkflowExecutionsResponse{
+				Executions: []*workflowpb.WorkflowExecutionInfo{
+					{
+						Execution:     &commonpb.WorkflowExecution{WorkflowId: "wf-1", RunId: "run-1"},
+						Type:          &commonpb.WorkflowType{Name: "OrderWorkflow"},
+						Status:        enums.WORKFLOW_EXECUTION_STATUS_FAILED,
+						StartTime:     timestamppb.New(start),
+						CloseTime:     timestamppb.New(closed),
+						HistoryLength: 42,
 					},
-				}, nil
-			})
+					{
+						// Still running: no CloseTime set.
+						Execution:     &commonpb.WorkflowExecution{WorkflowId: "wf-2", RunId: "run-2"},
+						Type:          &commonpb.WorkflowType{Name: "EmailWorkflow"},
+						Status:        enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+						StartTime:     timestamppb.New(start),
+						HistoryLength: 7,
+					},
+				},
+			}, nil)
 
 		workflows, err := wm.ListFailedWorkflows(ctx, 10)
 		require.NoError(t, err)
 		require.Len(t, workflows, 2)
+
+		require.NotNil(t, captured)
+		assert.Equal(t, "test-ns", captured.Namespace, "explicit namespace must be sent to the high-level ListWorkflow")
+		assert.Equal(t, "ExecutionStatus='Failed'", captured.Query)
+		assert.Equal(t, int32(10), captured.PageSize)
 
 		first := workflows[0]
 		assert.Equal(t, "wf-1", first.WorkflowID)
@@ -179,11 +171,11 @@ func TestListFailedWorkflows(t *testing.T) {
 	})
 
 	t.Run("SuccessEmptyResult", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc := workflowservicemock.NewMockWorkflowServiceClient(ctrl)
-		wm := newManager(t, svc)
+		c := mocks.NewClient(t)
+		wm, err := NewWorkflowManagerWithNamespace(c, "test-ns")
+		require.NoError(t, err)
 
-		svc.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any()).
+		c.On("ListWorkflow", mock.Anything, mock.Anything).
 			Return(&workflowservice.ListWorkflowExecutionsResponse{}, nil)
 
 		workflows, err := wm.ListFailedWorkflows(ctx, 10)
@@ -193,11 +185,11 @@ func TestListFailedWorkflows(t *testing.T) {
 	})
 
 	t.Run("Error", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc := workflowservicemock.NewMockWorkflowServiceClient(ctrl)
-		wm := newManager(t, svc)
+		c := mocks.NewClient(t)
+		wm, err := NewWorkflowManagerWithNamespace(c, "test-ns")
+		require.NoError(t, err)
 
-		svc.EXPECT().ListWorkflowExecutions(gomock.Any(), gomock.Any()).
+		c.On("ListWorkflow", mock.Anything, mock.Anything).
 			Return(nil, errors.New("visibility store unavailable"))
 
 		workflows, err := wm.ListFailedWorkflows(ctx, 10)
@@ -205,5 +197,71 @@ func TestListFailedWorkflows(t *testing.T) {
 		assert.Nil(t, workflows)
 		assert.Contains(t, err.Error(), "list workflow executions")
 		assert.Contains(t, err.Error(), "visibility store unavailable")
+	})
+}
+
+// TestWorkflowManagerNamespaceAgreement pins the split-brain fix: the default
+// constructor must NOT hardcode "default" into visibility queries — it must
+// leave the request namespace empty so the SDK client fills in its own
+// configured namespace, keeping List/Count in agreement with the client-method
+// calls (Describe/Cancel/…). The explicit constructor forwards its namespace.
+func TestWorkflowManagerNamespaceAgreement(t *testing.T) {
+	ctx := context.Background()
+
+	captureList := func(t *testing.T, c *mocks.Client) func() *workflowservice.ListWorkflowExecutionsRequest {
+		t.Helper()
+		var captured *workflowservice.ListWorkflowExecutionsRequest
+		c.On("ListWorkflow", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				captured = args.Get(1).(*workflowservice.ListWorkflowExecutionsRequest)
+			}).
+			Return(&workflowservice.ListWorkflowExecutionsResponse{}, nil)
+		return func() *workflowservice.ListWorkflowExecutionsRequest { return captured }
+	}
+
+	t.Run("DefaultConstructorLeavesNamespaceEmpty", func(t *testing.T) {
+		c := mocks.NewClient(t)
+		get := captureList(t, c)
+
+		wm, err := NewWorkflowManager(c)
+		require.NoError(t, err)
+
+		_, err = wm.ListWorkflows(ctx, 5, "")
+		require.NoError(t, err)
+		require.NotNil(t, get())
+		assert.Empty(t, get().Namespace,
+			"NewWorkflowManager must not hardcode a namespace; the SDK client fills in its own")
+	})
+
+	t.Run("ExplicitConstructorForwardsNamespace", func(t *testing.T) {
+		c := mocks.NewClient(t)
+		get := captureList(t, c)
+
+		wm, err := NewWorkflowManagerWithNamespace(c, "production")
+		require.NoError(t, err)
+
+		_, err = wm.ListWorkflows(ctx, 5, "")
+		require.NoError(t, err)
+		require.NotNil(t, get())
+		assert.Equal(t, "production", get().Namespace)
+	})
+
+	t.Run("CountUsesSameNamespaceRule", func(t *testing.T) {
+		c := mocks.NewClient(t)
+		var captured *workflowservice.CountWorkflowExecutionsRequest
+		c.On("CountWorkflow", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				captured = args.Get(1).(*workflowservice.CountWorkflowExecutionsRequest)
+			}).
+			Return(&workflowservice.CountWorkflowExecutionsResponse{Count: 3}, nil)
+
+		wm, err := NewWorkflowManager(c)
+		require.NoError(t, err)
+
+		count, err := wm.CountWorkflows(ctx, "ExecutionStatus='Running'")
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), count)
+		require.NotNil(t, captured)
+		assert.Empty(t, captured.Namespace, "default manager must leave Count namespace empty")
 	})
 }

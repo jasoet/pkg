@@ -7,17 +7,27 @@ import (
 	"sort"
 	"time"
 
-	"go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
+	historypb "go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 
 	"github.com/jasoet/pkg/v3/otel"
 )
 
-// WorkflowManager provides workflow query and management operations
+// WorkflowManager provides workflow query and management operations.
+//
+// All operations resolve their namespace consistently: an empty namespace
+// (the default from NewWorkflowManager) means "use the namespace the client
+// was configured with", matching the client-method calls (Describe/Cancel/
+// Signal/Query/GetResult) which always target the client's namespace. Supply
+// an explicit namespace via NewWorkflowManagerWithNamespace only to scope the
+// visibility queries (List/Count) to a different namespace.
 type WorkflowManager struct {
-	client    client.Client
+	client client.Client
+	// namespace scopes List/Count visibility queries. Empty means the queries
+	// omit the namespace so the SDK client fills in its own configured
+	// namespace — keeping every method in agreement.
 	namespace string
 }
 
@@ -55,9 +65,12 @@ func validateQueryParam(param string) error {
 	return nil
 }
 
-// NewWorkflowManagerWithNamespace creates a new WorkflowManager with an
-// explicit namespace for the given client. The caller retains ownership of
-// the client and is responsible for closing it.
+// NewWorkflowManagerWithNamespace creates a new WorkflowManager that scopes its
+// List/Count visibility queries to the given namespace. Pass "" to inherit the
+// client's configured namespace (equivalent to NewWorkflowManager). Supplying a
+// namespace that differs from the client's affects only List/Count; the other
+// operations always target the client's namespace. The caller retains ownership
+// of the client and is responsible for closing it.
 func NewWorkflowManagerWithNamespace(client client.Client, namespace string) (*WorkflowManager, error) {
 	ctx := context.Background()
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewWorkflowManagerWithNamespace")
@@ -73,12 +86,13 @@ func NewWorkflowManagerWithNamespace(client client.Client, namespace string) (*W
 	}, nil
 }
 
-// NewWorkflowManager creates a new WorkflowManager instance using the
-// provided client with the "default" namespace; use
-// NewWorkflowManagerWithNamespace to specify a different namespace.
-// The caller retains ownership of the client and is responsible for closing it.
+// NewWorkflowManager creates a new WorkflowManager that inherits the namespace
+// the client was configured with, so every operation agrees on the namespace.
+// Use NewWorkflowManagerWithNamespace to scope visibility queries to a different
+// namespace. The caller retains ownership of the client and is responsible for
+// closing it.
 func NewWorkflowManager(client client.Client) (*WorkflowManager, error) {
-	return NewWorkflowManagerWithNamespace(client, "default")
+	return NewWorkflowManagerWithNamespace(client, "")
 }
 
 // GetClient returns the Temporal client provided at construction. The client
@@ -95,13 +109,17 @@ func (wm *WorkflowManager) ListWorkflows(ctx context.Context, pageSize int, quer
 		otel.F("pageSize", pageSize),
 		otel.F("query", query))
 
+	// Use the high-level client method: when Namespace is empty it fills in the
+	// client's configured namespace, keeping List consistent with the
+	// client-method calls (Describe/Cancel/…). It also routes through the
+	// tracing interceptor, unlike a raw WorkflowService() call.
 	request := &workflowservice.ListWorkflowExecutionsRequest{
 		Namespace: wm.namespace,
 		PageSize:  int32(pageSize),
 		Query:     query,
 	}
 
-	response, err := wm.client.WorkflowService().ListWorkflowExecutions(ctx, request)
+	response, err := wm.client.ListWorkflow(ctx, request)
 	if err != nil {
 		logger.Error(err, "Failed to list workflow executions")
 		return nil, fmt.Errorf("list workflow executions: %w", err)
@@ -187,7 +205,10 @@ func (wm *WorkflowManager) GetWorkflowStatus(ctx context.Context, workflowID, ru
 	return details.Status, nil
 }
 
-// GetWorkflowHistory retrieves the event history of a workflow execution
+// GetWorkflowHistory retrieves the full event history of a workflow execution.
+// It queries the client's configured namespace (the manager's explicit
+// namespace override, if any, applies only to List/Count visibility queries).
+// All pages are collected into the returned response's History.Events.
 func (wm *WorkflowManager) GetWorkflowHistory(ctx context.Context, workflowID, runID string) (*workflowservice.GetWorkflowExecutionHistoryResponse, error) {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.GetWorkflowHistory")
 
@@ -195,24 +216,27 @@ func (wm *WorkflowManager) GetWorkflowHistory(ctx context.Context, workflowID, r
 		otel.F("workflowID", workflowID),
 		otel.F("runID", runID))
 
-	request := &workflowservice.GetWorkflowExecutionHistoryRequest{
-		Namespace: wm.namespace,
-		Execution: &common.WorkflowExecution{
-			WorkflowId: workflowID,
-			RunId:      runID,
-		},
+	// The high-level iterator uses the client's namespace and the tracing
+	// interceptor. Drain every page so callers keep the single-response shape.
+	iter := wm.client.GetWorkflowHistory(ctx, workflowID, runID, false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	events := make([]*historypb.HistoryEvent, 0)
+	for iter.HasNext() {
+		event, err := iter.Next()
+		if err != nil {
+			logger.Error(err, "Failed to get workflow history",
+				otel.F("workflowID", workflowID))
+			return nil, fmt.Errorf("get workflow history %q: %w", workflowID, err)
+		}
+		events = append(events, event)
 	}
 
-	response, err := wm.client.WorkflowService().GetWorkflowExecutionHistory(ctx, request)
-	if err != nil {
-		logger.Error(err, "Failed to get workflow history",
-			otel.F("workflowID", workflowID))
-		return nil, fmt.Errorf("get workflow history %q: %w", workflowID, err)
+	response := &workflowservice.GetWorkflowExecutionHistoryResponse{
+		History: &historypb.History{Events: events},
 	}
 
 	logger.Debug("Workflow history retrieved successfully",
 		otel.F("workflowID", workflowID),
-		otel.F("eventCount", len(response.History.Events)))
+		otel.F("eventCount", len(events)))
 	return response, nil
 }
 
@@ -280,7 +304,9 @@ func (wm *WorkflowManager) SignalWorkflow(ctx context.Context, workflowID, runID
 	return nil
 }
 
-// QueryWorkflow queries a running workflow for custom data
+// QueryWorkflow queries a running workflow for custom data. The returned value
+// is the SDK's raw converter.EncodedValue (not the decoded payload); type-assert
+// it to converter.EncodedValue and call Get(&dst) to decode into a typed value.
 func (wm *WorkflowManager) QueryWorkflow(ctx context.Context, workflowID, runID, queryType string, args ...any) (any, error) {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.QueryWorkflow")
 
@@ -379,12 +405,14 @@ func (wm *WorkflowManager) CountWorkflows(ctx context.Context, query string) (in
 
 	logger.Debug("Counting workflows", otel.F("query", query))
 
+	// High-level client method: empty Namespace inherits the client's
+	// configured namespace, matching every other operation.
 	request := &workflowservice.CountWorkflowExecutionsRequest{
 		Namespace: wm.namespace,
 		Query:     query,
 	}
 
-	response, err := wm.client.WorkflowService().CountWorkflowExecutions(ctx, request)
+	response, err := wm.client.CountWorkflow(ctx, request)
 	if err != nil {
 		logger.Error(err, "Failed to count workflow executions")
 		return 0, fmt.Errorf("count workflow executions: %w", err)
@@ -482,7 +510,12 @@ func (wm *WorkflowManager) GetRecentWorkflows(ctx context.Context, limit int) ([
 	return workflows, nil
 }
 
-// GetWorkflowResult retrieves the result of a completed workflow
+// GetWorkflowResult retrieves the result of a workflow run into valuePtr.
+//
+// This BLOCKS until the run completes: run.Get waits for a still-running
+// workflow to finish rather than returning immediately. For dashboard-style
+// callers that must not hang on a running workflow, gate this behind a
+// GetWorkflowStatus check for a terminal status, or pass a ctx with a deadline.
 func (wm *WorkflowManager) GetWorkflowResult(ctx context.Context, workflowID, runID string, valuePtr any) error {
 	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "WorkflowManager.GetWorkflowResult")
 

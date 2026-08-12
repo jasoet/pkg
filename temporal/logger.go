@@ -50,8 +50,12 @@ func (z *ZerologAdapter) log(event *zerolog.Event, msg string, keyvals ...any) {
 }
 
 func (z *ZerologAdapter) WithCallerSkip(skip int) temporallog.Logger {
-	// +2 accounts for: this adapter method frame + zerolog internal frame
-	newLogger := z.logger.With().CallerWithSkipFrameCount(skip + 2).Logger()
+	// zerolog resolves the caller inside Event.Msg. From the caller's log
+	// call site the stack adds four frames before zerolog reads the PC:
+	// ZerologAdapter.Info/Debug/Warn/Error -> ZerologAdapter.log -> Event.Msg
+	// -> zerolog's caller hook, on top of zerolog's own 2-frame base. Hence
+	// skip+4 (empirically verified against the SDK's caller reporting).
+	newLogger := z.logger.With().CallerWithSkipFrameCount(skip + 4).Logger()
 	return NewZerologAdapter(newLogger)
 }
 

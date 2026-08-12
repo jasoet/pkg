@@ -450,13 +450,17 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 			err := workflowRun.Get(workflowCtx, &result)
 			workflowCancel()
 
+			require.NoError(t, err, "parallel workflow %d must complete without error", i)
+			assert.Equal(t, "completed", result.Status, "parallel workflow %d must reach completed status", i)
 			if err == nil && result.Status == "completed" {
 				completedCount++
 				t.Logf("Parallel workflow %d completed successfully", i)
-			} else {
-				t.Logf("Parallel workflow %d failed: %v", i, err)
 			}
 		}
+
+		// Every started workflow must have completed; otherwise the subtest
+		// would previously have passed even if all 5 failed.
+		assert.Equal(t, orderCount, completedCount, "all parallel workflows must complete")
 
 		w.Stop()
 	})

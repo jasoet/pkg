@@ -122,6 +122,34 @@ func TestRegisterWorkflowOnce_DifferentWorkers(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&w2.workflowRegistrations))
 }
 
+func TestForgetWorker_ReleasesTrackingAndReRegisters(t *testing.T) {
+	w := &fakeWorker{}
+	RegisterWorkflowOnce(w, "forgettable", func() error { return nil }, workflow.RegisterOptions{Name: "forgettable"})
+	RegisterWorkflowOnce(w, "forgettable", func() error { return nil }, workflow.RegisterOptions{Name: "forgettable"})
+	assert.Equal(t, int32(1), atomic.LoadInt32(&w.workflowRegistrations), "second call must be deduplicated")
+
+	// After ForgetWorker the tracking is dropped, so the next call registers again.
+	ForgetWorker(w)
+	RegisterWorkflowOnce(w, "forgettable", func() error { return nil }, workflow.RegisterOptions{Name: "forgettable"})
+	assert.Equal(t, int32(2), atomic.LoadInt32(&w.workflowRegistrations), "ForgetWorker must reset dedup tracking")
+}
+
+func TestRegistrar_DeduplicatesPerWorker(t *testing.T) {
+	w := &fakeWorker{}
+	r := NewRegistrar(w)
+	r.RegisterWorkflowOnce("regWf", func() error { return nil }, workflow.RegisterOptions{Name: "regWf"})
+	r.RegisterWorkflowOnce("regWf", func() error { return nil }, workflow.RegisterOptions{Name: "regWf"})
+	r.RegisterActivityOnce("regAct", func() error { return nil }, activity.RegisterOptions{Name: "regAct"})
+	r.RegisterActivityOnce("regAct", func() error { return nil }, activity.RegisterOptions{Name: "regAct"})
+	assert.Equal(t, int32(1), atomic.LoadInt32(&w.workflowRegistrations))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&w.activityRegistrations))
+
+	// A separate Registrar shares no state, so it registers independently.
+	r2 := NewRegistrar(w)
+	r2.RegisterWorkflowOnce("regWf", func() error { return nil }, workflow.RegisterOptions{Name: "regWf"})
+	assert.Equal(t, int32(2), atomic.LoadInt32(&w.workflowRegistrations))
+}
+
 func TestGetRun(t *testing.T) {
 	d, err := New("name", "tq",
 		WithRegister(func(worker.Worker) {}),

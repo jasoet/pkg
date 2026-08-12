@@ -23,13 +23,22 @@ type ListOpts struct {
 
 // StatsOpts configures Definition.Stats.
 type StatsOpts struct {
-	TodayOnly bool           // default false — set true for "running + closed today"
-	Location  *time.Location // if nil and TodayOnly: UTC; otherwise this zone's calendar day
+	// TodayOnly, when true, restricts the CompletedToday/FailedToday counts to
+	// runs that closed on the current calendar day (in Location). When false
+	// (the default) those counts cover all completed/failed runs of the
+	// Definition, all-time.
+	TodayOnly bool
+	// Location selects the calendar day for TodayOnly. Nil means UTC. Ignored
+	// when TodayOnly is false.
+	Location *time.Location
 }
 
 // HistoryOpts configures Definition.History.
 type HistoryOpts struct {
-	MaxEvents int // default 500 in the method; 0 = no cap (caller takes responsibility)
+	// MaxEvents caps how many history events are scanned. Zero or negative
+	// means no cap — the full history is iterated (the caller takes
+	// responsibility for potentially large histories).
+	MaxEvents int
 }
 
 // ScheduleListOpts configures Registry.ListSchedules (future) and individual

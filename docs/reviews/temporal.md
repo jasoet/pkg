@@ -2,6 +2,16 @@
 
 **Date:** 2026-03-21
 
+> **Historical note (superseded):** This is a point-in-time review snapshot. Its
+> findings — including the WorkflowManager namespace split-brain, `job.History`
+> misattribution under concurrent activities, `StartAll` rollback, the off-by-two
+> caller skip, ignored schedule/job options, `DeleteSchedules` convergence,
+> missing TLS/credentials support, the swallowed tracing-interceptor error, and
+> the `Worker.Close` double-close — have since been remediated. Any references
+> below to `MetricsListenAddress` or to those items as "open" are retained only
+> for historical context; consult the current source and `temporal/README.md`
+> for authoritative behavior.
+
 ## Package Summary
 
 Wraps the Temporal workflow engine SDK providing: `Config`, client factories with optional Prometheus/OTel, `WorkerManager`, `ScheduleManager`, `WorkflowManager`, `ZerologAdapter`, and a testcontainer subpackage.

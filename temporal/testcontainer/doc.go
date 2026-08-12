@@ -1,5 +1,3 @@
-//go:build integration
-
 // Package testcontainer provides utilities for running Temporal server in Docker containers for integration testing.
 //
 // This package makes it easy to start a Temporal server container, connect to it, and clean up resources

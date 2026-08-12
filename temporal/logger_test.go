@@ -3,6 +3,7 @@ package temporal
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -98,5 +99,15 @@ func TestZerologAdapterWithCallerSkip(t *testing.T) {
 
 	entry := parseLogLine(t, &buf)
 	assert.Equal(t, "caller message", entry["message"])
-	assert.Contains(t, entry, "caller")
+	require.Contains(t, entry, "caller")
+
+	// With skip+4 the reported caller must be this test's log call site,
+	// not an internal adapter frame (logger.go). Pin the actual file so a
+	// regression in the frame count is caught.
+	caller, ok := entry["caller"].(string)
+	require.True(t, ok, "caller must be a string")
+	assert.True(t, strings.Contains(caller, "logger_test.go"),
+		"caller must resolve to the test call site, got %q", caller)
+	assert.NotContains(t, caller, "logger.go",
+		"caller must not point at an internal adapter frame")
 }

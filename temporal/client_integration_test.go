@@ -43,12 +43,10 @@ func TestClientIntegration(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Try to check server health by listing task queues
+		// The container is up, so describing a (worker-less) task queue must
+		// succeed and return an empty poller set rather than error.
 		_, err = temporalClient.DescribeTaskQueue(ctx, "test-queue", enums.TASK_QUEUE_TYPE_WORKFLOW)
-		// This may fail but indicates server connectivity
-		if err != nil {
-			t.Logf("Task queue check failed (expected without server): %v", err)
-		}
+		require.NoError(t, err, "DescribeTaskQueue against the running container must succeed")
 	})
 
 	t.Run("InvalidHost", func(t *testing.T) {
@@ -57,13 +55,13 @@ func TestClientIntegration(t *testing.T) {
 			Namespace: "default",
 		}
 
-		// This should fail quickly since the host doesn't exist
+		// NewClient dials eagerly with a health check, so an unresolvable host
+		// must fail fast.
 		temporalClient, err := NewClient(WithConfig(*invalidConfig))
-		if err == nil && temporalClient != nil {
+		if temporalClient != nil {
 			temporalClient.Close()
 		}
-		// We don't assert error here because the client creation might succeed
-		// but connection will fail later during actual operations
+		require.Error(t, err, "dialing an invalid host must return an error")
 	})
 }
 
@@ -83,12 +81,10 @@ func TestClientOperations(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Test that we can query task queue information
+		// Querying task queue information against the running container must
+		// succeed even with no workers registered.
 		_, err := temporalClient.DescribeTaskQueue(ctx, "test-queue", enums.TASK_QUEUE_TYPE_WORKFLOW)
-		// This may fail but tests connectivity
-		if err != nil {
-			t.Logf("Task queue describe failed (expected without workers): %v", err)
-		}
+		require.NoError(t, err, "DescribeTaskQueue must succeed against the running container")
 	})
 
 	t.Run("WorkflowService", func(t *testing.T) {
@@ -132,21 +128,14 @@ func TestWorkflowExecution(t *testing.T) {
 			TaskQueue: "test-task-queue",
 		}
 
-		// Note: This will fail if no worker is registered for this task queue
-		// but that's expected in a pure client test
+		// Starting a workflow only enqueues it; it succeeds even when no worker
+		// is registered for the task queue. (The run itself will not complete
+		// without a worker, so we do not block on Get here.)
 		workflowRun, err := temporalClient.ExecuteWorkflow(ctx, options, simpleWorkflow, "World")
-		if err != nil {
-			// Expected to fail without a worker, but we test the client API
-			t.Logf("Expected failure without worker: %v", err)
-			return
-		}
-
-		// If somehow it worked, get the result
-		var result string
-		err = workflowRun.Get(ctx, &result)
-		if err == nil {
-			assert.Equal(t, "Hello World", result)
-		}
+		require.NoError(t, err, "starting a workflow must succeed even without a worker")
+		require.NotNil(t, workflowRun)
+		assert.NotEmpty(t, workflowRun.GetID())
+		assert.NotEmpty(t, workflowRun.GetRunID())
 	})
 }
 
