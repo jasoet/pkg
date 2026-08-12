@@ -88,5 +88,5 @@ Only `feat`, `fix`, `perf`, and `refactor` commits trigger releases. Use `chore`
 
 The release workflow warms the proxy automatically. If it still shows stale data:
 ```bash
-GOPROXY=https://proxy.golang.org go list -m github.com/jasoet/pkg/v2@v2.x.x
+GOPROXY=https://proxy.golang.org go list -m github.com/jasoet/pkg/v3@v3.x.x
 ```

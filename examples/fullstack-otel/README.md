@@ -1,12 +1,12 @@
 # Full-Stack OpenTelemetry Integration Example
 
 **This is a standalone, independent Go module** demonstrating end-to-end distributed tracing, metrics, and logging across:
-- **gRPC Server** with HTTP Gateway (`github.com/jasoet/pkg/v2/grpc`)
-- **REST Client** making HTTP calls (`github.com/jasoet/pkg/v2/rest`)
-- **Database** operations with GORM (`github.com/jasoet/pkg/v2/db`)
-- **Structured Logging** with trace correlation (`github.com/jasoet/pkg/v2/logging`)
+- **gRPC Server** with HTTP Gateway (`github.com/jasoet/pkg/v3/grpc`)
+- **REST Client** making HTTP calls (`github.com/jasoet/pkg/v3/rest`)
+- **Database** operations with GORM (`github.com/jasoet/pkg/v3/db`)
+- **Structured Logging** with trace correlation (`github.com/jasoet/pkg/v3/otel`)
 
-This example can be copied and run independently without cloning the entire `pkg/v2` repository.
+This example can be copied and run independently without cloning the entire `pkg/v3` repository.
 
 ## Architecture
 
@@ -69,7 +69,7 @@ This example is a standalone module. You can run it directly:
 # Clone or copy this directory
 cd fullstack-otel-example
 
-# Dependencies are already in go.mod - no need to clone pkg/v2
+# Dependencies are already in go.mod - no need to clone pkg/v3
 go mod download
 ```
 
@@ -129,10 +129,10 @@ import (
     "log"
     "time"
 
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/grpc"
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/rest"
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/grpc"
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/rest"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -197,20 +197,20 @@ func main() {
     // Step 2: Setup Database with OTel
     // =========================================================================
 
-    dbConfig := &db.ConnectionConfig{
-        DBType:       db.Postgresql,
-        Host:         "localhost",
-        Port:         5432,
-        Username:     "user",
-        Password:     "password",
-        DBName:       "testdb",
-        Timeout:      30 * time.Second,
-        MaxIdleConns: 5,
-        MaxOpenConns: 10,
-        OTelConfig:   otelCfg, // Enable OTel tracing and metrics
-    }
-
-    database, err := dbConfig.Pool()
+    database, err := db.NewPool(
+        db.WithConnectionConfig(db.ConnectionConfig{
+            DBType:       db.Postgresql,
+            Host:         "localhost",
+            Port:         5432,
+            Username:     "user",
+            Password:     "password",
+            DBName:       "testdb",
+            Timeout:      30 * time.Second,
+            MaxIdleConns: 5,
+            MaxOpenConns: 10,
+        }),
+        db.WithOTelConfig(otelCfg), // Enable OTel tracing and metrics
+    )
     if err != nil {
         log.Fatalf("Failed to connect to database: %v", err)
     }

@@ -1,22 +1,22 @@
-# Go Utility Packages (v2)
+# Go Utility Packages (v3)
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/jasoet/pkg/actions/workflows/release.yml/badge.svg)](https://github.com/jasoet/pkg/actions)
-[![Test Coverage](https://img.shields.io/badge/coverage-79%25-brightgreen.svg)](https://github.com/jasoet/pkg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/jasoet/pkg/v2)](https://goreportcard.com/report/github.com/jasoet/pkg/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jasoet/pkg/v3)](https://goreportcard.com/report/github.com/jasoet/pkg/v3)
 
 Production-ready Go utility packages with **OpenTelemetry** instrumentation, comprehensive testing, and battle-tested components for building modern cloud-native applications.
 
 ## Versioning
 
-**Current Release:** `v2.13.0` (GA)
-**Status:** Production Ready
-**Test Coverage:** 79%
+**Current Release (v2, frozen):** `v2.13.1` — maintenance-only on [`release/v2`](https://github.com/jasoet/pkg/tree/release/v2).
+**In Development (v3):** `github.com/jasoet/pkg/v3` on the `next` branch (prereleases `v3.0.0-next.N`).
+**Status:** v3 in active development
+**Test Coverage:** Reported per package below; regenerate with `task test:complete`.
 
-> **v2 Highlights:** OpenTelemetry instrumentation across all packages, 79% test coverage, modernized dependencies
+> **v3 Highlights:** OpenTelemetry instrumentation across all packages (the former `logging` package merged into `otel`), unified `WithOTelConfig` injection, modernized dependencies.
 >
-> **Breaking Change:** v1 does not include OpenTelemetry. v2 adds optional OTel support with minimal API changes.
+> **Breaking Change:** v1 does not include OpenTelemetry. v2/v3 add optional OTel support with minimal API changes.
 
 ### v1 Availability
 
@@ -26,7 +26,7 @@ The v1 release is preserved on the [`release/v1`](https://github.com/jasoet/pkg/
 go get github.com/jasoet/pkg@v1.6.0
 ```
 
-**Note:** v1 is no longer actively maintained. All new development targets v2.
+**Note:** v1 is no longer actively maintained. All new development targets v3 (`github.com/jasoet/pkg/v3`).
 
 ## Packages
 
@@ -54,7 +54,7 @@ Production-ready components with comprehensive observability, testing, and examp
 ### Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2@latest
+go get github.com/jasoet/pkg/v3@latest
 ```
 
 ### Basic Usage
@@ -63,8 +63,8 @@ go get github.com/jasoet/pkg/v2@latest
 package main
 
 import (
-    "github.com/jasoet/pkg/v2/config"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/config"
+    "github.com/jasoet/pkg/v3/server"
     "github.com/jasoet/pkg/v3/otel"
     "github.com/labstack/echo/v4"
     "github.com/rs/zerolog/log"
@@ -131,10 +131,7 @@ Examples for all packages live in the top-level `examples/` directory (e.g. `./e
 
 ## Test Coverage
 
-**Overall Coverage: 79%** (unit + integration suites; Argo tests require a k8s cluster and are not included)
-
-### Package Coverage
-- base32 (99%), config (98%), concurrent (95%), rest (93%), argo (91%), otel (85%), docker (83%), compress (82%), temporal (81%), retry (79%), ssh (78%), server (77%), db (77%), grpc (71%)
+Coverage combines the unit and integration suites (Argo tests require a k8s cluster and are not included). Per-package figures are shown next to each package in the [Packages](#packages) section above; regenerate the full report with `task test:complete` (writes `output/coverage-all.html`).
 
 ### Run Tests
 

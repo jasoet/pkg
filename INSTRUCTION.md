@@ -5,11 +5,11 @@
 
 ## Project Overview
 
-Production-ready Go utility library (v2) with OpenTelemetry instrumentation. 15 packages: otel, config, logging, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32.
+Production-ready Go utility library (v3) with OpenTelemetry instrumentation. 14 packages: otel, config, db, docker, server, grpc, rest, concurrent, temporal, ssh, compress, argo, retry, base32. (The former `logging` package was merged into `otel` during the v3 rework.)
 
 **Module Path:** `github.com/jasoet/pkg/v3`
 **Go Version:** 1.26+ (uses generics)
-**Test Coverage:** 79%
+**Test Coverage:** Reported per package in `README.md`; regenerate with `task test:complete`.
 **v1 Branch:** [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) — final v1 release (v1.6.0), no longer maintained. Use `go get github.com/jasoet/pkg@v1.6.0` for projects that don't need OpenTelemetry.
 **v3 Development:** v2 is frozen at v2.13.1 (`release/v2` branch, emergency patches only). v3 work happens on the `next` branch (prereleases `v3.0.0-next.N` (until the first BREAKING CHANGE commit lands on next, prereleases version from the last tag — e.g. 2.14.0-next.1)). Backlog: `docs/plans/2026-07-22-v3-audit-backlog.md`.
 
@@ -39,7 +39,7 @@ attribute commits to AI. This applies to ALL commits, including those made by to
 
 | Path | Purpose |
 |------|---------|
-| `<module>/` | Package source (15 packages at root level) |
+| `<module>/` | Package source (14 packages at root level) |
 | `<module>/README.md` | Per-package documentation |
 | `examples/<module>/` | Per-package runnable examples (`//go:build example`) |
 | `<module>/*_test.go` | Unit tests (no build tag) |

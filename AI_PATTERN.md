@@ -1,15 +1,15 @@
 # AI Pattern Guide
 
-Guide for AI assistants working on projects that **use** `github.com/jasoet/pkg/v2`. This file is an index — read the linked READMEs and examples for full details.
+Guide for AI assistants working on projects that **use** `github.com/jasoet/pkg/v3`. This file is an index — read the linked READMEs and examples for full details.
 
 ## Quick Start
 
 ```go
-import "github.com/jasoet/pkg/v2/<package>"
+import "github.com/jasoet/pkg/v3/<package>"
 ```
 
 **Go Version:** 1.26+ (generics required)
-**Install:** `go get github.com/jasoet/pkg/v2@latest`
+**Install:** `go get github.com/jasoet/pkg/v3@latest`
 **v1 (no OTel):** `go get github.com/jasoet/pkg@v1.6.0` — preserved on [`release/v1`](https://github.com/jasoet/pkg/tree/release/v1) branch, unmaintained.
 **Project Template:** See [PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md) for recommended project structure, wiring patterns, test tiers (E2E), Swagger/OpenAPI setup, and Taskfile targets.
 
@@ -80,7 +80,6 @@ cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 |---------|-------------|--------|----------|
 | [otel](./otel/) | OpenTelemetry unified config (tracing, metrics, logging) | [README](otel/README.md) | [examples_test.go](otel/examples_test.go), [instrumentation_example_test.go](otel/instrumentation_example_test.go) |
 | [config](./config/) | Type-safe YAML config with env overrides and validation | [README](config/README.md) | [examples/](examples/config/) |
-| [logging](./logging/) | Structured logging with zerolog + OTel LoggerProvider | [README](logging/README.md) | [examples/](examples/logging/) |
 | [db](./db/) | Multi-database (PostgreSQL, MySQL, MSSQL) with GORM + migrations | [README](db/README.md) | [examples/](examples/db/) |
 | [docker](./docker/) | Container executor with dual API (functional + struct) | [README](docker/README.md) | [examples/](examples/docker/) |
 | [server](./server/) | HTTP server with Echo, health checks, graceful shutdown | [README](server/README.md) | [examples/](examples/server/) |
@@ -99,11 +98,13 @@ cfg, err := config.LoadString[AppConfig](yamlContent, "APP")
 ### Connect to a Database
 
 ```go
-pool, _ := db.ConnectionConfig{
-    DBType: db.Postgresql, Host: "localhost", Port: 5432,
-    Username: "user", Password: "pass", DBName: "mydb",
-    OTelConfig: otelConfig,
-}.Pool()
+pool, _ := db.NewPool(
+    db.WithConnectionConfig(db.ConnectionConfig{
+        DBType: db.Postgresql, Host: "localhost", Port: 5432,
+        Username: "user", Password: "pass", DBName: "mydb",
+    }),
+    db.WithOTelConfig(otelConfig),
+)
 ```
 
 > [db/README.md](db/README.md) for migrations, multi-DB, connection pooling.

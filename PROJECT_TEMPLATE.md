@@ -1,6 +1,6 @@
 # PROJECT_TEMPLATE.md
 
-Comprehensive guide for AI agents and developers scaffolding new Go projects that depend on `github.com/jasoet/pkg/v2`.
+Comprehensive guide for AI agents and developers scaffolding new Go projects that depend on `github.com/jasoet/pkg/v3`.
 
 > **Audience:** AI code-generation agents (Claude, Cursor, Copilot) and human developers.
 > **Scope:** Consumer projects — applications built _with_ this library, not contributions _to_ it.
@@ -325,7 +325,8 @@ cfg, err := config.LoadStringWithOptions[AppConfig](yamlContent,
 ### Layer 3: Runtime Functional Options
 
 ```go
-pool, err := cfg.Database.Pool() // OTelConfig injected at runtime, not from YAML
+// OTelConfig injected at runtime via db.WithOTelConfig, never from YAML
+pool, err := db.NewPool(db.WithConnectionConfig(cfg.Database))
 ```
 
 **Rule:** `OTelConfig *otel.Config` fields must always use `yaml:"-" mapstructure:"-"` tags. Never serialize OTel config — inject it at runtime via functional options or direct assignment.
@@ -356,9 +357,11 @@ ctx = otel.ContextWithConfig(ctx, otelCfg)
 ### Pass to Components
 
 ```go
-// Database — direct field assignment
-cfg.Database.OTelConfig = otelCfg
-pool, err := cfg.Database.Pool()
+// Database — functional option
+pool, err := db.NewPool(
+    db.WithConnectionConfig(cfg.Database),
+    db.WithOTelConfig(otelCfg),
+)
 
 // REST client — functional option
 client := rest.NewClient(
@@ -569,15 +572,17 @@ Services should never return HTTP-specific errors — keep the domain clean.
 ### Connection Pool
 
 ```go
-pool, err := db.ConnectionConfig{
-    DBType:     db.Postgresql,
-    Host:       cfg.Database.Host,
-    Port:       cfg.Database.Port,
-    Username:   cfg.Database.Username,
-    Password:   cfg.Database.Password,
-    DBName:     cfg.Database.DBName,
-    OTelConfig:  otelCfg, // Automatic query tracing
-}.Pool()
+pool, err := db.NewPool(
+    db.WithConnectionConfig(db.ConnectionConfig{
+        DBType:   db.Postgresql,
+        Host:     cfg.Database.Host,
+        Port:     cfg.Database.Port,
+        Username: cfg.Database.Username,
+        Password: cfg.Database.Password,
+        DBName:   cfg.Database.DBName,
+    }),
+    db.WithOTelConfig(otelCfg), // Automatic query tracing
+)
 ```
 
 > **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev databases without TLS (e.g. the compose stack), add `SSLMode: "disable"` to your `ConnectionConfig` YAML.
@@ -595,8 +600,14 @@ var FS embed.FS
 ```
 
 ```go
-// In main.go
-err := db.RunPostgresMigrationsWithGorm(ctx, pool, migrations.FS, ".")
+// In main.go — RunPostgresMigrations takes the underlying *sql.DB
+sqlDB, err := pool.DB()
+if err != nil {
+    log.Fatal(err)
+}
+if err := db.RunPostgresMigrations(ctx, sqlDB, migrations.FS, "."); err != nil {
+    log.Fatal(err)
+}
 ```
 
 **Migration file naming:** `{sequence}_{description}.{up|down}.sql`
@@ -755,7 +766,7 @@ External API wrappers live in `internal/shared/client/`. Each client wraps a sin
 
 ### Client Pattern
 
-Use `jasoet/pkg/v2/rest` for HTTP calls with automatic OTel instrumentation and retry support:
+Use `jasoet/pkg/v3/rest` for HTTP calls with automatic OTel instrumentation and retry support:
 
 ```go
 // internal/shared/client/weather_client.go
@@ -983,7 +994,7 @@ Single port serves both gRPC and REST via HTTP/2 cleartext:
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/grpc"
+    "github.com/jasoet/pkg/v3/grpc"
     "google.golang.org/grpc"
     pb "myapp/proto/gen"
 )
@@ -1097,7 +1108,7 @@ If your application needs async jobs, background processing, or scheduled tasks,
 `temporal.Config` has two serializable fields (`HostPort`, `Namespace`) plus the usual `OTelConfig *otel.Config` field tagged `yaml:"-" mapstructure:"-"` (injected at runtime, never serialized):
 
 ```go
-import "github.com/jasoet/pkg/v2/temporal"
+import "github.com/jasoet/pkg/v3/temporal"
 
 // In AppConfig:
 Temporal temporal.Config `yaml:"temporal" mapstructure:"temporal"`
@@ -1188,8 +1199,8 @@ import (
     "myapp/internal/service"
     "myapp/migrations"
 
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/temporal"
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/temporal"
 )
 
 const taskQueue = "myapp-tasks"
@@ -1204,11 +1215,15 @@ func main() {
     }
 
     // Database (activities need repos)
-    pool, err := cfg.Database.Pool()
+    pool, err := db.NewPool(db.WithConnectionConfig(cfg.Database))
     if err != nil {
         log.Fatalf("failed to connect to database: %v", err)
     }
-    if err := db.RunPostgresMigrationsWithGorm(context.Background(), pool, migrations.FS, "."); err != nil {
+    sqlDB, err := pool.DB()
+    if err != nil {
+        log.Fatalf("failed to get sql.DB: %v", err)
+    }
+    if err := db.RunPostgresMigrations(context.Background(), sqlDB, migrations.FS, "."); err != nil {
         log.Fatalf("failed to run migrations: %v", err)
     }
 
@@ -1291,7 +1306,7 @@ sm.DeleteSchedule(ctx, "daily-cleanup")
 New in v2.13.0: the `temporal/job` package provides a `Definition` — a typed handle for one registered workflow, bundling registration, execution, scheduling, and lifecycle control:
 
 ```go
-import "github.com/jasoet/pkg/v2/temporal/job"
+import "github.com/jasoet/pkg/v3/temporal/job"
 
 def, err := job.New("orders-sync", "myapp-tasks",
     job.WithRegister(func(w worker.Worker) {
@@ -1315,7 +1330,7 @@ For integration tests against a real Temporal server:
 ```go
 //go:build integration
 
-import "github.com/jasoet/pkg/v2/temporal/testcontainer"
+import "github.com/jasoet/pkg/v3/temporal/testcontainer"
 
 func TestWorkflow(t *testing.T) {
     ctx := context.Background()
@@ -2044,8 +2059,8 @@ tasks:
 | OpenTelemetry | `otel` | `otel.NewConfig(name)`, `otel.Layers.Start*()`, `otel.F(k, v)` |
 | OTel Logging | `otel` | `otel.NewLoggerProviderWithOptions(name, opts...)` |
 | Global Logger | `otel` | `otel.Initialize(name, debug)`, `otel.ContextLogger(ctx, component)` |
-| Database Pool | `db` | `db.ConnectionConfig{...}.Pool()` |
-| Migrations | `db` | `db.RunPostgresMigrationsWithGorm(ctx, pool, fs, path)` |
+| Database Pool | `db` | `db.NewPool(db.WithConnectionConfig(cfg), db.WithOTelConfig(otelCfg))` |
+| Migrations | `db` | `db.RunPostgresMigrations(ctx, sqlDB, fs, path)` (`sqlDB, _ := pool.DB()`) |
 | HTTP Server | `server` | `server.New(opts...)`, `srv.Start()`, `srv.Shutdown(ctx)` |
 | gRPC Server | `grpc` | `grpc.New(opts...)`, `grpc.Start(port, registrar, opts...)` |
 | REST Client | `rest` | `rest.NewClient(opts...)`, `client.MakeRequestWithTrace(...)` |
@@ -2084,9 +2099,9 @@ import (
     dashboardmod "myapp/internal/dashboard"
     "myapp/migrations"
 
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/server"
 
     _ "myapp/docs" // swagger generated docs
 )
@@ -2114,14 +2129,20 @@ func main() {
     otelCfg := otel.NewConfig("myapp")
 
     // --- Database ---
-    cfg.Database.OTelConfig = otelCfg
-    pool, err := cfg.Database.Pool()
+    pool, err := db.NewPool(
+        db.WithConnectionConfig(cfg.Database),
+        db.WithOTelConfig(otelCfg),
+    )
     if err != nil {
         log.Fatalf("failed to connect to database: %v", err)
     }
 
     // --- Migrations ---
-    if err := db.RunPostgresMigrationsWithGorm(context.Background(), pool, migrations.FS, "."); err != nil {
+    sqlDB, err := pool.DB()
+    if err != nil {
+        log.Fatalf("failed to get sql.DB: %v", err)
+    }
+    if err := db.RunPostgresMigrations(context.Background(), sqlDB, migrations.FS, "."); err != nil {
         log.Fatalf("failed to run migrations: %v", err)
     }
 
