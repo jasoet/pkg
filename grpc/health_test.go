@@ -3,8 +3,10 @@ package grpc
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewHealthManager(t *testing.T) {
@@ -162,6 +164,39 @@ func TestHealthManagerRemoveCheck(t *testing.T) {
 	// Removing non-existent check should not cause error
 	hm.RemoveCheck("non_existent")
 	assert.Len(t, hm.checks, 0)
+}
+
+// TestHealthManagerPerCheckTimeout verifies that a single hung checker is
+// bounded by the per-check timeout: it is reported DOWN with a timeout error
+// and CheckHealth returns promptly instead of blocking on the hung checker.
+func TestHealthManagerPerCheckTimeout(t *testing.T) {
+	hm := NewHealthManager()
+	hm.checkTimeout = 100 * time.Millisecond
+
+	blocked := make(chan struct{})
+	t.Cleanup(func() { close(blocked) })
+
+	hm.RegisterCheck("hung", func() HealthCheckResult {
+		<-blocked // never returns before the timeout
+		return HealthCheckResult{Status: HealthStatusUp}
+	})
+	hm.RegisterCheck("fast", func() HealthCheckResult {
+		return HealthCheckResult{Status: HealthStatusUp}
+	})
+
+	start := time.Now()
+	results := hm.CheckHealth()
+	elapsed := time.Since(start)
+
+	require.Less(t, elapsed, 2*time.Second, "CheckHealth must not block on a hung checker")
+	assert.Len(t, results, 2)
+
+	assert.Equal(t, HealthStatusDown, results["hung"].Status, "hung checker must be reported DOWN")
+	assert.Contains(t, results["hung"].Error, "timed out")
+	assert.Equal(t, HealthStatusUp, results["fast"].Status)
+
+	// Overall status must be DOWN because one checker timed out.
+	assert.Equal(t, HealthStatusDown, overallStatusFromResults(results))
 }
 
 func TestHealthManagerSetEnabled(t *testing.T) {

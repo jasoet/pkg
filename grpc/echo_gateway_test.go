@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 )
 
@@ -48,6 +51,49 @@ func TestCreateGatewayMuxMetadata(t *testing.T) {
 	// but we can verify the mux is created
 	mux := CreateGatewayMux()
 	assert.NotNil(t, mux)
+}
+
+// TestGatewayMetadataAnnotatorForwardsTraceparentHeader verifies that an inbound
+// W3C traceparent header is forwarded as gRPC metadata so the backend keeps the
+// trace instead of starting a new root.
+func TestGatewayMetadataAnnotatorForwardsTraceparentHeader(t *testing.T) {
+	const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/thing", nil)
+	req.Header.Set("traceparent", traceparent)
+	req.Header.Set("User-Agent", "test-agent")
+
+	md := gatewayMetadataAnnotator(context.Background(), req)
+
+	require.Equal(t, []string{traceparent}, md.Get("traceparent"),
+		"annotator must forward the inbound traceparent header")
+	assert.Equal(t, []string{"test-agent"}, md.Get("user-agent"))
+}
+
+// TestGatewayMetadataAnnotatorInjectsActiveSpan verifies that when a span is
+// active in the request context (as after the Echo tracing middleware), the
+// annotator injects a traceparent for it, linking the HTTP and gRPC spans.
+func TestGatewayMetadataAnnotatorInjectsActiveSpan(t *testing.T) {
+	traceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	require.NoError(t, err)
+	spanID, err := trace.SpanIDFromHex("00f067aa0ba902b7")
+	require.NoError(t, err)
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/thing", nil)
+	req = req.WithContext(trace.ContextWithSpanContext(req.Context(), sc))
+
+	md := gatewayMetadataAnnotator(context.Background(), req)
+
+	// The injected traceparent must carry the active span's trace/span ids.
+	extracted := propagation.TraceContext{}.Extract(context.Background(), metadataCarrier(md))
+	got := trace.SpanContextFromContext(extracted)
+	assert.Equal(t, traceID, got.TraceID(), "annotator must inject the active span's trace id")
+	assert.Equal(t, spanID, got.SpanID(), "annotator must inject the active span's span id")
 }
 
 // TestWithGatewayRegistrar verifies that the function passed via

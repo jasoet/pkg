@@ -164,6 +164,12 @@ func (c *config) validate() error {
 		return fmt.Errorf("idle timeout cannot be negative")
 	}
 
+	// A non-positive rate would make Echo's limiter reject every request (429),
+	// which is never the intent of enabling rate limiting.
+	if c.enableRateLimit && c.rateLimit <= 0 {
+		return fmt.Errorf("rate limit must be positive when rate limiting is enabled, got %v", c.rateLimit)
+	}
+
 	return nil
 }
 

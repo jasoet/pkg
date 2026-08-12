@@ -67,12 +67,23 @@ grpcserver.Start("8080", serviceRegistrar)
 grpcserver.StartH2C("8080", serviceRegistrar)
 ```
 
+> **Note on timeouts in H2C mode:** `WithReadTimeout` and `WithWriteTimeout` are
+> **not** applied to the shared H2C listener. Under h2c those values would become
+> per-stream HTTP/2 deadlines and would abort any long-running or streaming RPC
+> (RST_STREAM, surfaced to the client as `Internal`). Only `ReadHeaderTimeout`
+> and `WithIdleTimeout` are enforced. To bound HTTP request read/write time, use
+> **Separate Mode** (where these timeouts apply to the HTTP gateway) or place a
+> reverse proxy in front of the server.
+
 ### Separate Mode
 Different ports for gRPC and HTTP services:
 
 ```go
 grpcserver.StartSeparate("9090", "9091", serviceRegistrar)
 ```
+
+In Separate Mode `WithReadTimeout`/`WithWriteTimeout` apply to the HTTP gateway
+server; the gRPC server on its own port is unaffected by them.
 
 ## Configuration with Options
 
@@ -132,7 +143,7 @@ if err := server.Start(); err != nil {
 
 **Timeouts**
 - `WithShutdownTimeout(d)` — graceful shutdown timeout (default 30s)
-- `WithReadTimeout(d)` / `WithWriteTimeout(d)` / `WithIdleTimeout(d)` — HTTP server timeouts (defaults 5s / 10s / 60s)
+- `WithReadTimeout(d)` / `WithWriteTimeout(d)` / `WithIdleTimeout(d)` — HTTP server timeouts (defaults 5s / 10s / 60s). Read/Write timeouts apply to the HTTP gateway in **Separate Mode** only; in **H2C Mode** they are intentionally not applied so they cannot kill long/streaming RPCs (see [Server Modes](#h2c-mode-default)). `IdleTimeout` and the 5s header-read timeout apply in both modes.
 - `WithConnectionTimeouts(idle, age, grace)` — gRPC keepalive limits (defaults 15m / 30m / 5s)
 - `WithMaxConnectionIdle(d)` / `WithMaxConnectionAge(d)` / `WithMaxConnectionAgeGrace(d)` — individual keepalive limits
 
@@ -343,20 +354,20 @@ func main() {
 When `WithOTelConfig` is provided, the server automatically instruments:
 
 #### gRPC Server (via interceptors)
-- **Traces**: Distributed tracing for all gRPC methods with semantic conventions
+- **Traces**: Distributed tracing for all gRPC methods (both **unary and streaming**) with semantic conventions. The incoming W3C Trace Context (`traceparent`/`tracestate`) is extracted with an explicit propagator, so server spans are children of the caller's trace rather than new roots — no global `otel.SetTextMapPropagator` setup required.
 - **Metrics**:
   - `rpc.server.request.count` - Total gRPC requests by method and status
   - `rpc.server.duration` - Request duration histogram
   - `rpc.server.active_requests` - Active concurrent requests
-- **Logs**: Structured logs with automatic trace_id/span_id correlation
+- **Logs**: Structured logs with automatic trace_id/span_id correlation. The tracing interceptor runs before the logging interceptor so every access log carries the active span's ids.
 
 #### HTTP Gateway (via Echo middleware)
-- **Traces**: HTTP request spans linked to gRPC spans
+- **Traces**: HTTP request spans linked to the downstream gRPC spans. The gateway forwards W3C Trace Context to the backend (the annotator injects the active span, and passes through any inbound `traceparent`/`tracestate` headers).
 - **Metrics**:
   - `http.server.request.count` - Total HTTP requests
   - `http.server.request.duration` - Request duration histogram
   - `http.server.active_requests` - Active concurrent requests
-- **Logs**: HTTP access logs with trace correlation
+- **Logs**: HTTP access logs with trace correlation (the tracing middleware runs before the logging middleware, which re-reads the request context after the handler so logs carry trace_id/span_id).
 
 ### Log-Span Correlation
 
@@ -389,6 +400,14 @@ The server provides comprehensive health check endpoints:
 - `GET /health` - Overall health status
 - `GET /health/ready` - Readiness probe
 - `GET /health/live` - Liveness probe
+
+> Health checks are exposed over **HTTP only**; the gRPC Health Checking
+> Protocol (`grpc.health.v1.Health`) is not registered automatically. Register
+> it yourself via `WithServiceRegistrar` if a gRPC-native probe is required.
+>
+> Each registered checker runs concurrently and is bounded by a per-check
+> timeout (5s); a checker that hangs is reported `DOWN` with a timeout error
+> instead of stalling the whole health/readiness response.
 
 ### Custom Health Checks
 

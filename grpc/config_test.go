@@ -149,6 +149,25 @@ func TestWithRateLimit(t *testing.T) {
 	assert.Equal(t, 250.0, cfg.rateLimit)
 }
 
+func TestWithRateLimitNonPositiveRejected(t *testing.T) {
+	// A zero or negative rate would make Echo's limiter reject every request;
+	// validation must reject it rather than silently produce a 429-everything
+	// server.
+	for _, rps := range []float64{0, -1, -100} {
+		_, err := newConfig(WithRateLimit(rps))
+		assert.Error(t, err, "WithRateLimit(%v) must be rejected", rps)
+		if err != nil {
+			assert.Contains(t, err.Error(), "rate limit must be positive")
+		}
+	}
+
+	// A positive rate remains valid.
+	cfg, err := newConfig(WithRateLimit(0.5))
+	require.NoError(t, err)
+	assert.True(t, cfg.enableRateLimit)
+	assert.Equal(t, 0.5, cfg.rateLimit)
+}
+
 func TestWithHealthPath(t *testing.T) {
 	cfg, err := newConfig(WithHealthPath("/custom-health"))
 	require.NoError(t, err)

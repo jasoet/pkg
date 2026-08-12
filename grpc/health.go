@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"fmt"
 	"net/http"
 	"runtime"
 	"sync"
@@ -8,6 +9,11 @@ import (
 
 	"github.com/labstack/echo/v4"
 )
+
+// defaultHealthCheckTimeout bounds how long a single health checker may run
+// before it is reported as DOWN. Without a bound, one hung checker would stall
+// every health/readiness response and flap the whole probe.
+const defaultHealthCheckTimeout = 5 * time.Second
 
 // HealthStatus represents the status of a health check
 type HealthStatus string
@@ -35,16 +41,18 @@ type HealthChecker func() HealthCheckResult
 
 // HealthManager manages health checks for the server
 type HealthManager struct {
-	mu      sync.RWMutex
-	checks  map[string]HealthChecker
-	enabled bool
+	mu           sync.RWMutex
+	checks       map[string]HealthChecker
+	enabled      bool
+	checkTimeout time.Duration // per-check upper bound; see defaultHealthCheckTimeout
 }
 
 // NewHealthManager creates a new health manager
 func NewHealthManager() *HealthManager {
 	return &HealthManager{
-		checks:  make(map[string]HealthChecker),
-		enabled: true,
+		checks:       make(map[string]HealthChecker),
+		enabled:      true,
+		checkTimeout: defaultHealthCheckTimeout,
 	}
 }
 
@@ -73,6 +81,7 @@ func (h *HealthManager) SetEnabled(enabled bool) {
 func (h *HealthManager) CheckHealth() map[string]HealthCheckResult {
 	h.mu.RLock()
 	enabled := h.enabled
+	timeout := h.checkTimeout
 	checkers := make(map[string]HealthChecker, len(h.checks))
 	for k, v := range h.checks {
 		checkers[k] = v
@@ -89,17 +98,63 @@ func (h *HealthManager) CheckHealth() map[string]HealthCheckResult {
 		}
 	}
 
-	results := make(map[string]HealthCheckResult, len(checkers))
-
-	for name, checker := range checkers {
-		start := time.Now()
-		result := checker()
-		result.Duration = time.Since(start)
-		result.Timestamp = time.Now()
-		results[name] = result
+	if timeout <= 0 {
+		timeout = defaultHealthCheckTimeout
 	}
 
+	// Run checks concurrently, each bounded by timeout, so a single slow or hung
+	// checker cannot stall the aggregate result or delay it past `timeout`.
+	results := make(map[string]HealthCheckResult, len(checkers))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for name, checker := range checkers {
+		wg.Add(1)
+		go func(name string, checker HealthChecker) {
+			defer wg.Done()
+			result := runHealthCheckBounded(checker, timeout)
+			mu.Lock()
+			results[name] = result
+			mu.Unlock()
+		}(name, checker)
+	}
+	wg.Wait()
+
 	return results
+}
+
+// runHealthCheckBounded runs a single checker with an upper time bound. If the
+// checker does not return within timeout it is reported as DOWN; the checker
+// signature has no context, so the underlying goroutine may keep running, but
+// it can no longer block the health response. A panic in the checker is
+// recovered and reported as DOWN rather than crashing the server.
+func runHealthCheckBounded(checker HealthChecker, timeout time.Duration) HealthCheckResult {
+	start := time.Now()
+	done := make(chan HealthCheckResult, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- HealthCheckResult{
+					Status: HealthStatusDown,
+					Error:  fmt.Sprintf("health check panicked: %v", r),
+				}
+			}
+		}()
+		done <- checker()
+	}()
+
+	select {
+	case result := <-done:
+		result.Duration = time.Since(start)
+		result.Timestamp = time.Now()
+		return result
+	case <-time.After(timeout):
+		return HealthCheckResult{
+			Status:    HealthStatusDown,
+			Error:     fmt.Sprintf("health check timed out after %s", timeout),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}
+	}
 }
 
 // overallStatusFromResults derives the aggregate status from a set of results.

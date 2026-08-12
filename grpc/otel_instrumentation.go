@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -17,6 +17,18 @@ import (
 	"google.golang.org/grpc/status"
 
 	pkgotel "github.com/jasoet/pkg/v3/otel"
+)
+
+// grpcPropagator is the text-map propagator used to extract and inject W3C
+// Trace Context (traceparent/tracestate) and Baggage across process
+// boundaries. It is declared explicitly rather than read from
+// otel.GetTextMapPropagator(): the global propagator defaults to a no-op unless
+// the application installs one, which would silently break distributed tracing
+// (every server span would start a new root). Using an explicit composite
+// propagator makes extraction/injection work regardless of global setup.
+var grpcPropagator = propagation.NewCompositeTextMapPropagator(
+	propagation.TraceContext{},
+	propagation.Baggage{},
 )
 
 // metadataCarrier adapts gRPC metadata to the OTel TextMapCarrier interface,
@@ -126,8 +138,10 @@ func createGRPCTracingInterceptor(cfg *pkgotel.Config) grpc.UnaryServerIntercept
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// Extract W3C Trace Context (traceparent/tracestate) from gRPC metadata
+		// using an explicit propagator (see grpcPropagator) so the server span
+		// links to the incoming trace even when no global propagator is set.
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
-			ctx = otel.GetTextMapPropagator().Extract(ctx, metadataCarrier(md))
+			ctx = grpcPropagator.Extract(ctx, metadataCarrier(md))
 		}
 
 		// Start span
@@ -157,6 +171,68 @@ func createGRPCTracingInterceptor(cfg *pkgotel.Config) grpc.UnaryServerIntercept
 		}
 
 		return resp, err
+	}
+}
+
+// tracedServerStream wraps a grpc.ServerStream so that Context() returns the
+// span-carrying context created by the stream tracing interceptor. Without this
+// wrapper, downstream handlers (and the logging/metrics interceptors that read
+// ss.Context()) would not see the started span, breaking trace correlation.
+type tracedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *tracedServerStream) Context() context.Context { return s.ctx }
+
+// createGRPCStreamTracingInterceptor creates a gRPC stream interceptor for
+// distributed tracing. It mirrors the unary tracing interceptor: it extracts
+// the incoming W3C Trace Context from stream metadata, starts a server span,
+// and propagates the span through the wrapped stream context.
+func createGRPCStreamTracingInterceptor(cfg *pkgotel.Config) grpc.StreamServerInterceptor {
+	if cfg == nil || !cfg.IsTracingEnabled() {
+		return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			return handler(srv, ss)
+		}
+	}
+
+	tracer := cfg.GetTracer("grpc.server")
+
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		ctx := ss.Context()
+
+		// Extract W3C Trace Context from the stream's incoming metadata so the
+		// server span links to the caller's trace.
+		if md, ok := metadata.FromIncomingContext(ctx); ok {
+			ctx = grpcPropagator.Extract(ctx, metadataCarrier(md))
+		}
+
+		ctx, span := tracer.Start(ctx, info.FullMethod,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(
+				semconv.RPCSystemKey.String("grpc"),
+				semconv.RPCMethodKey.String(info.FullMethod),
+				semconv.RPCServiceKey.String(extractServiceName(info.FullMethod)),
+				attribute.Bool("rpc.grpc.is_client_stream", info.IsClientStream),
+				attribute.Bool("rpc.grpc.is_server_stream", info.IsServerStream),
+			),
+		)
+		defer span.End()
+
+		err := handler(srv, &tracedServerStream{ServerStream: ss, ctx: ctx})
+
+		if err != nil {
+			st, _ := status.FromError(err)
+			span.SetAttributes(
+				attribute.Int("rpc.grpc.status_code", int(st.Code())),
+				attribute.String("rpc.grpc.status_message", st.Message()),
+			)
+			span.RecordError(err)
+		} else {
+			span.SetAttributes(attribute.Int("rpc.grpc.status_code", 0))
+		}
+
+		return err
 	}
 }
 
@@ -483,6 +559,12 @@ func createHTTPGatewayLoggingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc
 			// Process request
 			err := next(c)
 
+			// Re-read the request context AFTER next: the tracing middleware
+			// replaces the request (c.SetRequest) with one carrying the active
+			// span, so the context captured before next() has no span. Reading
+			// it here lets the emitted access log carry trace_id/span_id.
+			logCtx := c.Request().Context()
+
 			// Calculate duration
 			duration := time.Since(start)
 
@@ -516,7 +598,7 @@ func createHTTPGatewayLoggingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc
 			logRecord.SetBody(otellog.StringValue(fmt.Sprintf("%s %s", req.Method, req.RequestURI)))
 			logRecord.AddAttributes(attrs...)
 
-			logger.Emit(req.Context(), logRecord)
+			logger.Emit(logCtx, logRecord)
 
 			return err
 		}
