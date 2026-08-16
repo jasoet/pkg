@@ -37,12 +37,21 @@ type blockingHealthServer struct {
 	release chan struct{}
 }
 
-func (s *blockingHealthServer) Check(context.Context, *grpchealth.HealthCheckRequest) (*grpchealth.HealthCheckResponse, error) {
+func (s *blockingHealthServer) Check(ctx context.Context, _ *grpchealth.HealthCheckRequest) (*grpchealth.HealthCheckResponse, error) {
 	select {
 	case s.entered <- struct{}{}:
 	default:
 	}
-	<-s.release
+	// Block until explicitly released, but also honor context cancellation like a
+	// real handler must. GracefulStop does not cancel the RPC context, so the
+	// handler stays blocked and graceful shutdown times out; the forced Stop that
+	// follows cancels the context, letting the handler (and Stop) return instead
+	// of deadlocking.
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	return &grpchealth.HealthCheckResponse{Status: grpchealth.HealthCheckResponse_SERVING}, nil
 }
 
