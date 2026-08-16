@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/workflow"
 
 	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
@@ -117,8 +118,10 @@ func TestWorkflowExecution(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		// Simple workflow that just returns a string
-		simpleWorkflow := func(ctx context.Context, input string) (string, error) {
+		// Simple workflow that just returns a string. Temporal workflow functions
+		// take workflow.Context (not context.Context); using context.Context makes
+		// the SDK miscount the arguments and reject ExecuteWorkflow.
+		simpleWorkflow := func(_ workflow.Context, input string) (string, error) {
 			return "Hello " + input, nil
 		}
 

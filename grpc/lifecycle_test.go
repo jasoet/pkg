@@ -1,8 +1,11 @@
 package grpc
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -140,57 +143,82 @@ func TestServerRestartStoppableH2C(t *testing.T) {
 // false. Run with -race. Each iteration must settle into either fully
 // running or fully stopped, and a final Stop leaves nothing listening.
 func TestServerStopDuringStartNoZombie(t *testing.T) {
-	for i := 0; i < 20; i++ {
-		grpcPort := freePort(t)
-		httpPort := freePort(t)
-
-		server, err := New(
-			WithSeparateMode(grpcPort, httpPort),
-			WithShutdownTimeout(5*time.Second),
-		)
-		require.NoError(t, err)
-
-		startErr := make(chan error, 1)
-		go func() { startErr <- server.Start() }()
-		require.NoError(t, server.Stop(), "Stop racing Start must not error")
-
-		// Wait until the iteration settles: Start returned (fully stopped) or
-		// the HTTP port is serving (fully running — the early Stop landed
-		// before Start marked the server running and was a no-op).
-		settled := false
-		deadline := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadline) && !settled {
-			select {
-			case err := <-startErr:
-				assert.NoError(t, err, "Start must return nil after graceful Stop")
-				settled = true
-			default:
-			}
-			if !settled {
-				conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+httpPort, 100*time.Millisecond)
-				if dialErr == nil {
-					conn.Close()
-					require.NoError(t, server.Stop(), "Stop of the fully running server must succeed")
-					err := recvWithTimeout(t, startErr, 10*time.Second)
-					assert.NoError(t, err, "Start must return nil after graceful Stop")
-					settled = true
-				}
-			}
-			if !settled {
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-		require.True(t, settled, "iteration %d never settled: Start neither returned nor served", i)
-
-		assert.False(t, server.IsRunning(), "no zombie: not serving while reporting stopped")
-		require.NoError(t, server.Stop(), "final Stop must be a no-op, not an error")
-
-		conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+httpPort, 100*time.Millisecond)
-		if dialErr == nil {
-			conn.Close()
-			t.Fatalf("iteration %d: HTTP port %s still accepting connections after final Stop", i, httpPort)
+	const want = 20
+	for completed, attempt := 0, 0; completed < want; attempt++ {
+		require.Less(t, attempt, want*5, "too many transient port conflicts to make progress")
+		if runStopDuringStartIteration(t, completed) {
+			completed++
 		}
 	}
+}
+
+// runStopDuringStartIteration runs one Stop-during-Start cycle, returning true
+// once its assertions complete. It returns false — asking the caller to retry
+// with fresh ports — when Start loses the port race: freePort reserves then
+// releases a port before the server binds it, so a transient "address already in
+// use" is infrastructure noise orthogonal to the zombie behavior under test.
+func runStopDuringStartIteration(t *testing.T, i int) bool {
+	t.Helper()
+	grpcPort := freePort(t)
+	httpPort := freePort(t)
+
+	server, err := New(
+		WithSeparateMode(grpcPort, httpPort),
+		WithShutdownTimeout(5*time.Second),
+	)
+	require.NoError(t, err)
+
+	startErr := make(chan error, 1)
+	go func() { startErr <- server.Start() }()
+	require.NoError(t, server.Stop(), "Stop racing Start must not error")
+
+	// Wait until the iteration settles: Start returned (fully stopped) or
+	// the HTTP port is serving (fully running — the early Stop landed
+	// before Start marked the server running and was a no-op).
+	settled := false
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !settled {
+		select {
+		case err := <-startErr:
+			if isAddrInUse(err) {
+				return false
+			}
+			assert.NoError(t, err, "Start must return nil after graceful Stop")
+			settled = true
+		default:
+		}
+		if !settled {
+			conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+httpPort, 100*time.Millisecond)
+			if dialErr == nil {
+				conn.Close()
+				require.NoError(t, server.Stop(), "Stop of the fully running server must succeed")
+				err := recvWithTimeout(t, startErr, 10*time.Second)
+				assert.NoError(t, err, "Start must return nil after graceful Stop")
+				settled = true
+			}
+		}
+		if !settled {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	require.True(t, settled, "iteration %d never settled: Start neither returned nor served", i)
+
+	assert.False(t, server.IsRunning(), "no zombie: not serving while reporting stopped")
+	require.NoError(t, server.Stop(), "final Stop must be a no-op, not an error")
+
+	conn, dialErr := net.DialTimeout("tcp", "127.0.0.1:"+httpPort, 100*time.Millisecond)
+	if dialErr == nil {
+		conn.Close()
+		t.Fatalf("iteration %d: HTTP port %s still accepting connections after final Stop", i, httpPort)
+	}
+	return true
+}
+
+// isAddrInUse reports whether err is a "bind: address already in use" failure,
+// which freePort's reserve-then-release makes possible under load.
+func isAddrInUse(err error) bool {
+	return err != nil &&
+		(errors.Is(err, syscall.EADDRINUSE) || strings.Contains(err.Error(), "address already in use"))
 }
 
 // TestServerFailedStartNotRunning verifies that a failed Start (e.g. busy
