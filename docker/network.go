@@ -5,7 +5,85 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/docker/docker/api/types/container"
 )
+
+// InspectResponse.NetworkSettings is a pointer and the daemon leaves it nil for
+// containers without networking (e.g. --network=none). The projection helpers
+// below tolerate that instead of panicking, mirroring the guard in
+// ContainerTarget.State. They are pure functions of an inspect response so the
+// nil-handling is unit-testable without a live daemon.
+
+// portBinding returns the first host port bound to containerPort.
+func portBinding(inspect container.InspectResponse, containerPort string) (string, bool) {
+	if inspect.NetworkSettings == nil {
+		return "", false
+	}
+
+	for port, bindings := range inspect.NetworkSettings.Ports {
+		if string(port) == containerPort && len(bindings) > 0 {
+			return bindings[0].HostPort, true
+		}
+	}
+
+	return "", false
+}
+
+// allPortBindings maps every bound container port to its first host port.
+// Exposed-but-unbound ports are omitted. The result is never nil.
+func allPortBindings(inspect container.InspectResponse) map[string]string {
+	ports := make(map[string]string)
+	if inspect.NetworkSettings == nil {
+		return ports
+	}
+
+	for port, bindings := range inspect.NetworkSettings.Ports {
+		if len(bindings) > 0 {
+			ports[string(port)] = bindings[0].HostPort
+		}
+	}
+
+	return ports
+}
+
+// networkNames lists the networks the container is attached to. Never nil.
+func networkNames(inspect container.InspectResponse) []string {
+	if inspect.NetworkSettings == nil {
+		return []string{}
+	}
+
+	names := make([]string, 0, len(inspect.NetworkSettings.Networks))
+	for name := range inspect.NetworkSettings.Networks {
+		names = append(names, name)
+	}
+
+	return names
+}
+
+// networkIPAddress returns the container's IP on the named network, or on the
+// first network that has one when network is empty.
+func networkIPAddress(inspect container.InspectResponse, network string) (string, bool) {
+	if inspect.NetworkSettings == nil {
+		return "", false
+	}
+
+	if network != "" {
+		settings, ok := inspect.NetworkSettings.Networks[network]
+		if !ok || settings == nil {
+			return "", false
+		}
+		return settings.IPAddress, true
+	}
+
+	for _, settings := range inspect.NetworkSettings.Networks {
+		if settings != nil && settings.IPAddress != "" {
+			return settings.IPAddress, true
+		}
+	}
+
+	return "", false
+}
 
 // deriveHost extracts a reachable host from a Docker daemon host URL.
 // For remote transports (tcp://, ssh://, http(s)://) it returns the hostname;
@@ -82,11 +160,8 @@ func (e *Executor) MappedPort(ctx context.Context, containerPort string) (string
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	// Find the port binding
-	for port, bindings := range inspect.NetworkSettings.Ports {
-		if string(port) == containerPort && len(bindings) > 0 {
-			return bindings[0].HostPort, nil
-		}
+	if hostPort, ok := portBinding(inspect, containerPort); ok {
+		return hostPort, nil
 	}
 
 	return "", fmt.Errorf("port %s not found or not bound", containerPort)
@@ -143,14 +218,7 @@ func (e *Executor) GetAllPorts(ctx context.Context) (map[string]string, error) {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	ports := make(map[string]string)
-	for port, bindings := range inspect.NetworkSettings.Ports {
-		if len(bindings) > 0 {
-			ports[string(port)] = bindings[0].HostPort
-		}
-	}
-
-	return ports, nil
+	return allPortBindings(inspect), nil
 }
 
 // GetNetworks returns all networks the container is connected to.
@@ -172,12 +240,7 @@ func (e *Executor) GetNetworks(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	networks := make([]string, 0, len(inspect.NetworkSettings.Networks))
-	for name := range inspect.NetworkSettings.Networks {
-		networks = append(networks, name)
-	}
-
-	return networks, nil
+	return networkNames(inspect), nil
 }
 
 // GetIPAddress returns the container's IP address in a specific network.
@@ -200,19 +263,13 @@ func (e *Executor) GetIPAddress(ctx context.Context, network string) (string, er
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	if network != "" {
-		// Get IP from specific network
-		if netSettings, ok := inspect.NetworkSettings.Networks[network]; ok {
-			return netSettings.IPAddress, nil
-		}
-		return "", fmt.Errorf("network %s not found", network)
+	ip, ok := networkIPAddress(inspect, network)
+	if ok {
+		return ip, nil
 	}
 
-	// Return IP from first available network
-	for _, netSettings := range inspect.NetworkSettings.Networks {
-		if netSettings.IPAddress != "" {
-			return netSettings.IPAddress, nil
-		}
+	if network != "" {
+		return "", fmt.Errorf("network %s not found", network)
 	}
 
 	return "", fmt.Errorf("no IP address found")
