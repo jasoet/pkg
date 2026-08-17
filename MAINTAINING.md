@@ -57,10 +57,28 @@ gh pr merge <N> --squash     # WRONG — silently produces the wrong version
 ```
 
 Squashing collapses the whole line into a single commit and **destroys every
-`BREAKING CHANGE` footer in it**. semantic-release then analyses one commit against the
-last tag on `main` and computes a bump from that alone — which, for the v3 promotion, would
-have produced `v2.14.0` instead of `v3.0.0`. A `v2.x` tag on a module whose path is `/v3` is
-not a valid release, and the mistake is only visible after the tag is published.
+`BREAKING CHANGE` footer in it**. semantic-release then analyses one commit against the last
+tag on `main` and computes a bump from that alone.
+
+This is measured, not theoretical. Simulating both merges of the v3 line locally and running
+`semantic-release --dry-run`:
+
+| Merge strategy | Surviving `BREAKING CHANGE` footers | Computed version |
+|---|---|---|
+| `--merge` | 22 | **3.0.0** |
+| `--squash` | **0** | **2.14.0** |
+
+A `v2.14.0` tag on a module whose path is `/v3` is not installable — and the mistake is only
+visible after the tag is published.
+
+You can re-run that check before any promotion, without pushing anything:
+
+```bash
+git checkout main && git reset --hard origin/main
+git merge --no-ff --no-edit origin/next
+GITHUB_TOKEN=$(gh auth token) bunx semantic-release --dry-run --no-ci
+git reset --hard origin/main    # discard the simulation
+```
 
 A merge commit also produces complete release notes, since every `feat`/`fix` on the line
 stays individually attributed.
