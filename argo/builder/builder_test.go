@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/jasoet/pkg/v2/argo/builder/template"
+	"github.com/jasoet/pkg/v3/argo/builder/template"
 )
 
 func TestWorkflowBuilder_Build(t *testing.T) {
@@ -422,7 +422,8 @@ func TestWorkflowBuilder_BuildWithEntrypoint(t *testing.T) {
 		wf, err := builder.BuildWithEntrypoint("nonexistent")
 		require.Error(t, err)
 		assert.Nil(t, wf)
-		assert.Contains(t, err.Error(), "entrypoint template 'nonexistent' not found")
+		assert.ErrorIs(t, err, ErrEntrypointNotFound)
+		assert.Contains(t, err.Error(), "nonexistent")
 	})
 
 	t.Run("builds with exit handler", func(t *testing.T) {

@@ -12,8 +12,6 @@ import (
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	noopt "go.opentelemetry.io/otel/trace/noop"
-
-	"github.com/jasoet/pkg/v2/logging"
 )
 
 type contextKey string
@@ -31,8 +29,7 @@ var (
 // TracerProvider and MeterProvider are optional - nil values result in no-op implementations.
 // LoggerProvider defaults to zerolog-based provider when using NewConfig().
 //
-// Config methods (With*, Disable*) mutate the receiver. Callers sharing a *Config
-// across goroutines must not mutate it after sharing.
+// Config is constructed via NewConfig with functional options. Treat it as read-only after construction.
 type Config struct {
 	// TracerProvider for distributed tracing
 	// If nil, tracing will be disabled (no-op tracer)
@@ -52,73 +49,89 @@ type Config struct {
 
 	// ServiceVersion identifies the service version
 	ServiceVersion string
+
+	// loggerProviderSet records whether WithLoggerProvider or WithoutLogging
+	// explicitly configured logging. NewConfig only builds the default logger
+	// provider when the caller did not, so the default is never constructed
+	// and then discarded.
+	loggerProviderSet bool
 }
+
+// Option configures a Config during construction via NewConfig.
+type Option func(*Config)
 
 // NewConfig creates a new OpenTelemetry configuration with default LoggerProvider.
 // The default LoggerProvider uses zerolog with automatic log-span correlation for production use.
-// Use With* methods to add TracerProvider and MeterProvider.
+// Pass options to add providers, set the service version, or disable signals.
 //
 // Example:
 //
-//	cfg := otel.NewConfig("my-service").
-//	    WithTracerProvider(tp).
-//	    WithMeterProvider(mp)
+//	cfg := otel.NewConfig("my-service",
+//	    otel.WithTracerProvider(tp),
+//	    otel.WithMeterProvider(mp))
 //
 // For custom logger configuration:
 //
-//	import "github.com/jasoet/pkg/v2/logging"
-//	cfg := &otel.Config{
-//	    ServiceName:    "my-service",
-//	    LoggerProvider: logging.NewLoggerProvider("my-service", true), // enable debug mode
-//	}
-//	cfg.WithTracerProvider(tp).WithMeterProvider(mp)
-func NewConfig(serviceName string) *Config {
-	return &Config{
-		ServiceName:    serviceName,
-		LoggerProvider: defaultLoggerProvider(serviceName, false),
+//	lp, _ := otel.NewLoggerProviderWithOptions("my-service",
+//	    otel.WithLogLevel(otel.LogLevelDebug)) // enable debug mode
+//	cfg := otel.NewConfig("my-service", otel.WithLoggerProvider(lp))
+func NewConfig(serviceName string, opts ...Option) *Config {
+	c := &Config{
+		ServiceName: serviceName,
+	}
+	// Apply options first, then lazily build the default logger provider only
+	// when the caller did not set one. This avoids constructing a default
+	// provider that WithLoggerProvider or WithoutLogging would immediately
+	// discard.
+	for _, o := range opts {
+		o(c)
+	}
+	if !c.loggerProviderSet {
+		c.LoggerProvider = defaultLoggerProvider(serviceName, false)
+	}
+	return c
+}
+
+// WithTracerProvider sets the tracer provider; passing nil disables tracing (falls back to no-op).
+func WithTracerProvider(tp trace.TracerProvider) Option {
+	return func(c *Config) { c.TracerProvider = tp }
+}
+
+// WithMeterProvider sets the meter provider; passing nil disables metrics (falls back to no-op).
+func WithMeterProvider(mp metric.MeterProvider) Option {
+	return func(c *Config) { c.MeterProvider = mp }
+}
+
+// WithLoggerProvider sets a custom LoggerProvider, replacing the default
+// console (stderr) logger.
+func WithLoggerProvider(lp log.LoggerProvider) Option {
+	return func(c *Config) {
+		c.LoggerProvider = lp
+		c.loggerProviderSet = true
 	}
 }
 
-// WithTracerProvider sets the TracerProvider for distributed tracing
-func (c *Config) WithTracerProvider(tp trace.TracerProvider) *Config {
-	c.TracerProvider = tp
-	return c
+// WithServiceVersion sets the service version for telemetry data.
+func WithServiceVersion(version string) Option {
+	return func(c *Config) { c.ServiceVersion = version }
 }
 
-// WithMeterProvider sets the MeterProvider for metrics collection
-func (c *Config) WithMeterProvider(mp metric.MeterProvider) *Config {
-	c.MeterProvider = mp
-	return c
+// WithoutTracing disables tracing by setting TracerProvider to nil.
+func WithoutTracing() Option {
+	return func(c *Config) { c.TracerProvider = nil }
 }
 
-// WithLoggerProvider sets a custom LoggerProvider, replacing the default stdout logger
-func (c *Config) WithLoggerProvider(lp log.LoggerProvider) *Config {
-	c.LoggerProvider = lp
-	return c
+// WithoutMetrics disables metrics by setting MeterProvider to nil.
+func WithoutMetrics() Option {
+	return func(c *Config) { c.MeterProvider = nil }
 }
 
-// WithServiceVersion sets the service version for telemetry data
-func (c *Config) WithServiceVersion(version string) *Config {
-	c.ServiceVersion = version
-	return c
-}
-
-// WithoutLogging disables the default logging by setting LoggerProvider to nil
-func (c *Config) WithoutLogging() *Config {
-	c.LoggerProvider = nil
-	return c
-}
-
-// DisableTracing disables tracing by setting TracerProvider to nil
-func (c *Config) DisableTracing() *Config {
-	c.TracerProvider = nil
-	return c
-}
-
-// DisableMetrics disables metrics by setting MeterProvider to nil
-func (c *Config) DisableMetrics() *Config {
-	c.MeterProvider = nil
-	return c
+// WithoutLogging disables the default logging by setting LoggerProvider to nil.
+func WithoutLogging() Option {
+	return func(c *Config) {
+		c.LoggerProvider = nil
+		c.loggerProviderSet = true
+	}
 }
 
 // ContextWithConfig stores the OTel config in the context.
@@ -162,7 +175,7 @@ func defaultLoggerProvider(serviceName string, debug bool) log.LoggerProvider {
 	// Use the otel package's own logger provider with console output only (no OTLP)
 	var opts []LoggerProviderOption
 	if debug {
-		opts = append(opts, WithLogLevel(logging.LogLevelDebug))
+		opts = append(opts, WithLogLevel(LogLevelDebug))
 	}
 	provider, err := NewLoggerProviderWithOptions(serviceName, opts...)
 	if err != nil {

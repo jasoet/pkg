@@ -1,589 +1,209 @@
 # Compress Package
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/compress.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/compress)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/compress.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/compress)
 
-Secure file compression and decompression utilities with built-in protection against path traversal and zip bomb attacks.
-
-## Overview
-
-The `compress` package provides production-ready compression utilities for Gzip and Tar formats with comprehensive security validations. It includes protection against common security vulnerabilities including path traversal attacks and zip bombs.
+Gzip and tar archive utilities with built-in protection against path traversal and zip bomb attacks.
 
 ## Features
 
-- **Gzip Compression**: Fast single-file compression
-- **Tar Archives**: Directory archiving with path preservation
-- **Tar.gz Support**: Combined tar + gzip compression
-- **Base64 Encoding**: Tar.gz archives encoded as base64 strings
-- **Security Hardened**: Path traversal and zip bomb protection
-- **100MB Safety Limit**: Prevents decompression bombs
-- **Safe File Modes**: Validates and sanitizes file permissions
+- **Gzip**: stream compression (`Gz`) and decompression to a file (`UnGz`)
+- **Tar**: directory archiving (`Tar`) and extraction (`UnTar`)
+- **Tar.gz**: combined helpers (`TarGz`, `UnTarGz`)
+- **Base64**: tar.gz archives as base64 strings (`TarGzBase64`, `UnTarGzBase64`)
+- **Security hardened**: path traversal prevention, symlink resolution checks, per-file and total size limits, file mode sanitization
+- **Error contract**: every guard-rail rejection wraps a documented sentinel, matchable with `errors.Is`
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/compress
+go get github.com/jasoet/pkg/v3/compress
 ```
 
 ## Quick Start
-
-### Gzip Compression
 
 ```go
 package main
 
 import (
+    "log"
     "os"
-    "github.com/jasoet/pkg/v2/compress"
+    "path/filepath"
+
+    "github.com/jasoet/pkg/v3/compress"
 )
 
 func main() {
-    // Compress file
-    sourceFile, _ := os.Open("input.txt")
+    // Compress a file with gzip.
+    sourceFile, err := os.Open("input.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
     defer sourceFile.Close()
 
-    outputFile, _ := os.Create("output.txt.gz")
+    outputFile, err := os.Create("output.txt.gz")
+    if err != nil {
+        log.Fatal(err)
+    }
     defer outputFile.Close()
 
-    compress.Gz(sourceFile, outputFile)
+    if err := compress.Gz(sourceFile, outputFile); err != nil {
+        log.Fatal(err)
+    }
 
-    // Decompress file
-    gzFile, _ := os.Open("output.txt.gz")
+    // Decompress it again. UnGz requires an ABSOLUTE destination path.
+    gzFile, err := os.Open("output.txt.gz")
+    if err != nil {
+        log.Fatal(err)
+    }
     defer gzFile.Close()
 
-    compress.UnGz(gzFile, "decompressed.txt")
+    dst, err := filepath.Abs("decompressed.txt")
+    if err != nil {
+        log.Fatal(err)
+    }
+    if _, err := compress.UnGz(gzFile, dst); err != nil {
+        log.Fatal(err)
+    }
 }
-```
-
-### Tar Archives
-
-```go
-import (
-    "os"
-    "github.com/jasoet/pkg/v2/compress"
-)
-
-// Create tar archive
-outputFile, _ := os.Create("archive.tar")
-defer outputFile.Close()
-
-compress.Tar("/path/to/directory", outputFile)
-
-// Extract tar archive
-tarFile, _ := os.Open("archive.tar")
-defer tarFile.Close()
-
-compress.UnTar(tarFile, "/path/to/destination")
-```
-
-### Tar.gz (Combined)
-
-```go
-// Create tar.gz archive
-outputFile, _ := os.Create("archive.tar.gz")
-defer outputFile.Close()
-
-compress.TarGz("/path/to/directory", outputFile)
-
-// Extract tar.gz archive
-tarGzFile, _ := os.Open("archive.tar.gz")
-defer tarGzFile.Close()
-
-compress.UnTarGz(tarGzFile, "/path/to/destination")
-```
-
-### Base64 Encoded Archives
-
-```go
-// Compress directory to base64 string
-encoded, err := compress.TarGzBase64("/path/to/directory")
-if err != nil {
-    panic(err)
-}
-
-// Store or transmit encoded string
-fmt.Println(encoded)
-
-// Decompress from base64 string
-written, err := compress.UnTarGzBase64(encoded, "/path/to/destination")
-if err != nil {
-    panic(err)
-}
-
-fmt.Printf("Wrote %d bytes\n", written)
 ```
 
 ## API Reference
 
-### Gzip Functions
-
-#### Gz
-
-Compress data using gzip:
+### Gzip
 
 ```go
 func Gz(source io.Reader, writer io.Writer) error
+func UnGz(src io.Reader, dst string, opts ...ExtractOption) (int64, error)
 ```
 
-**Example:**
-```go
-source, _ := os.Open("input.txt")
-dest, _ := os.Create("output.gz")
-compress.Gz(source, dest)
-```
+`Gz` streams gzip-compressed data from `source` into `writer`.
 
-#### UnGz
+`UnGz` decompresses a gzip stream into the file at `dst` and returns the number
+of bytes written. **`dst` must be an absolute path**; relative paths are
+rejected with `ErrPathTraversal`. A gzip stream holds a single file, so both
+size options apply to the same output — the effective limit is the smaller of
+`WithMaxFileSize` and `WithMaxArchiveSize`.
 
-Decompress gzip data with security checks:
-
-```go
-func UnGz(src io.Reader, dst string) (written int64, err error)
-```
-
-**Security Features:**
-- Path traversal prevention (blocks `..`)
-- 100MB decompression limit (zip bomb protection)
-
-**Example:**
-```go
-gzFile, _ := os.Open("file.gz")
-written, err := compress.UnGz(gzFile, "output.txt")
-```
-
-### Tar Functions
-
-#### Tar
-
-Create tar archive from directory:
+### Tar
 
 ```go
 func Tar(sourceDirectory string, writer io.Writer) error
+func UnTar(src io.Reader, destinationDir string, opts ...ExtractOption) (int64, error)
 ```
 
-**Example:**
-```go
-outputFile, _ := os.Create("archive.tar")
-compress.Tar("/my/directory", outputFile)
-```
+`Tar` archives `sourceDirectory` into `writer`. Only regular files are
+included; symlinks and other special files are skipped.
 
-#### UnTar
+`UnTar` extracts a tar stream into `destinationDir`, which must already exist
+and be a directory. Unlike `UnGz`, `destinationDir` may be a relative path —
+entry paths inside the archive are validated to stay within it. Only regular
+files and directories are extracted; other entry types are skipped.
 
-Extract tar archive with security validation:
-
-```go
-func UnTar(src io.Reader, destinationDir string) (written int64, err error)
-```
-
-**Security Features:**
-- Path traversal prevention
-- Safe file mode validation (capped at 0o777)
-- 100MB per-file limit
-
-**Example:**
-```go
-tarFile, _ := os.Open("archive.tar")
-written, err := compress.UnTar(tarFile, "/extract/here")
-```
-
-### Tar.gz Functions
-
-#### TarGz
-
-Create tar.gz archive:
+### Tar.gz
 
 ```go
 func TarGz(sourceDirectory string, writer io.Writer) error
+func UnTarGz(src io.Reader, destinationDir string, opts ...ExtractOption) (int64, error)
 ```
 
-**Example:**
-```go
-outputFile, _ := os.Create("archive.tar.gz")
-compress.TarGz("/my/directory", outputFile)
-```
+Combined helpers: `UnTarGz` gunzips `src` and extracts it like `UnTar`.
 
-#### UnTarGz
-
-Extract tar.gz archive:
-
-```go
-func UnTarGz(src io.Reader, destinationDir string) (totalWritten int64, err error)
-```
-
-**Example:**
-```go
-tarGzFile, _ := os.Open("archive.tar.gz")
-written, err := compress.UnTarGz(tarGzFile, "/extract/here")
-```
-
-### Base64 Functions
-
-#### TarGzBase64
-
-Compress directory to base64-encoded tar.gz string:
+### Base64
 
 ```go
 func TarGzBase64(sourceDirectory string) (string, error)
+func UnTarGzBase64(encoded string, destinationDir string, opts ...ExtractOption) (int64, error)
 ```
 
-**Use Case**: Transmit compressed directories via text protocols (JSON, API responses)
+`TarGzBase64` archives and compresses a directory, returning it as a
+base64-encoded string for text transport (JSON, API responses).
+`UnTarGzBase64` reverses it, extracting like `UnTarGz`.
 
-**Example:**
-```go
-encoded, err := compress.TarGzBase64("/my/directory")
-// Send encoded string via API
-```
+## Options
 
-#### UnTarGzBase64
+All extraction functions (`UnGz`, `UnTar`, `UnTarGz`, `UnTarGzBase64`) accept
+`ExtractOption`s:
 
-Extract from base64-encoded tar.gz string:
+| Option | Default | Effect |
+| --- | --- | --- |
+| `WithMaxFileSize(size int64)` | 100 MB (`DefaultMaxFileSize`) | Maximum decompressed size of a single file |
+| `WithMaxArchiveSize(size int64)` | 1 GB (`DefaultMaxArchiveSize`) | Maximum total extracted size of an archive |
 
-```go
-func UnTarGzBase64(encoded string, destinationDir string) (totalWritten int64, err error)
-```
-
-**Example:**
-```go
-// Receive encoded string from API
-written, err := compress.UnTarGzBase64(encoded, "/extract/here")
-```
-
-## Security Features
-
-### Path Traversal Protection
-
-Prevents malicious archives from writing outside destination:
+For `UnGz` (single-file stream) the effective limit is `min(maxFileSize, maxArchiveSize)`.
 
 ```go
-// ✅ Protected: These paths are blocked
-"../etc/passwd"          // Blocked: Contains ..
-"/etc/passwd"            // Blocked: Absolute path
-"dir/../../../etc/pass"  // Blocked: Traversal attempt
-```
-
-**Implementation:**
-```go
-// Path validation
-if strings.Contains(path, "..") {
-    return fmt.Errorf("invalid path")
-}
-
-// Ensure within destination
-if !strings.HasPrefix(target, destinationDir) {
-    return fmt.Errorf("path traversal attempt")
-}
-```
-
-### Zip Bomb Protection
-
-Limits decompression to prevent resource exhaustion:
-
-```go
-// 100MB limit per file
-limitedReader := io.LimitReader(reader, 100*1024*1024)
-io.Copy(dest, limitedReader)
-```
-
-**Why:**
-- Small compressed file (1KB) can expand to gigabytes
-- Exhausts disk space and memory
-- Causes denial of service
-
-**Protection:**
-- Each file limited to 100MB decompressed
-- Error returned if limit exceeded
-
-### File Mode Validation
-
-Sanitizes file permissions to prevent dangerous modes:
-
-```go
-// Cap at 0o777, use safe default for invalid modes
-fileMode := header.Mode
-if fileMode > 0o777 {
-    fileMode = 0o644 // Safe default
-}
-safeMode := os.FileMode(fileMode & 0o777)
-```
-
-**Why:**
-- Prevents setuid/setgid bits
-- Prevents unsafe permissions
-- Ensures consistent file modes
-
-## Advanced Usage
-
-### Streaming Compression
-
-```go
-// Compress from any reader
-httpResponse, _ := http.Get("https://example.com/large-file")
-defer httpResponse.Body.Close()
-
-gzFile, _ := os.Create("output.gz")
-defer gzFile.Close()
-
-compress.Gz(httpResponse.Body, gzFile)
-```
-
-### Custom Writer
-
-```go
-// Compress to bytes buffer
-var buf bytes.Buffer
-compress.Gz(sourceReader, &buf)
-
-// Compress to network connection
-conn, _ := net.Dial("tcp", "server:8080")
-compress.TarGz("/my/directory", conn)
-```
-
-### Directory Filtering
-
-For selective archiving, walk directory manually:
-
-```go
-outputFile, _ := os.Create("filtered.tar")
-tarWriter := tar.NewWriter(outputFile)
-defer tarWriter.Close()
-
-filepath.Walk("/my/dir", func(path string, info os.FileInfo, err error) error {
-    // Skip .git directories
-    if info.IsDir() && info.Name() == ".git" {
-        return filepath.SkipDir
-    }
-
-    // Only include .go files
-    if !info.IsDir() && filepath.Ext(path) == ".go" {
-        // Add to tar manually
-    }
-
-    return nil
-})
+// Allow single files up to 500 MB, archive total up to 2 GB.
+written, err := compress.UnTarGz(reader, destDir,
+    compress.WithMaxFileSize(500*1024*1024),
+    compress.WithMaxArchiveSize(2*1024*1024*1024),
+)
 ```
 
 ## Error Handling
 
-```go
-// Gzip decompression
-written, err := compress.UnGz(reader, "output.txt")
-if err != nil {
-    switch {
-    case strings.Contains(err.Error(), "invalid destination"):
-        // Path traversal attempt
-    case strings.Contains(err.Error(), "unexpected EOF"):
-        // Corrupted archive
-    default:
-        // Other errors
-    }
-}
+Guard-rail rejections wrap documented sentinels — match them with `errors.Is`,
+never by comparing message strings:
 
-// Tar extraction
-written, err := compress.UnTar(reader, "/dest")
-if err != nil {
-    switch {
-    case strings.Contains(err.Error(), "invalid path"):
-        // Path traversal attempt
-    case strings.Contains(err.Error(), "not a directory"):
-        // Destination is not a directory
-    default:
-        // Other errors
-    }
+| Sentinel | Returned when |
+| --- | --- |
+| `ErrPathTraversal` | `UnGz` destination is not absolute; a tar entry path is empty, absolute, has a `..` path element or contains `\`, escapes the destination, resolves through a parent symlink outside it, or targets a pre-existing leaf symlink |
+| `ErrSizeLimitExceeded` | A file exceeds `maxFileSize`, or the running archive total would exceed `maxArchiveSize` (enforced mid-file) |
+| `ErrNotDirectory` | `Tar` source or `UnTar`/`UnTarGz` destination is not a directory |
+
+```go
+written, err := compress.UnTarGz(reader, destDir)
+switch {
+case errors.Is(err, compress.ErrPathTraversal):
+    // Malicious or malformed entry path — reject the archive.
+case errors.Is(err, compress.ErrSizeLimitExceeded):
+    // Zip bomb protection triggered; written holds bytes extracted so far.
+case errors.Is(err, compress.ErrNotDirectory):
+    // Fix the destination and retry.
+case err != nil:
+    // I/O or corrupt-archive error (e.g. gzip.ErrHeader, io.ErrUnexpectedEOF).
 }
 ```
 
-## Best Practices
+Missing destinations, corrupt archives, and filesystem failures surface as the
+underlying `os`/`gzip`/`tar` errors and are matchable with `errors.Is` against
+`fs.ErrNotExist` and friends.
 
-### 1. Validate Destination
+## Security Details
 
-```go
-// ✅ Good: Check destination exists and is directory
-info, err := os.Stat(destDir)
-if err != nil {
-    return err
-}
-if !info.IsDir() {
-    return fmt.Errorf("destination must be directory")
-}
-
-compress.UnTarGz(reader, destDir)
-```
-
-### 2. Handle Large Files
-
-```go
-// ✅ Good: Stream large files
-source, _ := os.Open("large-file.txt")
-defer source.Close()
-
-dest, _ := os.Create("output.gz")
-defer dest.Close()
-
-compress.Gz(source, dest) // Streams, low memory
-```
-
-### 3. Close Writers
-
-```go
-// ✅ Good: Ensure writers are closed
-outputFile, _ := os.Create("archive.tar.gz")
-defer outputFile.Close()
-
-if err := compress.TarGz("/my/dir", outputFile); err != nil {
-    return err
-}
-// Deferred close ensures data is flushed
-```
-
-### 4. Check Written Bytes
-
-```go
-// ✅ Good: Verify extraction
-written, err := compress.UnTarGz(reader, "/dest")
-if err != nil {
-    return err
-}
-
-if written == 0 {
-    log.Warn("No files extracted")
-}
-log.Printf("Extracted %d bytes", written)
-```
-
-### 5. Use Base64 for APIs
-
-```go
-// ✅ Good: Base64 for text transport
-type Response struct {
-    Archive string `json:"archive"`
-}
-
-encoded, _ := compress.TarGzBase64("/data")
-response := Response{Archive: encoded}
-json.Marshal(response)
-```
+- **Path traversal prevention**: tar entry names are rejected when empty,
+  absolute, or containing a `..` path element or a `\` (names that merely
+  contain `..`, like `report..final.txt`, are allowed); the joined target is
+  re-checked with `filepath.Rel` so it stays under the destination (a relative
+  destination such as `.` is accepted); parent directories are resolved with
+  `filepath.EvalSymlinks` to stop parent-symlink TOCTOU escapes.
+- **Leaf-symlink protection**: before writing a file, `UnTar` `Lstat`s the
+  target and refuses (`ErrPathTraversal`) to write through a pre-existing
+  symlink; the open additionally uses `O_NOFOLLOW` on platforms that support
+  it, closing the TOCTOU window so an archive can never overwrite a file
+  outside the destination via a planted symlink.
+- **Truncating overwrite**: files are opened with `O_TRUNC`, so extracting a
+  shorter file over a longer existing one leaves no stale trailing bytes.
+- **Zip bomb protection**: extraction streams through `io.LimitReader` capped at
+  the smaller of the per-file limit and the remaining archive budget, so both
+  `maxFileSize` and `maxArchiveSize` are enforced *mid-file* (no full-file
+  overshoot); one extra byte is probed past the cap so oversized content is
+  detected and reported with `ErrSizeLimitExceeded`.
+- **No partial output**: when extraction of a file aborts (size limit or I/O
+  error), the partially written target is removed rather than left on disk.
+- **File mode sanitization**: extracted file modes are masked with `0o777`,
+  stripping setuid/setgid/sticky bits; directories are created `0o750`.
+- **`UnGz` vs `UnTar` path rules**: `UnGz` requires an absolute destination
+  path, while `UnTar` accepts a relative destination directory. The asymmetry
+  is intentional: `UnGz` writes to a caller-supplied file path and fails
+  closed on ambiguity, whereas `UnTar` constrains archive-controlled entry
+  paths inside the destination instead.
 
 ## Testing
 
-The package includes comprehensive tests with 86% coverage:
-
 ```bash
-# Run tests
-go test ./compress -v
-
-# With coverage
-go test ./compress -cover
-
-# Security tests
-go test ./compress -v -run TestSecurity
+go test ./compress/ -count=1        # all tests, including security suite
+go test ./compress/ -v -run TestGuardRailSentinels
 ```
-
-### Test Utilities
-
-```go
-func TestMyCompression(t *testing.T) {
-    // Create temp directory
-    tmpDir, _ := os.MkdirTemp("", "compress-test")
-    defer os.RemoveAll(tmpDir)
-
-    // Create test file
-    testFile := filepath.Join(tmpDir, "test.txt")
-    os.WriteFile(testFile, []byte("content"), 0o644)
-
-    // Test compression
-    var buf bytes.Buffer
-    err := compress.Tar(tmpDir, &buf)
-    assert.NoError(t, err)
-
-    // Test decompression
-    destDir, _ := os.MkdirTemp("", "extract")
-    defer os.RemoveAll(destDir)
-
-    written, err := compress.UnTar(&buf, destDir)
-    assert.NoError(t, err)
-    assert.Greater(t, written, int64(0))
-}
-```
-
-## Troubleshooting
-
-### Path Traversal Errors
-
-**Problem**: `invalid path` or `path traversal` error
-
-**Solution:**
-```go
-// Ensure clean paths
-destDir := filepath.Clean("/my/destination")
-written, err := compress.UnTar(reader, destDir)
-```
-
-### Zip Bomb Detection
-
-**Problem**: Extraction stops at 100MB
-
-**Solution:**
-```go
-// This is intentional security protection
-// If you need larger files, extract programmatically:
-
-tarReader := tar.NewReader(gzipReader)
-for {
-    header, err := tarReader.Next()
-    if err == io.EOF {
-        break
-    }
-
-    // Custom size limit
-    limitedReader := io.LimitReader(tarReader, 500*1024*1024) // 500MB
-    io.Copy(outputFile, limitedReader)
-}
-```
-
-### Corrupted Archives
-
-**Problem**: `unexpected EOF` or `invalid header`
-
-**Solution:**
-```go
-// Verify archive integrity before processing
-file, _ := os.Open("archive.tar.gz")
-gzReader, err := gzip.NewReader(file)
-if err != nil {
-    return fmt.Errorf("not a valid gzip: %w", err)
-}
-
-tarReader := tar.NewReader(gzReader)
-_, err = tarReader.Next()
-if err != nil {
-    return fmt.Errorf("not a valid tar: %w", err)
-}
-```
-
-## Performance
-
-- **Streaming**: Low memory usage for large files
-- **Efficient**: Uses standard library compression
-- **Minimal Overhead**: Security checks are fast (~microseconds)
-
-**Benchmark:**
-```
-BenchmarkGz-8           1000    ~1ms/op (per MB)
-BenchmarkTar-8          2000    ~500µs/op (per file)
-BenchmarkSecurityCheck-8 100000  ~10µs/op (path validation)
-```
-
-## Examples
-
-See [examples/](.../examples/compress/compress/) directory for:
-- File compression and decompression
-- Directory archiving
-- Base64 encoding for APIs
-- Security edge cases
-- Error handling patterns
-
-## Related Packages
-
-- **[config](../config/)** - Configuration management
-- **[ssh](../ssh/)** - SSH file transfer
 
 ## License
 

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -33,8 +34,11 @@ type Server struct {
 	httpServer    *http.Server // Used only for H2C mode
 	gatewayMux    *runtime.ServeMux
 	healthManager *HealthManager
-	shutdownOnce  sync.Once
+	shutdownOnce  *sync.Once
+	metricsOnce   sync.Once // guards registerServerMetrics so restarts don't duplicate observable gauges
 	running       bool
+	starting      bool // true while Start is in flight, before all handles are published
+	startCond     *sync.Cond
 	mu            sync.RWMutex
 }
 
@@ -48,7 +52,9 @@ func New(opts ...Option) (*Server, error) {
 	server := &Server{
 		config:        cfg,
 		healthManager: NewHealthManager(),
+		shutdownOnce:  &sync.Once{},
 	}
+	server.startCond = sync.NewCond(&server.mu)
 
 	// Setup gRPC server
 	server.setupGRPCServer()
@@ -90,23 +96,33 @@ func (s *Server) setupGRPCServer() {
 
 	// Add OpenTelemetry interceptors if configured
 	if s.config.otelConfig != nil {
-		// Chain unary interceptors: logging -> tracing -> metrics -> handler
+		// Chain unary interceptors: tracing -> logging -> metrics -> handler.
+		// Tracing MUST run first (outermost) so it establishes the span in the
+		// context before logging runs; otherwise the access log emitted by the
+		// logging interceptor carries no trace_id/span_id (broken correlation).
 		unaryInterceptors := []grpc.UnaryServerInterceptor{
-			createGRPCLoggingInterceptor(s.config.otelConfig),
 			createGRPCTracingInterceptor(s.config.otelConfig),
+			createGRPCLoggingInterceptor(s.config.otelConfig),
 			createGRPCMetricsInterceptor(s.config.otelConfig),
 		}
 		opts = append(opts, grpc.ChainUnaryInterceptor(unaryInterceptors...))
 
-		// Chain stream interceptors: logging -> metrics -> handler
+		// Chain stream interceptors: tracing -> logging -> metrics -> handler.
+		// Same ordering rationale as the unary chain.
 		streamInterceptors := []grpc.StreamServerInterceptor{
+			createGRPCStreamTracingInterceptor(s.config.otelConfig),
 			createGRPCStreamLoggingInterceptor(s.config.otelConfig),
 			createGRPCStreamMetricsInterceptor(s.config.otelConfig),
 		}
 		opts = append(opts, grpc.ChainStreamInterceptor(streamInterceptors...))
 
-		// Register server uptime/start_time observable gauges
-		registerServerMetrics(s.config.otelConfig)
+		// Register server uptime/start_time observable gauges exactly once per
+		// Server: setupGRPCServer runs again on every restart, and re-registering
+		// the same observable gauges on a shared meter provider would leave
+		// duplicate callbacks producing conflicting values.
+		s.metricsOnce.Do(func() {
+			registerServerMetrics(s.config.otelConfig)
+		})
 	}
 
 	// Create gRPC server
@@ -136,14 +152,19 @@ func (s *Server) setupEchoServer() error {
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Add OpenTelemetry middleware if configured
+	// Add OpenTelemetry middleware if configured.
+	// Order matters: tracing is registered BEFORE logging so it runs first
+	// (outermost) and installs the span into the request context; the logging
+	// middleware then re-reads that context after next() so access logs carry
+	// trace_id/span_id. Registering logging first would leave access logs
+	// uncorrelated.
 	if s.config.otelConfig != nil {
-		// Add OTel middleware: logging -> tracing -> metrics
-		if s.config.otelConfig.IsLoggingEnabled() {
-			e.Use(createHTTPGatewayLoggingMiddleware(s.config.otelConfig))
-		}
+		// Add OTel middleware: tracing -> logging -> metrics
 		if s.config.otelConfig.IsTracingEnabled() {
 			e.Use(createHTTPGatewayTracingMiddleware(s.config.otelConfig))
+		}
+		if s.config.otelConfig.IsLoggingEnabled() {
+			e.Use(createHTTPGatewayLoggingMiddleware(s.config.otelConfig))
 		}
 		if s.config.otelConfig.IsMetricsEnabled() {
 			e.Use(createHTTPGatewayMetricsMiddleware(s.config.otelConfig))
@@ -176,11 +197,12 @@ func (s *Server) setupEchoServer() error {
 		e.Use(mw)
 	}
 
-	// Setup gateway integration if service registrar is provided.
-	// NOTE: Gateway routes are registered here, before echoConfigurer, so that
-	// user-supplied routes from echoConfigurer always take precedence over the
-	// auto-generated gateway catch-all routes.
-	if s.config.serviceRegistrar != nil {
+	// Setup gateway integration if a service or gateway registrar is provided.
+	// NOTE: the gateway is mounted as a wildcard catch-all (basePath + "/*"),
+	// so Echo's route priority — static routes win over wildcards — lets
+	// user-supplied routes from echoConfigurer take precedence over the
+	// auto-generated gateway routes regardless of registration order.
+	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		if err := s.setupGatewayIntegration(e); err != nil {
 			return fmt.Errorf("failed to setup gateway integration: %w", err)
 		}
@@ -191,8 +213,11 @@ func (s *Server) setupEchoServer() error {
 		s.config.echoConfigurer(e)
 	}
 
-	// Store Echo instance
+	// Store Echo instance under the lock: the H2C mixed handler reads s.echo
+	// concurrently (see startH2CMode), and a restart rewrites it.
+	s.mu.Lock()
 	s.echo = e
+	s.mu.Unlock()
 
 	return nil
 }
@@ -201,6 +226,12 @@ func (s *Server) setupEchoServer() error {
 func (s *Server) setupGatewayIntegration(e *echo.Echo) error {
 	// Create gateway mux with standard configuration
 	gatewayMux := CreateGatewayMux()
+
+	// Let the consumer register generated gateway handlers before mounting;
+	// without this the mounted gateway serves nothing.
+	if s.config.gatewayRegistrar != nil {
+		s.config.gatewayRegistrar(gatewayMux)
+	}
 
 	// Mount gateway on Echo at the configured base path
 	MountGatewayOnEcho(e, gatewayMux, s.config.gatewayBasePath)
@@ -218,21 +249,75 @@ func (s *Server) Start() error {
 		s.mu.Unlock()
 		return fmt.Errorf("server is already running")
 	}
+	// Mark running inside the same critical section as the check so two
+	// concurrent Start calls cannot both pass the guard; every error path
+	// below rolls this back to false. Also mark starting so a concurrent
+	// Stop blocks (instead of tearing down a half-published server) until
+	// startup either completes or is rolled back.
 	s.running = true
+	s.starting = true
+	// On restart after a completed Stop the previous gRPC server is spent
+	// (Serve returns grpc.ErrServerStopped after GracefulStop) and
+	// shutdownOnce has been consumed; rebuild both so Start/Stop cycles work.
+	if s.grpcServer == nil {
+		s.setupGRPCServer()
+		// Re-arm shutdown with a fresh Once. Use a new pointer rather than
+		// resetting the existing value: a slow Stop from the previous cycle may
+		// still be unwinding its shutdownOnce.Do call, and mutating that Once
+		// concurrently would be a data race. Stop captures the pointer under the
+		// lock before calling Do, so it always operates on a stable Once.
+		s.shutdownOnce = &sync.Once{}
+	}
 	s.mu.Unlock()
 
 	if err := s.setupEchoServer(); err != nil {
+		s.mu.Lock()
+		s.running = false
+		s.starting = false
+		s.mu.Unlock()
+		s.startCond.Broadcast()
 		return fmt.Errorf("failed to setup Echo server: %w", err)
 	}
 
+	var err error
 	switch s.config.mode {
 	case SeparateMode:
-		return s.startSeparateMode()
+		err = s.startSeparateMode()
 	case H2CMode:
-		return s.startH2CMode()
+		err = s.startH2CMode()
 	default:
-		return fmt.Errorf("unsupported server mode: %s", s.config.mode)
+		err = fmt.Errorf("unsupported server mode: %s", s.config.mode)
 	}
+
+	if err != nil {
+		// Roll back: the server is not running, and the gRPC server may have
+		// been started (SeparateMode) or be in an unknown state — stop it and
+		// mark it spent so a subsequent Start rebuilds it.
+		s.mu.Lock()
+		s.running = false
+		s.starting = false
+		if s.grpcServer != nil {
+			s.grpcServer.Stop()
+			s.grpcServer = nil
+		}
+		s.mu.Unlock()
+		s.startCond.Broadcast()
+		return err
+	}
+
+	return nil
+}
+
+// endStartup closes the startup window and wakes any Stop callers blocked
+// waiting for startup to settle. It must be called after every handle Stop
+// needs (s.echo, s.httpServer) has been published and before Start blocks in
+// the serve loop. The lock round-trip publishes those handles to the woken
+// Stop.
+func (s *Server) endStartup() {
+	s.mu.Lock()
+	s.starting = false
+	s.mu.Unlock()
+	s.startCond.Broadcast()
 }
 
 // startSeparateMode starts gRPC and HTTP servers on separate ports
@@ -243,10 +328,20 @@ func (s *Server) startSeparateMode() error {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", s.config.grpcPort, err)
 	}
 
-	// grpc.Server.Serve closes the listener when it exits. The deferred Close
-	// here is a safety net so that the file descriptor is released even if
-	// Serve never runs (e.g. on an early return in future code paths).
-	defer grpcListener.Close() //nolint:errcheck
+	// Ownership of grpcListener transfers to grpcServer.Serve below, which
+	// closes it when it exits (on GracefulStop/Stop). We deliberately do NOT
+	// defer Close() here: this function only returns after Echo's serve loop
+	// ends, by which point Stop has already closed the listener via Serve, and
+	// a second Close would race that path and log a spurious "use of closed
+	// network connection". On the rollback path (busy HTTP port) Start's error
+	// handling calls grpcServer.Stop(), which closes the listener.
+
+	// Capture the current gRPC server into a local before launching the
+	// goroutine: Stop/rollback may nil the field concurrently, and reading it
+	// unsynchronized inside the goroutine could panic on a nil dereference.
+	s.mu.RLock()
+	grpcServer := s.grpcServer
+	s.mu.RUnlock()
 
 	// Start gRPC server in goroutine; it now owns the listener.
 	go func() {
@@ -254,21 +349,29 @@ func (s *Server) startSeparateMode() error {
 		if s.config.enableReflection {
 			s.logInfo("gRPC reflection enabled")
 		}
-		if err := s.grpcServer.Serve(grpcListener); err != nil {
+		if err := grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			log.Printf("gRPC server error: %v", err)
 		}
 	}()
+
+	// All handles a concurrent Stop needs are published (s.echo during
+	// setupEchoServer, the gRPC server above); close the startup window
+	// before blocking in Echo's serve loop.
+	s.endStartup()
 
 	// Start Echo HTTP server
 	s.logInfo(fmt.Sprintf("Echo HTTP server starting on port %s", s.config.httpPort))
 	if s.config.enableHealthCheck {
 		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.httpPort, s.config.healthPath))
 	}
-	if s.config.serviceRegistrar != nil {
+	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.httpPort, s.config.gatewayBasePath))
 	}
 
-	return s.echo.Start(s.config.getHTTPAddress())
+	if err := s.echo.Start(s.config.getHTTPAddress()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // startH2CMode starts a mixed gRPC/HTTP server on a single port
@@ -276,21 +379,50 @@ func (s *Server) startH2CMode() error {
 	// Create mixed handler for H2C that routes between gRPC and Echo
 	mixedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
-			s.grpcServer.ServeHTTP(w, r)
+			// Read the current field per request under the lock: Stop nils it
+			// and restart rebuilds it, so the handler must follow the field,
+			// not a value captured when the handler was created.
+			s.mu.RLock()
+			grpcServer := s.grpcServer
+			s.mu.RUnlock()
+			if grpcServer == nil {
+				// Server is stopped; reject rather than panic on nil.
+				http.Error(w, "gRPC server is not running", http.StatusServiceUnavailable)
+				return
+			}
+			grpcServer.ServeHTTP(w, r)
 		} else {
-			s.echo.ServeHTTP(w, r) // Echo implements http.Handler
+			// Read s.echo under the lock: a restart rewrites it and stale
+			// hijacked-connection closures may still invoke this handler.
+			s.mu.RLock()
+			e := s.echo
+			s.mu.RUnlock()
+			e.ServeHTTP(w, r) // Echo implements http.Handler
 		}
 	})
 
-	// Create HTTP server with H2C support
+	// Create HTTP server with H2C support.
+	//
+	// CRITICAL: ReadTimeout and WriteTimeout are left at zero here. Under h2c
+	// the *http.Server's Read/WriteTimeout become per-stream HTTP/2 deadlines
+	// (via http2.Server's BaseConfig), and grpc-go's serverHandlerTransport
+	// never clears them. A non-zero WriteTimeout would abort any unary RPC that
+	// takes longer than it and would kill client/bidi streams that send after
+	// the deadline (RST_STREAM, surfaced to the client as Internal). Because
+	// gRPC and plain HTTP share this port in H2C mode, we cannot safely apply a
+	// connection-level write deadline; enforce HTTP read/write timeouts with
+	// SeparateMode or an upstream proxy instead. ReadHeaderTimeout and
+	// IdleTimeout remain safe and are kept for slowloris/idle protection.
 	s.httpServer = &http.Server{
 		Addr:              s.config.getGRPCAddress(),
 		Handler:           h2c.NewHandler(mixedHandler, &http2.Server{}),
-		ReadTimeout:       s.config.readTimeout,
 		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      s.config.writeTimeout,
 		IdleTimeout:       s.config.idleTimeout,
 	}
+
+	// s.echo and s.httpServer are now published; close the startup window
+	// before blocking in ListenAndServe so a concurrent Stop can proceed.
+	s.endStartup()
 
 	s.logInfo(fmt.Sprintf("Mixed gRPC+Echo server starting on port %s (H2C mode)", s.config.grpcPort))
 	s.logInfo(fmt.Sprintf("gRPC endpoints available on port %s", s.config.grpcPort))
@@ -300,24 +432,39 @@ func (s *Server) startH2CMode() error {
 	if s.config.enableHealthCheck {
 		s.logInfo(fmt.Sprintf("Health checks available at http://localhost:%s%s", s.config.grpcPort, s.config.healthPath))
 	}
-	if s.config.serviceRegistrar != nil {
+	if s.config.serviceRegistrar != nil || s.config.gatewayRegistrar != nil {
 		s.logInfo(fmt.Sprintf("gRPC Gateway available at http://localhost:%s%s", s.config.grpcPort, s.config.gatewayBasePath))
 	}
 
-	return s.httpServer.ListenAndServe()
+	if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
-// Stop gracefully stops the server
+// Stop gracefully stops the server. If a Start call is currently in flight,
+// Stop blocks until startup has completed (or been rolled back) before
+// proceeding, so it never tears down a half-published server and never
+// leaves an unstoppable zombie behind.
 func (s *Server) Stop() error {
 	s.mu.Lock()
+	for s.starting {
+		// Start is between the running check and publishing all handles
+		// (s.echo, s.httpServer); wait for endStartup to close that window.
+		// The lock round-trip in endStartup also publishes those handles.
+		s.startCond.Wait()
+	}
 	if !s.running {
 		s.mu.Unlock()
 		return nil
 	}
+	// Capture the current Once under the lock so a concurrent restart, which
+	// swaps in a fresh Once, cannot race the Do call below.
+	once := s.shutdownOnce
 	s.mu.Unlock()
 
 	var stopErr error
-	s.shutdownOnce.Do(func() {
+	once.Do(func() {
 		log.Println("Stopping server gracefully...")
 
 		// Create shutdown context with timeout
@@ -333,7 +480,11 @@ func (s *Server) Stop() error {
 
 		// Stop HTTP/Echo server based on mode
 		if s.config.mode == H2CMode && s.httpServer != nil {
-			// H2C mode uses httpServer
+			// H2C mode uses httpServer. Note: h2c hijacks the underlying
+			// net.Conn to serve HTTP/2, so http.Server.Shutdown does not track
+			// or drain those connections (it returns without waiting on them).
+			// The graceful drain of in-flight gRPC calls and the GOAWAY to gRPC
+			// clients are handled by grpcServer.GracefulStop below instead.
 			if err := s.httpServer.Shutdown(ctx); err != nil {
 				log.Printf("HTTP server shutdown error: %v", err)
 				stopErr = err
@@ -347,10 +498,13 @@ func (s *Server) Stop() error {
 		}
 
 		// Stop gRPC server
-		if s.grpcServer != nil {
+		s.mu.RLock()
+		grpcServer := s.grpcServer
+		s.mu.RUnlock()
+		if grpcServer != nil {
 			done := make(chan struct{})
 			go func() {
-				s.grpcServer.GracefulStop()
+				grpcServer.GracefulStop()
 				close(done)
 			}()
 
@@ -359,12 +513,20 @@ func (s *Server) Stop() error {
 				log.Println("gRPC server stopped gracefully")
 			case <-ctx.Done():
 				log.Println("gRPC server shutdown timeout, forcing stop")
-				s.grpcServer.Stop()
+				grpcServer.Stop()
+				// Graceful shutdown did not complete within shutdownTimeout and
+				// connections were force-closed. Surface this as an error so
+				// callers do not mistake a forced kill for a clean shutdown.
+				stopErr = fmt.Errorf("graceful shutdown timed out after %s, forced stop: %w",
+					s.config.shutdownTimeout, ctx.Err())
 			}
 		}
 
 		s.mu.Lock()
 		s.running = false
+		// The gRPC server cannot be reused after GracefulStop/Stop; clear it
+		// so a subsequent Start rebuilds it via setupGRPCServer.
+		s.grpcServer = nil
 		s.mu.Unlock()
 
 		log.Println("Server stopped")
@@ -378,8 +540,11 @@ func (s *Server) GetHealthManager() *HealthManager {
 	return s.healthManager
 }
 
-// GetGRPCServer returns the underlying gRPC server
+// GetGRPCServer returns the underlying gRPC server. It returns nil after Stop
+// until the next Start rebuilds the server.
 func (s *Server) GetGRPCServer() *grpc.Server {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.grpcServer
 }
 
@@ -403,15 +568,31 @@ func Start(port string, serviceRegistrar func(*grpc.Server), opts ...Option) err
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 
-	// Setup signal handling for graceful shutdown
+	return startWithSignalHandling(server)
+}
+
+// startWithSignalHandling installs SIGINT/SIGTERM handling for graceful
+// shutdown, then blocks in server.Start until it returns. It cleans up after
+// itself: signal.Stop unregisters the handler and the done channel terminates
+// the watcher goroutine, so no goroutine or signal registration leaks per call
+// (which would otherwise swallow a subsequent SIGTERM, leaving the process
+// killable only via SIGKILL).
+func startWithSignalHandling(server *Server) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	done := make(chan struct{})
+	defer close(done)
 
 	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal: %v", sig)
-		if err := server.Stop(); err != nil {
-			log.Printf("Error stopping server: %v", err)
+		select {
+		case sig := <-sigChan:
+			log.Printf("Received signal: %v", sig)
+			if err := server.Stop(); err != nil {
+				log.Printf("Error stopping server: %v", err)
+			}
+		case <-done:
 		}
 	}()
 
@@ -433,18 +614,7 @@ func StartH2C(port string, serviceRegistrar func(*grpc.Server), opts ...Option) 
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal: %v", sig)
-		if err := server.Stop(); err != nil {
-			log.Printf("Error stopping server: %v", err)
-		}
-	}()
-
-	return server.Start()
+	return startWithSignalHandling(server)
 }
 
 // StartSeparate creates and starts a server in separate mode with custom service registrar
@@ -460,17 +630,5 @@ func StartSeparate(grpcPort, httpPort string, serviceRegistrar func(*grpc.Server
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 
-	// Setup signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal: %v", sig)
-		if err := server.Stop(); err != nil {
-			log.Printf("Error stopping server: %v", err)
-		}
-	}()
-
-	return server.Start()
+	return startWithSignalHandling(server)
 }

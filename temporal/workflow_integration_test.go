@@ -15,7 +15,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
+	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
 // Test workflows for integration testing
@@ -51,8 +51,8 @@ func TestWorkflowManagerCreation(t *testing.T) {
 	defer cleanup()
 
 	config := &Config{
-		HostPort:             container.HostPort(),
-		Namespace:            "default",
+		HostPort:  container.HostPort(),
+		Namespace: "default",
 	}
 
 	t.Run("NewWorkflowManagerWithClient", func(t *testing.T) {
@@ -64,17 +64,14 @@ func TestWorkflowManagerCreation(t *testing.T) {
 	})
 
 	t.Run("NewWorkflowManagerWithConfig", func(t *testing.T) {
-		wm, err := NewWorkflowManager(config)
+		temporalClient, err := NewClient(WithConfig(*config))
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		wm, err := NewWorkflowManager(temporalClient)
 		require.NoError(t, err)
 		require.NotNil(t, wm)
 		assert.NotNil(t, wm.GetClient())
-		wm.Close()
-	})
-
-	t.Run("NewWorkflowManagerInvalidType", func(t *testing.T) {
-		wm, err := NewWorkflowManager("invalid")
-		assert.Error(t, err)
-		assert.Nil(t, wm)
 	})
 }
 

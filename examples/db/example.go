@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasoet/pkg/v2/db"
-	"github.com/jasoet/pkg/v2/logging"
+	"github.com/jasoet/pkg/v3/db"
+	"github.com/jasoet/pkg/v3/otel"
 	"gorm.io/gorm"
 )
 
@@ -52,7 +52,7 @@ type Order struct {
 
 func main() {
 	// Initialize logging
-	if err := logging.Initialize("db-examples", true); err != nil {
+	if err := otel.Initialize("db-examples", true); err != nil {
 		fmt.Printf("Failed to initialize logging: %v\n", err)
 		return
 	}
@@ -95,7 +95,7 @@ func main() {
 }
 
 func basicConnectionExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "basic-connection")
+	logger := otel.ContextLogger(ctx, "basic-connection")
 
 	// PostgreSQL connection configuration
 	config := &db.ConnectionConfig{
@@ -120,10 +120,10 @@ func basicConnectionExample(ctx context.Context) {
 	fmt.Printf("- Type: %s\n", config.DBType)
 	fmt.Printf("- Host: %s:%d\n", config.Host, config.Port)
 	fmt.Printf("- Database: %s\n", config.DBName)
-	fmt.Printf("- DSN: %s\n", maskPassword(config.Dsn()))
+	fmt.Printf("- DSN: %s\n", config.RedactedDsn())
 
 	// Connect to database
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Connection failed: %v\n", err)
@@ -156,7 +156,7 @@ func basicConnectionExample(ctx context.Context) {
 }
 
 func connectionPoolExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "connection-pool")
+	logger := otel.ContextLogger(ctx, "connection-pool")
 
 	// Different configuration for different environments
 	configs := map[string]*db.ConnectionConfig{
@@ -204,7 +204,7 @@ func connectionPoolExample(ctx context.Context) {
 
 		// Only attempt to connect to development database
 		if env == "development" {
-			if database, err := config.Pool(); err != nil {
+			if database, err := db.NewPool(db.WithConnectionConfig(*config)); err != nil {
 				logger.Warn().Err(err).Str("env", env).Msg("Failed to connect")
 				fmt.Printf("  ✗ Connection failed (expected for demo)\n")
 			} else {
@@ -255,7 +255,7 @@ func demonstrateConnectionPool(ctx context.Context, database *gorm.DB) {
 }
 
 func migrationExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "migrations")
+	logger := otel.ContextLogger(ctx, "migrations")
 
 	// Note: This example shows the migration pattern but doesn't run actual migrations
 	// since we don't have migration files in the example
@@ -273,7 +273,7 @@ func migrationExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -286,7 +286,8 @@ func migrationExample(ctx context.Context) {
 	fmt.Println("   var migrationFS embed.FS")
 	fmt.Println()
 	fmt.Println("2. Run migrations up:")
-	fmt.Println("   err := db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, \"migrations\")")
+	fmt.Println("   sqlDB, _ := database.DB()")
+	fmt.Println("   err := db.RunPostgresMigrations(ctx, sqlDB, migrationFS, \"migrations\")")
 	fmt.Println()
 	fmt.Println("3. Migration file structure:")
 	fmt.Println("   migrations/")
@@ -297,7 +298,13 @@ func migrationExample(ctx context.Context) {
 
 	// Demonstrate the migration function call (would fail without actual files)
 	logger.Info().Msg("Running database migrations")
-	err = db.RunPostgresMigrationsWithGorm(ctx, database, migrationFS, "migrations")
+	sqlDB, err := database.DB()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to get SQL DB")
+		fmt.Printf("✗ Failed to get SQL DB: %v\n", err)
+		return
+	}
+	err = db.RunPostgresMigrations(ctx, sqlDB, migrationFS, "migrations")
 	if err != nil {
 		logger.Error().Err(err).Msg("Migration failed")
 		fmt.Printf("✗ Migration failed: %v\n", err)
@@ -311,7 +318,7 @@ func migrationExample(ctx context.Context) {
 }
 
 func multipleConnectionsExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "multiple-connections")
+	logger := otel.ContextLogger(ctx, "multiple-connections")
 
 	// Define multiple database configurations
 	databases := map[string]*db.ConnectionConfig{
@@ -352,7 +359,7 @@ func multipleConnectionsExample(ctx context.Context) {
 	for name, config := range databases {
 		// Only connect to primary database for demo
 		if name == "primary" {
-			database, err := config.Pool()
+			database, err := db.NewPool(db.WithConnectionConfig(*config))
 			if err != nil {
 				logger.Error().Err(err).Str("database", name).Msg("Connection failed")
 				fmt.Printf("✗ %s connection failed: %v\n", name, err)
@@ -379,7 +386,7 @@ func multipleConnectionsExample(ctx context.Context) {
 }
 
 func demonstrateMultiDBOperations(ctx context.Context, primaryDB *gorm.DB) {
-	logger := logging.ContextLogger(ctx, "multi-db-operations")
+	logger := otel.ContextLogger(ctx, "multi-db-operations")
 
 	// Auto-migrate tables
 	err := primaryDB.AutoMigrate(&User{}, &Product{}, &Order{})
@@ -404,7 +411,7 @@ func demonstrateMultiDBOperations(ctx context.Context, primaryDB *gorm.DB) {
 }
 
 func gormOperationsExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "gorm-operations")
+	logger := otel.ContextLogger(ctx, "gorm-operations")
 
 	config := &db.ConnectionConfig{
 		DBType:       db.Postgresql,
@@ -418,7 +425,7 @@ func gormOperationsExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -511,7 +518,7 @@ func gormOperationsExample(ctx context.Context) {
 }
 
 func rawSQLExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "raw-sql")
+	logger := otel.ContextLogger(ctx, "raw-sql")
 
 	config := &db.ConnectionConfig{
 		DBType:       db.Postgresql,
@@ -636,7 +643,7 @@ func rawSQLExample(ctx context.Context) {
 }
 
 func transactionExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "transactions")
+	logger := otel.ContextLogger(ctx, "transactions")
 
 	config := &db.ConnectionConfig{
 		DBType:       db.Postgresql,
@@ -650,7 +657,7 @@ func transactionExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -779,7 +786,7 @@ func transactionExample(ctx context.Context) {
 }
 
 func healthCheckExample(ctx context.Context) {
-	logger := logging.ContextLogger(ctx, "health-check")
+	logger := otel.ContextLogger(ctx, "health-check")
 
 	config := &db.ConnectionConfig{
 		DBType:       db.Postgresql,
@@ -793,7 +800,7 @@ func healthCheckExample(ctx context.Context) {
 		MaxOpenConns: 25,
 	}
 
-	database, err := config.Pool()
+	database, err := db.NewPool(db.WithConnectionConfig(*config))
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to connect to database")
 		fmt.Printf("✗ Database connection failed: %v\n", err)
@@ -967,12 +974,4 @@ func getIntEnvOrDefault(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
-}
-
-func maskPassword(dsn string) string {
-	// Simple password masking for display purposes
-	if len(dsn) > 50 {
-		return dsn[:20] + "***masked***" + dsn[len(dsn)-10:]
-	}
-	return "***masked***"
 }

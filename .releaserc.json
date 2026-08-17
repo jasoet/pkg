@@ -1,6 +1,14 @@
 {
   "branches": [
-    "main"
+    "main",
+    {
+      "name": "next",
+      "prerelease": true
+    },
+    {
+      "name": "release/v2",
+      "range": "2.13.x"
+    }
   ],
   "plugins": [
     [
@@ -78,7 +86,7 @@
           ]
         },
         "writerOpts": {
-          "headerPartial": "## [{{version}}]({{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}) ({{date}})\n\n**Full Changelog**: {{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}\n\n```\ngo get github.com/jasoet/pkg/v2@{{currentTag}}\n```"
+          "headerPartial": "## [{{version}}]({{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}) ({{date}})\n\n**Full Changelog**: {{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}\n\n```\ngo get github.com/jasoet/pkg/v3@{{currentTag}}\n```"
         }
       }
     ],

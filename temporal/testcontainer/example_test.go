@@ -12,7 +12,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
+	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
 // Example workflow for demonstration

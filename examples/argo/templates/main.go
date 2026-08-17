@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/jasoet/pkg/v2/argo"
-	"github.com/jasoet/pkg/v2/argo/builder"
-	"github.com/jasoet/pkg/v2/argo/builder/template"
+	"github.com/jasoet/pkg/v3/argo"
+	"github.com/jasoet/pkg/v3/argo/builder"
+	"github.com/jasoet/pkg/v3/argo/builder/template"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -42,7 +42,7 @@ func exampleBasicContainer() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -233,7 +233,7 @@ func exampleContainerAllOptions() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -280,7 +280,7 @@ echo "Backup completed successfully!"
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -410,7 +410,7 @@ print("ETL Process completed!")
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -466,7 +466,7 @@ func exampleHTTPGet() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -542,7 +542,7 @@ func exampleHTTPPolling() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -598,7 +598,7 @@ func exampleNoop() {
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}
@@ -658,7 +658,7 @@ print("Data processing complete!")
 		log.Fatalf("Failed to build workflow: %v", err)
 	}
 
-	created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+	created, err := argo.SubmitWorkflow(ctx, client, wf)
 	if err != nil {
 		log.Fatalf("Failed to submit workflow: %v", err)
 	}

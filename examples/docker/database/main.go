@@ -9,7 +9,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v3/docker"
 	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
@@ -21,12 +21,14 @@ func main() {
 }
 
 func postgresExample(ctx context.Context) {
-	fmt.Println("=== PostgreSQL Database Container ===\n")
+	fmt.Println("=== PostgreSQL Database Container ===")
 
 	// Create PostgreSQL container
 	req := docker.ContainerRequest{
 		Image:        "postgres:18-alpine",
 		ExposedPorts: []string{"5432/tcp"},
+		// Publish to an auto-assigned host port so Endpoint/ConnectionString work.
+		PortBindings: map[string]string{"5432/tcp": ""},
 		Env: map[string]string{
 			"POSTGRES_USER":     "testuser",
 			"POSTGRES_PASSWORD": "testpass",
@@ -34,7 +36,10 @@ func postgresExample(ctx context.Context) {
 		},
 		Name:       "example-postgres",
 		AutoRemove: true,
-		WaitingFor: docker.WaitForLog("database system is ready to accept connections").
+		// Postgres logs "ready to accept connections" twice: first for the
+		// temporary init server (Unix socket only), then for the real server.
+		// "listening on IPv4" only appears when the real server binds TCP.
+		WaitingFor: docker.WaitForLog(`listening on IPv4`).
 			WithStartupTimeout(60 * time.Second),
 	}
 
@@ -54,12 +59,18 @@ func postgresExample(ctx context.Context) {
 	}()
 
 	// Get connection details
-	endpoint, _ := exec.Endpoint(ctx, "5432/tcp")
+	endpoint, err := exec.Endpoint(ctx, "5432/tcp")
+	if err != nil {
+		log.Fatalf("Failed to resolve endpoint: %v", err)
+	}
 	fmt.Printf("PostgreSQL is running at: %s\n", endpoint)
 
 	// Build connection string
-	connStr, _ := exec.ConnectionString(ctx, "5432/tcp",
-		"postgres://testuser:testpass@%s/testdb?sslmode=disable")
+	connStr, err := exec.ConnectionString(ctx, "5432/tcp",
+		"postgres://testuser:testpass@{{endpoint}}/testdb?sslmode=disable")
+	if err != nil {
+		log.Fatalf("Failed to build connection string: %v", err)
+	}
 	fmt.Printf("Connection String: %s\n\n", connStr)
 
 	// Connect to database
@@ -74,7 +85,7 @@ func postgresExample(ctx context.Context) {
 	if err := db.Ping(); err != nil {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
-	fmt.Println("Successfully connected to PostgreSQL! ✓\n")
+	fmt.Println("Successfully connected to PostgreSQL! ✓")
 
 	// Create a test table
 	fmt.Println("Creating test table...")
@@ -89,7 +100,7 @@ func postgresExample(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to create table: %v", err)
 	}
-	fmt.Println("Table created successfully! ✓\n")
+	fmt.Println("Table created successfully! ✓")
 
 	// Insert test data
 	fmt.Println("Inserting test data...")
@@ -102,7 +113,7 @@ func postgresExample(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to insert data: %v", err)
 	}
-	fmt.Println("Data inserted successfully! ✓\n")
+	fmt.Println("Data inserted successfully! ✓")
 
 	// Query data
 	fmt.Println("Querying data...")
@@ -123,7 +134,7 @@ func postgresExample(ctx context.Context) {
 		}
 		fmt.Printf("%-2d | %-7s | %s\n", id, name, email)
 	}
-	fmt.Println("\nQuery successful! ✓\n")
+	fmt.Println("\nQuery successful! ✓")
 
 	// Get container status
 	status, _ := exec.Status(ctx)

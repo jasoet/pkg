@@ -1,6 +1,6 @@
 # PROJECT_TEMPLATE.md
 
-Comprehensive guide for AI agents and developers scaffolding new Go projects that depend on `github.com/jasoet/pkg/v2`.
+Comprehensive guide for AI agents and developers scaffolding new Go projects that depend on `github.com/jasoet/pkg/v3`.
 
 > **Audience:** AI code-generation agents (Claude, Cursor, Copilot) and human developers.
 > **Scope:** Consumer projects — applications built _with_ this library, not contributions _to_ it.
@@ -313,16 +313,20 @@ Automatic via Viper: `APP_SERVER_PORT=9090` overrides `server.port`.
 For deeply nested structs, use:
 
 ```go
-// keyDepth is the index of the entity-name token in the underscore-split env key,
-// including prefix tokens. APP_DATABASE_USER_NAME → ["APP","DATABASE","USER","NAME"],
-// so keyDepth=1 treats "DATABASE" as the entity under config path "database".
-config.NestedEnvVars("APP", 1, "database", viperInstance)
+// keyDepth is prefix-relative: the prefix is stripped, then keyDepth indexes the
+// remaining underscore-split tokens. APP_DATABASE_USER_NAME → ["DATABASE","USER","NAME"],
+// so keyDepth=0 treats "DATABASE" as the entity under config path "database".
+cfg, err := config.LoadStringWithOptions[AppConfig](yamlContent,
+    config.WithEnvPrefix("APP"),
+    config.WithNestedEnvVars("APP", 0, "database"),
+)
 ```
 
 ### Layer 3: Runtime Functional Options
 
 ```go
-pool, err := cfg.Database.Pool() // OTelConfig injected at runtime, not from YAML
+// OTelConfig injected at runtime via db.WithOTelConfig, never from YAML
+pool, err := db.NewPool(db.WithConnectionConfig(cfg.Database))
 ```
 
 **Rule:** `OTelConfig *otel.Config` fields must always use `yaml:"-" mapstructure:"-"` tags. Never serialize OTel config — inject it at runtime via functional options or direct assignment.
@@ -334,20 +338,17 @@ pool, err := cfg.Database.Pool() // OTelConfig injected at runtime, not from YAM
 ### Bootstrap
 
 ```go
-// Create OTel config with service name
-otelCfg := otel.NewConfig("myapp")
-
-// Optionally attach real providers (nil = no-op, zero overhead)
-otelCfg = otelCfg.
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
-
-// For OTel-based logging (replaces zerolog global)
+// Optional: OTel-based logging provider (console + optional OTLP export)
 loggerProvider, err := otel.NewLoggerProviderWithOptions("myapp",
     otel.WithConsoleOutput(true),
-    otel.WithLogLevel(otel.LogLevel("info")),
+    otel.WithLogLevel(otel.LogLevelInfo),
 )
-otelCfg = otelCfg.WithLoggerProvider(loggerProvider)
+
+// Create OTel config once; unattached providers stay no-op with zero overhead
+otelCfg := otel.NewConfig("myapp",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+    otel.WithLoggerProvider(loggerProvider))
 
 // Store in context for downstream access
 ctx = otel.ContextWithConfig(ctx, otelCfg)
@@ -356,9 +357,11 @@ ctx = otel.ContextWithConfig(ctx, otelCfg)
 ### Pass to Components
 
 ```go
-// Database — direct field assignment
-cfg.Database.OTelConfig = otelCfg
-pool, err := cfg.Database.Pool()
+// Database — functional option
+pool, err := db.NewPool(
+    db.WithConnectionConfig(cfg.Database),
+    db.WithOTelConfig(otelCfg),
+)
 
 // REST client — functional option
 client := rest.NewClient(
@@ -366,10 +369,11 @@ client := rest.NewClient(
     rest.WithRestConfig(restCfg),
 )
 
-// Retry — builder method (value receiver)
-retryCfg := retry.DefaultConfig().
-    WithName("db.connect").
-    WithOTel(otelCfg)
+// Retry — functional options
+retryCfg := retry.New(
+    retry.WithName("db.connect"),
+    retry.WithOTelConfig(otelCfg),
+)
 ```
 
 ### No-Op Pattern
@@ -568,15 +572,17 @@ Services should never return HTTP-specific errors — keep the domain clean.
 ### Connection Pool
 
 ```go
-pool, err := db.ConnectionConfig{
-    DBType:     db.Postgresql,
-    Host:       cfg.Database.Host,
-    Port:       cfg.Database.Port,
-    Username:   cfg.Database.Username,
-    Password:   cfg.Database.Password,
-    DBName:     cfg.Database.DBName,
-    OTelConfig:  otelCfg, // Automatic query tracing
-}.Pool()
+pool, err := db.NewPool(
+    db.WithConnectionConfig(db.ConnectionConfig{
+        DBType:   db.Postgresql,
+        Host:     cfg.Database.Host,
+        Port:     cfg.Database.Port,
+        Username: cfg.Database.Username,
+        Password: cfg.Database.Password,
+        DBName:   cfg.Database.DBName,
+    }),
+    db.WithOTelConfig(otelCfg), // Automatic query tracing
+)
 ```
 
 > **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev databases without TLS (e.g. the compose stack), add `SSLMode: "disable"` to your `ConnectionConfig` YAML.
@@ -594,8 +600,14 @@ var FS embed.FS
 ```
 
 ```go
-// In main.go
-err := db.RunPostgresMigrationsWithGorm(ctx, pool, migrations.FS, ".")
+// In main.go — RunPostgresMigrations takes the underlying *sql.DB
+sqlDB, err := pool.DB()
+if err != nil {
+    log.Fatal(err)
+}
+if err := db.RunPostgresMigrations(ctx, sqlDB, migrations.FS, "."); err != nil {
+    log.Fatal(err)
+}
 ```
 
 **Migration file naming:** `{sequence}_{description}.{up|down}.sql`
@@ -754,7 +766,7 @@ External API wrappers live in `internal/shared/client/`. Each client wraps a sin
 
 ### Client Pattern
 
-Use `jasoet/pkg/v2/rest` for HTTP calls with automatic OTel instrumentation and retry support:
+Use `jasoet/pkg/v3/rest` for HTTP calls with automatic OTel instrumentation and retry support:
 
 ```go
 // internal/shared/client/weather_client.go
@@ -918,31 +930,42 @@ func (s *Service) ReportWithAudit(ctx context.Context, req ReportRequest) (*mode
 ### Starting the Server
 
 ```go
-serverCfg := server.Config{
-    Port: cfg.Server.Port,
-    ShutdownTimeout: cfg.Server.ShutdownTimeout,
-    Middleware: []echo.MiddlewareFunc{
+srv, err := server.New(
+    server.WithPort(cfg.Server.Port),
+    server.WithShutdownTimeout(cfg.Server.ShutdownTimeout),
+    server.WithMiddleware(
         middleware.Recover(),
         middleware.Logger(),
-    },
-    EchoConfigurer: func(e *echo.Echo) {
+    ),
+    server.WithEchoConfigurer(func(e *echo.Echo) {
         // Register all routes here
         e.GET("/swagger/*", echoSwagger.WrapHandler)
 
         apiV1 := e.Group("/api/v1")
         userHandler.RegisterRoutes(apiV1.Group("/users"))
-    },
-    Operation: func(e *echo.Echo) {
+    }),
+    server.WithOperation(func(e *echo.Echo) {
         // Additional startup operations
-    },
-    Shutdown: func(e *echo.Echo) {
+    }),
+    server.WithShutdown(func(e *echo.Echo) {
         // Cleanup: close DB pools, flush telemetry, etc.
         sqlDB, _ := pool.DB()
         _ = sqlDB.Close()
-    },
+    }),
+)
+if err != nil {
+    log.Fatal(err)
 }
 
-server.StartWithConfig(serverCfg)
+// Wire your own shutdown trigger (e.g. SIGTERM), then Start blocks until it fires.
+go func() {
+    <-shutdownSignal
+    _ = srv.Shutdown(context.Background())
+}()
+
+if err := srv.Start(); err != nil {
+    log.Fatal(err)
+}
 ```
 
 ### Built-in Health Endpoints
@@ -957,7 +980,7 @@ The `server` package automatically registers:
 
 There is no built-in `GET /` handler — register your own routes via `EchoConfigurer`.
 
-**Note:** `server.Config` has an `OTelConfig` field (`yaml:"-" mapstructure:"-"`), used for OTel-based logging during startup/shutdown. Set it directly on the config or via `server.WithOTelConfig()`. HTTP request tracing is not added automatically — add tracing middleware through the `Middleware` slice or inside `EchoConfigurer`.
+**Note:** `server.Config` has an `OTelConfig` field (`yaml:"-" mapstructure:"-"`). Set it directly on the config or via `server.WithOTelConfig()`. When set, the server auto-installs OTel request instrumentation (instrumentation scope `http.server`): tracing spans named `{method} {route}` with attributes `http.request.method`, `url.full`, `http.response.status_code`, and `http.route`; plus metrics `http.server.request.count` and `http.server.request.duration` attributed by method and status code. See `server/README.md` for details.
 
 ---
 
@@ -971,7 +994,7 @@ Single port serves both gRPC and REST via HTTP/2 cleartext:
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/grpc"
+    "github.com/jasoet/pkg/v3/grpc"
     "google.golang.org/grpc"
     pb "myapp/proto/gen"
 )
@@ -1085,7 +1108,7 @@ If your application needs async jobs, background processing, or scheduled tasks,
 `temporal.Config` has two serializable fields (`HostPort`, `Namespace`) plus the usual `OTelConfig *otel.Config` field tagged `yaml:"-" mapstructure:"-"` (injected at runtime, never serialized):
 
 ```go
-import "github.com/jasoet/pkg/v2/temporal"
+import "github.com/jasoet/pkg/v3/temporal"
 
 // In AppConfig:
 Temporal temporal.Config `yaml:"temporal" mapstructure:"temporal"`
@@ -1176,8 +1199,8 @@ import (
     "myapp/internal/service"
     "myapp/migrations"
 
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/temporal"
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/temporal"
 )
 
 const taskQueue = "myapp-tasks"
@@ -1192,11 +1215,15 @@ func main() {
     }
 
     // Database (activities need repos)
-    pool, err := cfg.Database.Pool()
+    pool, err := db.NewPool(db.WithConnectionConfig(cfg.Database))
     if err != nil {
         log.Fatalf("failed to connect to database: %v", err)
     }
-    if err := db.RunPostgresMigrationsWithGorm(context.Background(), pool, migrations.FS, "."); err != nil {
+    sqlDB, err := pool.DB()
+    if err != nil {
+        log.Fatalf("failed to get sql.DB: %v", err)
+    }
+    if err := db.RunPostgresMigrations(context.Background(), sqlDB, migrations.FS, "."); err != nil {
         log.Fatalf("failed to run migrations: %v", err)
     }
 
@@ -1205,12 +1232,19 @@ func main() {
     paymentSvc := service.NewPaymentService(orderRepo)
     activities := apptemporal.NewActivities(orderRepo, paymentSvc)
 
-    // Create WorkerManager (owns its own Temporal client)
-    wm, err := temporal.NewWorkerManager(&cfg.Temporal)
+    // Create the Temporal client (caller-owned)
+    temporalClient, err := temporal.NewClient(temporal.WithConfig(cfg.Temporal))
+    if err != nil {
+        log.Fatalf("failed to create temporal client: %v", err)
+    }
+    defer temporalClient.Close()
+
+    // Create WorkerManager (borrows the client; Close does not close it)
+    wm, err := temporal.NewWorkerManager(temporalClient)
     if err != nil {
         log.Fatalf("failed to create worker manager: %v", err)
     }
-    defer wm.Close()
+    defer wm.Close(context.Background())
 
     // Register worker with workflows and activities
     w := wm.Register(taskQueue, worker.Options{})
@@ -1229,7 +1263,7 @@ func main() {
 
 ```go
 // In your handler or service:
-temporalClient, err := temporal.NewClient(&cfg.Temporal)
+temporalClient, err := temporal.NewClient(temporal.WithConfig(cfg.Temporal))
 if err != nil {
     return err
 }
@@ -1272,7 +1306,7 @@ sm.DeleteSchedule(ctx, "daily-cleanup")
 New in v2.13.0: the `temporal/job` package provides a `Definition` — a typed handle for one registered workflow, bundling registration, execution, scheduling, and lifecycle control:
 
 ```go
-import "github.com/jasoet/pkg/v2/temporal/job"
+import "github.com/jasoet/pkg/v3/temporal/job"
 
 def, err := job.New("orders-sync", "myapp-tasks",
     job.WithRegister(func(w worker.Worker) {
@@ -1296,7 +1330,7 @@ For integration tests against a real Temporal server:
 ```go
 //go:build integration
 
-import "github.com/jasoet/pkg/v2/temporal/testcontainer"
+import "github.com/jasoet/pkg/v3/temporal/testcontainer"
 
 func TestWorkflow(t *testing.T) {
     ctx := context.Background()
@@ -2024,16 +2058,16 @@ tasks:
 | Configuration | `config` | `config.LoadString[T](yaml, prefix...)` |
 | OpenTelemetry | `otel` | `otel.NewConfig(name)`, `otel.Layers.Start*()`, `otel.F(k, v)` |
 | OTel Logging | `otel` | `otel.NewLoggerProviderWithOptions(name, opts...)` |
-| Legacy Logging | `logging` | `logging.Initialize(name, debug)` |
-| Database Pool | `db` | `db.ConnectionConfig{...}.Pool()` |
-| Migrations | `db` | `db.RunPostgresMigrationsWithGorm(ctx, pool, fs, path)` |
-| HTTP Server | `server` | `server.StartWithConfig(cfg)`, `server.DefaultConfig(port, op, shut)` |
+| Global Logger | `otel` | `otel.Initialize(name, debug)`, `otel.ContextLogger(ctx, component)` |
+| Database Pool | `db` | `db.NewPool(db.WithConnectionConfig(cfg), db.WithOTelConfig(otelCfg))` |
+| Migrations | `db` | `db.RunPostgresMigrations(ctx, sqlDB, fs, path)` (`sqlDB, _ := pool.DB()`) |
+| HTTP Server | `server` | `server.New(opts...)`, `srv.Start()`, `srv.Shutdown(ctx)` |
 | gRPC Server | `grpc` | `grpc.New(opts...)`, `grpc.Start(port, registrar, opts...)` |
 | REST Client | `rest` | `rest.NewClient(opts...)`, `client.MakeRequestWithTrace(...)` |
-| Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.DefaultConfig().WithName(n).WithOTel(c)` |
+| Retry | `retry` | `retry.Do(ctx, cfg, op)`, `retry.New(retry.WithName(n), retry.WithOTelConfig(c))` |
 | Concurrency | `concurrent` | `concurrent.ExecuteConcurrently(ctx, funcs)` |
-| Temporal Client | `temporal` | `temporal.NewClient(cfg)` |
-| Temporal Worker | `temporal` | `temporal.NewWorkerManager(cfg)`, `wm.Register(queue, opts)` |
+| Temporal Client | `temporal` | `temporal.NewClient(temporal.WithConfig(cfg))` |
+| Temporal Worker | `temporal` | `temporal.NewWorkerManager(client)`, `wm.Register(queue, opts)` |
 | Temporal Schedule | `temporal` | `temporal.NewScheduleManager(client)`, `sm.CreateWorkflowSchedule(...)` |
 | Temporal Test | `temporal/testcontainer` | `testcontainer.Setup(ctx, cfg, opts)` |
 | Docker | `docker` | `docker.New(opts...)`, `docker.NewFromRequest(req)` |
@@ -2065,9 +2099,9 @@ import (
     dashboardmod "myapp/internal/dashboard"
     "myapp/migrations"
 
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/server"
 
     _ "myapp/docs" // swagger generated docs
 )
@@ -2095,14 +2129,20 @@ func main() {
     otelCfg := otel.NewConfig("myapp")
 
     // --- Database ---
-    cfg.Database.OTelConfig = otelCfg
-    pool, err := cfg.Database.Pool()
+    pool, err := db.NewPool(
+        db.WithConnectionConfig(cfg.Database),
+        db.WithOTelConfig(otelCfg),
+    )
     if err != nil {
         log.Fatalf("failed to connect to database: %v", err)
     }
 
     // --- Migrations ---
-    if err := db.RunPostgresMigrationsWithGorm(context.Background(), pool, migrations.FS, "."); err != nil {
+    sqlDB, err := pool.DB()
+    if err != nil {
+        log.Fatalf("failed to get sql.DB: %v", err)
+    }
+    if err := db.RunPostgresMigrations(context.Background(), sqlDB, migrations.FS, "."); err != nil {
         log.Fatalf("failed to run migrations: %v", err)
     }
 
@@ -2122,29 +2162,41 @@ func main() {
     dashboardHandler := dashboardmod.NewHandler(dashboardSvc)
 
     // --- Server ---
-    server.StartWithConfig(server.Config{
-        Port:            cfg.Server.Port,
-        ShutdownTimeout: cfg.Server.ShutdownTimeout,
-        Middleware: []echo.MiddlewareFunc{
+    srv, err := server.New(
+        server.WithPort(cfg.Server.Port),
+        server.WithShutdownTimeout(cfg.Server.ShutdownTimeout),
+        server.WithMiddleware(
             middleware.Recover(),
             middleware.Logger(),
-        },
-        EchoConfigurer: func(e *echo.Echo) {
+        ),
+        server.WithEchoConfigurer(func(e *echo.Echo) {
             e.GET("/swagger/*", echoSwagger.WrapHandler)
 
             apiV1 := e.Group("/api/v1")
             userHandler.RegisterRoutes(apiV1.Group("/users"))
             dashboardHandler.RegisterRoutes(apiV1.Group("/dashboard"))
-        },
-        Operation: func(e *echo.Echo) {},
-        Shutdown: func(e *echo.Echo) {
+        }),
+        server.WithOperation(func(e *echo.Echo) {}),
+        server.WithShutdown(func(e *echo.Echo) {
             log.Println("Shutting down...")
             if sqlDB, err := pool.DB(); err == nil {
                 _ = sqlDB.Close()
             }
             _ = otelCfg.Shutdown(context.Background())
-        },
-    })
+        }),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    go func() {
+        <-shutdownSignal // e.g. from signal.NotifyContext
+        _ = srv.Shutdown(context.Background())
+    }()
+
+    if err := srv.Start(); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 

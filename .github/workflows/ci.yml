@@ -2,10 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next, 'release/v2']
     tags: ['*']
   pull_request:
-    branches: [main]
+    branches: [main, next, 'release/v2']
+
+env:
+  # Pinned so a blocking API gate is reproducible. Matches the golang.org/x/exp
+  # pseudo-version already in go.mod; bump both together.
+  GORELEASE_VERSION: v0.0.0-20251113190631-e25ba8c21ef6
 
 jobs:
   ci:
@@ -17,9 +22,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Lint
         run: nix develop --command golangci-lint run ./...
 
       - name: Test
-        run: nix develop --command go test -race -count=1 ./... -tags=!examples
+        run: nix develop --command go test -race -count=1 ./...
+
+      - name: Vet (including build-tagged code)
+        # Compiles and vets example/integration/argo-tagged files that the untagged
+        # build never sees, closing the gap where tagged code regressions slip past CI.
+        run: nix develop --command go vet -tags='example integration argo' ./...
+
+      - name: API compatibility check
+        # Breaking API changes are intended on the v3 line, so this gate is
+        # informational wherever `next` is involved and blocking everywhere else:
+        #   - ref_name == 'next'  : pushes to next
+        #   - base_ref == 'next'  : PRs targeting next
+        #   - head_ref == 'next'  : the next -> main v3 release PR. Without this
+        #     clause base_ref is 'main' and the blocking gate fires on the whole
+        #     intended v3 break set, making the release PR unmergeable.
+        if: github.ref_name != 'next' && github.base_ref != 'next' && github.head_ref != 'next'
+        run: nix develop --command go run golang.org/x/exp/cmd/gorelease@${{ env.GORELEASE_VERSION }}
+
+      - name: API compatibility report (informational on next)
+        if: github.ref_name == 'next' || github.base_ref == 'next' || github.head_ref == 'next'
+        # gorelease reports "no baseline version" until the first non-prerelease
+        # /v3 tag exists on main; that is expected for the v3 release PR and is
+        # why this run must not gate the merge.
+        continue-on-error: true
+        run: nix develop --command go run golang.org/x/exp/cmd/gorelease@${{ env.GORELEASE_VERSION }}

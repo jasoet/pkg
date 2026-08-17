@@ -3,23 +3,131 @@ package docker
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
-	"github.com/docker/go-connections/nat"
+	"github.com/docker/docker/api/types/container"
 )
 
+// InspectResponse.NetworkSettings is a pointer and the daemon leaves it nil for
+// containers without networking (e.g. --network=none). The projection helpers
+// below tolerate that instead of panicking, mirroring the guard in
+// ContainerTarget.State. They are pure functions of an inspect response so the
+// nil-handling is unit-testable without a live daemon.
+
+// portBinding returns the first host port bound to containerPort.
+func portBinding(inspect container.InspectResponse, containerPort string) (string, bool) {
+	if inspect.NetworkSettings == nil {
+		return "", false
+	}
+
+	for port, bindings := range inspect.NetworkSettings.Ports {
+		if string(port) == containerPort && len(bindings) > 0 {
+			return bindings[0].HostPort, true
+		}
+	}
+
+	return "", false
+}
+
+// allPortBindings maps every bound container port to its first host port.
+// Exposed-but-unbound ports are omitted. The result is never nil.
+func allPortBindings(inspect container.InspectResponse) map[string]string {
+	ports := make(map[string]string)
+	if inspect.NetworkSettings == nil {
+		return ports
+	}
+
+	for port, bindings := range inspect.NetworkSettings.Ports {
+		if len(bindings) > 0 {
+			ports[string(port)] = bindings[0].HostPort
+		}
+	}
+
+	return ports
+}
+
+// networkNames lists the networks the container is attached to. Never nil.
+func networkNames(inspect container.InspectResponse) []string {
+	if inspect.NetworkSettings == nil {
+		return []string{}
+	}
+
+	names := make([]string, 0, len(inspect.NetworkSettings.Networks))
+	for name := range inspect.NetworkSettings.Networks {
+		names = append(names, name)
+	}
+
+	return names
+}
+
+// networkIPAddress returns the container's IP on the named network, or on the
+// first network that has one when network is empty.
+func networkIPAddress(inspect container.InspectResponse, network string) (string, bool) {
+	if inspect.NetworkSettings == nil {
+		return "", false
+	}
+
+	if network != "" {
+		settings, ok := inspect.NetworkSettings.Networks[network]
+		if !ok || settings == nil {
+			return "", false
+		}
+		return settings.IPAddress, true
+	}
+
+	for _, settings := range inspect.NetworkSettings.Networks {
+		if settings != nil && settings.IPAddress != "" {
+			return settings.IPAddress, true
+		}
+	}
+
+	return "", false
+}
+
+// deriveHost extracts a reachable host from a Docker daemon host URL.
+// For remote transports (tcp://, ssh://, http(s)://) it returns the hostname;
+// for local transports (unix, npipe) or an empty/unparseable value it falls back
+// to defaultHost ("localhost"). This ensures Host()/MappedPort()/Endpoint() point
+// at the real daemon when DOCKER_HOST targets a remote engine (e.g. podman-remote).
+func deriveHost(daemonHost string) string {
+	if daemonHost == "" {
+		return defaultHost
+	}
+
+	u, err := url.Parse(daemonHost)
+	if err != nil {
+		return defaultHost
+	}
+
+	switch u.Scheme {
+	case "tcp", "ssh", "http", "https":
+		if h := u.Hostname(); h != "" {
+			return h
+		}
+	}
+
+	return defaultHost
+}
+
 // Host returns the container host address.
-// For local Docker, this is always "localhost" since containers use port forwarding.
+// For local Docker/Podman this is "localhost"; for a remote daemon (DOCKER_HOST
+// set to tcp:// or ssh://) it is the daemon's hostname, since published ports are
+// reachable on the daemon host, not the client.
 func (e *Executor) Host(_ context.Context) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
 
-	return defaultHost, nil
+	return deriveHost(cli.DaemonHost()), nil
 }
 
 // MappedPort returns the host port mapped to a container port.
@@ -31,9 +139,13 @@ func (e *Executor) Host(_ context.Context) (string, error) {
 //	// hostPort might be "32768" (randomly assigned by Docker)
 func (e *Executor) MappedPort(ctx context.Context, containerPort string) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
@@ -43,16 +155,13 @@ func (e *Executor) MappedPort(ctx context.Context, containerPort string) (string
 		containerPort = containerPort + "/tcp"
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	// Find the port binding
-	for port, bindings := range inspect.NetworkSettings.Ports {
-		if string(port) == containerPort && len(bindings) > 0 {
-			return bindings[0].HostPort, nil
-		}
+	if hostPort, ok := portBinding(inspect, containerPort); ok {
+		return hostPort, nil
 	}
 
 	return "", fmt.Errorf("port %s not found or not bound", containerPort)
@@ -93,80 +202,74 @@ func (e *Executor) Endpoint(ctx context.Context, containerPort string) (string, 
 //	}
 func (e *Executor) GetAllPorts(ctx context.Context) (map[string]string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return nil, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return nil, fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	ports := make(map[string]string)
-	for port, bindings := range inspect.NetworkSettings.Ports {
-		if len(bindings) > 0 {
-			ports[string(port)] = bindings[0].HostPort
-		}
-	}
-
-	return ports, nil
+	return allPortBindings(inspect), nil
 }
 
 // GetNetworks returns all networks the container is connected to.
 func (e *Executor) GetNetworks(ctx context.Context) ([]string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return nil, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return nil, fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	networks := make([]string, 0, len(inspect.NetworkSettings.Networks))
-	for name := range inspect.NetworkSettings.Networks {
-		networks = append(networks, name)
-	}
-
-	return networks, nil
+	return networkNames(inspect), nil
 }
 
 // GetIPAddress returns the container's IP address in a specific network.
 // If network is empty, returns the IP from the first available network.
 func (e *Executor) GetIPAddress(ctx context.Context, network string) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
 
-	inspect, err := e.client.ContainerInspect(ctx, containerID)
+	inspect, err := cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	if network != "" {
-		// Get IP from specific network
-		if netSettings, ok := inspect.NetworkSettings.Networks[network]; ok {
-			return netSettings.IPAddress, nil
-		}
-		return "", fmt.Errorf("network %s not found", network)
+	ip, ok := networkIPAddress(inspect, network)
+	if ok {
+		return ip, nil
 	}
 
-	// Return IP from first available network
-	for _, netSettings := range inspect.NetworkSettings.Networks {
-		if netSettings.IPAddress != "" {
-			return netSettings.IPAddress, nil
-		}
+	if network != "" {
+		return "", fmt.Errorf("network %s not found", network)
 	}
 
 	return "", fmt.Errorf("no IP address found")
@@ -188,61 +291,4 @@ func (e *Executor) ConnectionString(ctx context.Context, containerPort, template
 	}
 
 	return strings.ReplaceAll(template, "{{endpoint}}", endpoint), nil
-}
-
-// NatPort is a helper to create a nat.Port from a string.
-// Port format: "8080/tcp", "8080/udp", or "8080" (defaults to tcp).
-// This is useful when working with Docker API types directly.
-func NatPort(port string) (nat.Port, error) {
-	if !strings.Contains(port, "/") {
-		port = port + "/tcp"
-	}
-	parts := strings.SplitN(port, "/", 2)
-	return nat.NewPort(parts[1], parts[0])
-}
-
-// PortBindings is a helper to create port bindings from a map.
-// This is useful for programmatically building port configurations.
-//
-// Example:
-//
-//	bindings := docker.PortBindings(map[string]string{
-//	    "80/tcp": "8080",
-//	    "443/tcp": "8443",
-//	})
-func PortBindings(ports map[string]string) (nat.PortMap, error) {
-	portMap := make(nat.PortMap)
-
-	for containerPort, hostPort := range ports {
-		natPort, err := NatPort(containerPort)
-		if err != nil {
-			return nil, fmt.Errorf("invalid container port %s: %w", containerPort, err)
-		}
-
-		portMap[natPort] = []nat.PortBinding{
-			{HostPort: hostPort},
-		}
-	}
-
-	return portMap, nil
-}
-
-// ExposedPorts creates a nat.PortSet from a slice of port strings.
-// This is useful for programmatically building exposed ports.
-//
-// Example:
-//
-//	ports := docker.ExposedPorts([]string{"80/tcp", "443/tcp"})
-func ExposedPorts(ports []string) (nat.PortSet, error) {
-	portSet := make(nat.PortSet)
-
-	for _, port := range ports {
-		natPort, err := NatPort(port)
-		if err != nil {
-			return nil, fmt.Errorf("invalid port %s: %w", port, err)
-		}
-		portSet[natPort] = struct{}{}
-	}
-
-	return portSet, nil
 }

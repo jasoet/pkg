@@ -12,15 +12,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 	noopl "go.opentelemetry.io/otel/log/noop"
 	noopm "go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"gorm.io/gorm"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
+	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
 
 // TestPostgresPoolWithOTelTracing tests OTel tracing callbacks
@@ -34,9 +34,7 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -52,10 +50,10 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 	require.NoError(t, err, "Failed to get port")
 
 	// Create OTel config with noop providers
-	otelConfig := pkgotel.NewConfig("db-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -71,8 +69,8 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 		OTelConfig:   otelConfig,
 	}
 
-	// Test Pool() with OTel config
-	db, err := config.Pool()
+	// Test NewPool() with OTel config
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database with OTel config")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -207,9 +205,7 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -225,10 +221,10 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 	require.NoError(t, err, "Failed to get port")
 
 	// Create OTel config with noop providers and metrics enabled
-	otelConfig := pkgotel.NewConfig("db-metrics-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-metrics-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -244,8 +240,8 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 		OTelConfig:   otelConfig,
 	}
 
-	// Test Pool() with OTel metrics
-	db, err := config.Pool()
+	// Test NewPool() with OTel metrics
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database with OTel metrics")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -273,6 +269,87 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 	t.Logf("Connection pool stats - Idle: %d, InUse: %d, Max: %d", stats.Idle, stats.InUse, stats.MaxOpenConnections)
 }
 
+// TestPostgresPoolMetricsWithoutTracing verifies that pool metrics are actually
+// emitted when the OTel config has a MeterProvider but NO TracerProvider —
+// metrics and tracing are gated independently.
+func TestPostgresPoolMetricsWithoutTracing(t *testing.T) {
+	ctx := context.Background()
+
+	// Start PostgreSQL container
+	postgresContainer, err := postgres.Run(ctx,
+		"postgres:18-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("testuser"),
+		postgres.WithPassword("testpass"),
+		postgresReady(),
+	)
+	require.NoError(t, err, "Failed to start PostgreSQL container")
+	defer func() {
+		if err := postgresContainer.Terminate(ctx); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	}()
+
+	host, err := postgresContainer.Host(ctx)
+	require.NoError(t, err, "Failed to get host")
+
+	port, err := postgresContainer.MappedPort(ctx, "5432")
+	require.NoError(t, err, "Failed to get port")
+
+	// Metrics-only OTel config: sdk MeterProvider with a ManualReader, NO TracerProvider
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() { _ = mp.Shutdown(context.Background()) }()
+
+	otelConfig := pkgotel.NewConfig("db-metrics-only-test",
+		pkgotel.WithMeterProvider(mp))
+
+	config := &ConnectionConfig{
+		DBType:       Postgresql,
+		Host:         host,
+		Port:         port.Int(),
+		Username:     "testuser",
+		Password:     "testpass",
+		DBName:       "testdb",
+		SSLMode:      "disable", // testcontainer has no TLS
+		Timeout:      10 * time.Second,
+		MaxIdleConns: 5,
+		MaxOpenConns: 10,
+		OTelConfig:   otelConfig,
+	}
+
+	db, err := NewPool(WithConnectionConfig(*config))
+	require.NoError(t, err, "Failed to connect to database with metrics-only OTel config")
+	require.NotNil(t, db, "Database connection should not be nil")
+
+	// Exercise the pool so stats are meaningful
+	sqlDB, err := db.DB()
+	require.NoError(t, err, "Failed to get sql.DB")
+	require.NoError(t, sqlDB.Ping(), "Failed to ping database")
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm), "Failed to collect metrics")
+
+	gaugeValues := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			switch m.Name {
+			case "db.client.connections.idle", "db.client.connections.active", "db.client.connections.max":
+				gauge, ok := m.Data.(metricdata.Gauge[int64])
+				require.True(t, ok, "expected Gauge[int64] data for %s, got %T", m.Name, m.Data)
+				require.NotEmpty(t, gauge.DataPoints, "expected data points for %s", m.Name)
+				gaugeValues[m.Name] = gauge.DataPoints[0].Value
+			}
+		}
+	}
+
+	assert.Contains(t, gaugeValues, "db.client.connections.idle", "idle connections gauge should be emitted")
+	assert.Contains(t, gaugeValues, "db.client.connections.active", "active connections gauge should be emitted")
+	assert.Contains(t, gaugeValues, "db.client.connections.max", "max connections gauge should be emitted")
+	assert.Equal(t, int64(10), gaugeValues["db.client.connections.max"],
+		"max connections gauge should reflect MaxOpenConns")
+}
+
 // TestPostgresPoolWithOTelDisabled tests when OTel is disabled
 func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 	ctx := context.Background()
@@ -284,9 +361,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -317,7 +392,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 			OTelConfig:   nil,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		require.NoError(t, err, "Failed to connect to database without OTel")
 		require.NotNil(t, db, "Database connection should not be nil")
 
@@ -330,9 +405,9 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 
 	// Test with OTel config but tracing disabled
 	t.Run("OTel config without tracer", func(t *testing.T) {
-		otelConfig := pkgotel.NewConfig("db-no-trace-test").
-			WithMeterProvider(noopm.NewMeterProvider()).
-			WithLoggerProvider(noopl.NewLoggerProvider())
+		otelConfig := pkgotel.NewConfig("db-no-trace-test",
+			pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+			pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 		// TracerProvider is nil
 
 		config := &ConnectionConfig{
@@ -349,7 +424,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 			OTelConfig:   otelConfig,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		require.NoError(t, err, "Failed to connect to database with OTel but no tracer")
 		require.NotNil(t, db, "Database connection should not be nil")
 
@@ -374,15 +449,15 @@ func TestMySQLPoolWithOTel(t *testing.T) {
 	}()
 
 	// Add OTel config
-	otelConfig := pkgotel.NewConfig("db-mysql-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-mysql-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config.OTelConfig = otelConfig
 
-	// Test Pool() with OTel
-	db, err := config.Pool()
+	// Test NewPool() with OTel
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to MySQL with OTel")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -424,15 +499,15 @@ func TestMSSQLPoolWithOTel(t *testing.T) {
 	}()
 
 	// Add OTel config
-	otelConfig := pkgotel.NewConfig("db-mssql-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-mssql-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config.OTelConfig = otelConfig
 
-	// Test Pool() with OTel
-	db, err := config.Pool()
+	// Test NewPool() with OTel
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to MSSQL with OTel")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -454,9 +529,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -472,10 +545,10 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 	require.NoError(t, err, "Failed to get port")
 
 	// Create OTel config
-	otelConfig := pkgotel.NewConfig("db-no-ctx-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-no-ctx-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -491,7 +564,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 		OTelConfig:   otelConfig,
 	}
 
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database")
 	require.NotNil(t, db, "Database connection should not be nil")
 
@@ -502,7 +575,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 	assert.Greater(t, count, int64(0), "Should have products")
 }
 
-// TestPoolInvalidConfig tests error handling in Pool()
+// TestPoolInvalidConfig tests error handling in NewPool()
 func TestPoolInvalidConfig(t *testing.T) {
 	t.Run("Empty DSN", func(t *testing.T) {
 		config := &ConnectionConfig{
@@ -517,7 +590,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 			MaxOpenConns: 10,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		assert.Error(t, err, "Should fail with invalid config")
 		assert.Nil(t, db, "DB should be nil on error")
 		assert.Contains(t, err.Error(), "unsupported database type", "Error should mention unsupported type")
@@ -540,7 +613,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 		dsn := config.dsn()
 		assert.Equal(t, "", dsn, "DSN should be empty for unsupported database type")
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		assert.Error(t, err, "Should fail with unsupported database type")
 		assert.Nil(t, db, "DB should be nil on error")
 		assert.Contains(t, err.Error(), "unsupported database type", "Error should mention unsupported type")
@@ -559,7 +632,7 @@ func TestPoolInvalidConfig(t *testing.T) {
 			MaxOpenConns: 10,
 		}
 
-		db, err := config.Pool()
+		db, err := NewPool(WithConnectionConfig(*config))
 		assert.Error(t, err, "Should fail with invalid connection parameters")
 		assert.Nil(t, db, "DB should be nil on error")
 	})
@@ -597,9 +670,7 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -615,10 +686,10 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create OTel config
-	otelConfig := pkgotel.NewConfig("db-table-test").
-		WithTracerProvider(noopt.NewTracerProvider()).
-		WithMeterProvider(noopm.NewMeterProvider()).
-		WithLoggerProvider(noopl.NewLoggerProvider())
+	otelConfig := pkgotel.NewConfig("db-table-test",
+		pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+		pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+		pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 	config := &ConnectionConfig{
 		DBType:       Postgresql,
@@ -634,7 +705,7 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 		OTelConfig:   otelConfig,
 	}
 
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err)
 
 	// Test with table name in statement

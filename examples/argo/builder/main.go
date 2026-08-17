@@ -6,11 +6,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jasoet/pkg/v2/argo"
-	"github.com/jasoet/pkg/v2/argo/builder"
-	"github.com/jasoet/pkg/v2/argo/builder/template"
-	"github.com/jasoet/pkg/v2/logging"
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/argo"
+	"github.com/jasoet/pkg/v3/argo/builder"
+	"github.com/jasoet/pkg/v3/argo/builder/template"
+	"github.com/jasoet/pkg/v3/otel"
 	"github.com/rs/zerolog/log"
 )
 
@@ -18,7 +17,7 @@ import (
 // Argo Workflows with full OpenTelemetry instrumentation.
 func main() {
 	// Initialize logging
-	if err := logging.Initialize("argo-builder-example", false); err != nil {
+	if err := otel.Initialize("argo-builder-example", false); err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize logging")
 	}
 	log.Info().Msg("Starting Argo Workflow Builder example")
@@ -120,7 +119,8 @@ func example3WithOTel(ctx context.Context) error {
 	// Create OTel config
 	otelConfig := otel.NewConfig("workflow-builder-example")
 	// In production, you would add TracerProvider and MeterProvider here:
-	// otelConfig.WithTracerProvider(tp).WithMeterProvider(mp)
+	// otelConfig = otel.NewConfig("workflow-builder-example",
+	//     otel.WithTracerProvider(tp), otel.WithMeterProvider(mp))
 
 	// Create Argo client with OTel
 	ctx, client, err := argo.NewClientWithOptions(ctx,
@@ -177,7 +177,7 @@ func example3WithOTel(ctx context.Context) error {
 		Msg("Workflow with OTel instrumentation built successfully")
 
 	// In production, you would submit the workflow:
-	// created, err := argo.SubmitWorkflow(ctx, client, wf, otelConfig)
+	// created, err := argo.SubmitWorkflow(ctx, client, wf)
 
 	return nil
 }

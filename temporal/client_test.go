@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 func TestConfigWithOTelConfig(t *testing.T) {
@@ -56,7 +56,7 @@ func TestNewClient_NilOTelConfig(t *testing.T) {
 	}
 
 	// This may or may not error (Temporal client.Dial is lazy), but it must not panic
-	c, _ := NewClient(config)
+	c, _ := NewClient(WithConfig(*config))
 	if c != nil {
 		c.Close()
 	}
@@ -70,7 +70,7 @@ func TestNewClient_OTelConfigTracingDisabled(t *testing.T) {
 		OTelConfig: &otel.Config{},
 	}
 
-	c, _ := NewClient(config)
+	c, _ := NewClient(WithConfig(*config))
 	if c != nil {
 		c.Close()
 	}

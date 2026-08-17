@@ -13,22 +13,22 @@ This directory contains comprehensive examples demonstrating various ways to use
 - **Argo Server**: For Argo Server mode examples
 - **OpenTelemetry**: For observability examples
 
-## Example Files Overview
+## Example Directories Overview
 
-| File | Description | Topics Covered |
-|------|-------------|----------------|
-| `main.go` | Client configuration and basic usage | Client initialization, connection modes, kubeconfig |
-| `builder_example.go` | WorkflowBuilder API usage | Building workflows, sequential steps, exit handlers |
-| `operations_example.go` | Workflow operations and lifecycle | Submit, SubmitAndWait, GetStatus, List, Delete |
-| `templates_example.go` | All template types | Container, Script, HTTP, Noop templates |
-| `advanced_features_example.go` | Advanced workflow features | Parameters, retry, volumes, TTL, metrics |
-| `patterns_example.go` | Common workflow patterns | CI/CD, ETL, microservices, ML pipelines |
+| Directory | Description | Topics Covered |
+|-----------|-------------|----------------|
+| `basic/` | Client configuration and basic usage | Client initialization, connection modes, kubeconfig |
+| `builder/` | WorkflowBuilder API usage | Building workflows, sequential steps, exit handlers |
+| `operations/` | Workflow operations and lifecycle | Submit, SubmitAndWait, GetStatus, List, Delete |
+| `templates/` | All template types | Container, Script, HTTP, Noop templates |
+| `advanced/` | Advanced workflow features | Parameters, retry, volumes, TTL, metrics |
+| `patterns/` | Common workflow patterns | CI/CD, ETL, microservices, ML pipelines |
 
 ## Running the Examples
 
 ### Build and Run
 
-Each example file can be run independently:
+Each directory can be run independently:
 
 ```bash
 # Run basic client configuration examples
@@ -50,7 +50,7 @@ go run -tags=example ./examples/argo/advanced
 go run -tags=example ./examples/argo/patterns
 ```
 
-Each example file has a `main()` function with commented-out example functions. Uncomment the one you want to run.
+Each example `main()` calls a series of example functions. Comment out the ones you don't want to run.
 
 ### Environment Variables
 
@@ -69,7 +69,7 @@ export ARGO_AUTH_TOKEN="Bearer your-token-here"
 
 ## Detailed Examples Guide
 
-### 1. Client Configuration Examples (`main.go`)
+### 1. Client Configuration Examples (`basic/`)
 
 Demonstrates different ways to initialize and configure the Argo Workflows client.
 
@@ -92,7 +92,7 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 )
 ```
 
-### 2. Workflow Builder Examples (`builder_example.go`)
+### 2. Workflow Builder Examples (`builder/`)
 
 Shows how to use the WorkflowBuilder API for constructing workflows programmatically.
 
@@ -112,7 +112,7 @@ wf, err := builder.NewWorkflowBuilder("cicd", "argo",
     Build()
 ```
 
-### 3. Workflow Operations Examples (`operations_example.go`)
+### 3. Workflow Operations Examples (`operations/`)
 
 Comprehensive examples of workflow lifecycle management and operations.
 
@@ -131,18 +131,20 @@ Comprehensive examples of workflow lifecycle management and operations.
 11. **Batch Operations**: Submit multiple workflows
 12. **Error Handling Patterns**: Comprehensive error scenarios
 
+Operations resolve their OpenTelemetry config from the context. When `ctx` comes from a client created with `argo.WithOTelConfig(...)`, instrumentation is automatic — there is no per-call config argument.
+
 ```go
 // Submit and wait example
-completed, err := argo.SubmitAndWait(ctx, client, wf, otelConfig, 5*time.Minute)
+completed, err := argo.SubmitAndWait(ctx, client, wf, 5*time.Minute)
 if err != nil {
     log.Fatalf("Workflow failed: %v", err)
 }
 
 // List with labels
-workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp,env=prod", nil)
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "app=myapp,env=prod")
 ```
 
-### 4. Template Types Examples (`templates_example.go`)
+### 4. Template Types Examples (`templates/`)
 
 Demonstrates all available template types and their configuration options.
 
@@ -182,32 +184,31 @@ Demonstrates all available template types and their configuration options.
 
 ```go
 // Container example
-container := template.NewContainer("deploy", "myapp:v1").
-    Command("sh", "-c").
-    Args("/app/deploy.sh").
-    Env("ENV", "production").
-    CPU("1000m", "2000m").
-    Memory("512Mi", "1Gi")
+container := template.NewContainer("deploy", "myapp:v1",
+    template.WithCommand("sh", "-c", "/app/deploy.sh"),
+    template.WithEnv("ENV", "production"),
+    template.WithCPU("1000m", "2000m"),
+    template.WithMemory("512Mi", "1Gi"))
 
 // Script example
-script := template.NewScript("process", "python").
-    Script(`
+script := template.NewScript("process", "python",
+    template.WithScriptContent(`
 import pandas as pd
 data = pd.read_csv("/data/input.csv")
 data.to_parquet("/data/output.parquet")
-`).
-    CPU("2000m").
-    Memory("2Gi")
+`),
+    template.WithCPU("2000m"),
+    template.WithMemory("2Gi"))
 
 // HTTP example
-httpCall := template.NewHTTP("api-call").
-    URL("https://api.example.com/data").
-    Method("POST").
-    Header("Content-Type", "application/json").
-    Body(`{"key": "value"}`)
+httpCall := template.NewHTTP("api-call",
+    template.WithHTTPURL("https://api.example.com/data"),
+    template.WithHTTPMethod("POST"),
+    template.WithHTTPHeader("Content-Type", "application/json"),
+    template.WithHTTPBody(`{"key": "value"}`))
 ```
 
-### 5. Advanced Features Examples (`advanced_features_example.go`)
+### 5. Advanced Features Examples (`advanced/`)
 
 Covers advanced workflow configuration and production-ready features.
 
@@ -245,19 +246,19 @@ wf, err := builder.NewWorkflowBuilder("production-wf", "argo",
     builder.WithLabels(map[string]string{"app": "myapp", "env": "prod"}),
     builder.WithAnnotations(map[string]string{"owner": "team@example.com"}),
     builder.WithRetryStrategy(&v1alpha1.RetryStrategy{
-        Limit: intstr.FromInt32(3),
+        Limit:       intstr.FromInt(3),
         RetryPolicy: v1alpha1.RetryPolicyOnFailure,
     }),
-    builder.WithTTL(&ttlSeconds),
+    builder.WithTTL(&v1alpha1.TTLStrategy{SecondsAfterCompletion: &ttl}),
     builder.WithArchiveLogs(true),
-    builder.WithActiveDeadlineSeconds(&deadline),
-    builder.WithVolumes(volumes)).
+    builder.WithActiveDeadlineSeconds(3600),
+    builder.WithVolume(dataVolume)).
     Add(step).
     AddExitHandler(cleanup).
     Build()
 ```
 
-### 6. Workflow Patterns Examples (`patterns_example.go`)
+### 6. Workflow Patterns Examples (`patterns/`)
 
 Real-world workflow patterns and architectures for common use cases.
 
@@ -295,22 +296,22 @@ wf, err := builder.NewWorkflowBuilder("cicd-pipeline", "argo").
 
 If you're new to Argo Workflows, start with these examples in order:
 
-1. **Client Setup** (`main.go`): Learn how to connect to Argo
-2. **Simple Workflow** (`builder_example.go`): Create your first workflow
-3. **Operations** (`operations_example.go`): Submit and monitor workflows
-4. **Templates** (`templates_example.go`): Understand different template types
+1. **Client Setup** (`basic/`): Learn how to connect to Argo
+2. **Simple Workflow** (`builder/`): Create your first workflow
+3. **Operations** (`operations/`): Submit and monitor workflows
+4. **Templates** (`templates/`): Understand different template types
 
 ### For Production Use
 
 For production-ready workflows, explore:
 
-1. **Advanced Features** (`advanced_features_example.go`): Parameters, retry, volumes, TTL
-2. **Patterns** (`patterns_example.go`): Real-world CI/CD, ETL, and deployment patterns
+1. **Advanced Features** (`advanced/`): Parameters, retry, volumes, TTL
+2. **Patterns** (`patterns/`): Real-world CI/CD, ETL, and deployment patterns
 
 ### Total Examples Count
 
-This example collection includes **72+ complete examples** covering:
-- 5 client configuration examples
+This example collection includes **70+ complete examples** covering:
+- 6 client configuration examples
 - 3 workflow builder examples
 - 12 workflow operations examples
 - 22 template type examples
@@ -325,7 +326,7 @@ This example collection includes **72+ complete examples** covering:
 #### Submit a Workflow
 
 ```go
-created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+created, err := argo.SubmitWorkflow(ctx, client, wf)
 if err != nil {
     log.Fatalf("Failed to submit: %v", err)
 }
@@ -335,7 +336,7 @@ fmt.Printf("Workflow submitted: %s\n", created.Name)
 #### Wait for Completion
 
 ```go
-completed, err := argo.SubmitAndWait(ctx, client, wf, nil, 5*time.Minute)
+completed, err := argo.SubmitAndWait(ctx, client, wf, 5*time.Minute)
 if err != nil {
     log.Fatalf("Workflow failed: %v", err)
 }
@@ -345,7 +346,7 @@ fmt.Printf("Status: %s\n", completed.Status.Phase)
 #### Get Status
 
 ```go
-status, err := argo.GetWorkflowStatus(ctx, client, "argo", "workflow-name", nil)
+status, err := argo.GetWorkflowStatus(ctx, client, "argo", "workflow-name")
 if err != nil {
     log.Fatalf("Failed to get status: %v", err)
 }
@@ -355,7 +356,7 @@ fmt.Printf("Phase: %s\n", status.Phase)
 #### List Workflows
 
 ```go
-workflows, err := argo.ListWorkflows(ctx, client, "argo", "", nil)
+workflows, err := argo.ListWorkflows(ctx, client, "argo", "")
 if err != nil {
     log.Fatalf("Failed to list: %v", err)
 }
@@ -365,7 +366,7 @@ fmt.Printf("Found %d workflows\n", len(workflows))
 #### Delete Workflow
 
 ```go
-err := argo.DeleteWorkflow(ctx, client, "argo", "workflow-name", nil)
+err := argo.DeleteWorkflow(ctx, client, "argo", "workflow-name")
 if err != nil {
     log.Fatalf("Failed to delete: %v", err)
 }
@@ -387,7 +388,7 @@ wf, err := builder.NewWorkflowBuilder("hello-workflow", "argo",
     Build()
 
 // Step 3: Submit the workflow
-created, err := argo.SubmitWorkflow(ctx, client, wf, nil)
+created, err := argo.SubmitWorkflow(ctx, client, wf)
 ```
 
 ### Using Different Template Types

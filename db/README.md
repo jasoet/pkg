@@ -1,27 +1,27 @@
 # Database Package
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/db.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/db)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/db.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/db)
 
 Multi-database support with GORM, automated migrations, and OpenTelemetry instrumentation.
 
 ## Overview
 
-The `db` package provides a unified interface for connecting to multiple database systems with automatic OpenTelemetry tracing and metrics collection. Built on GORM and golang-migrate, it simplifies database operations while providing production-ready observability.
+The `db` package provides a unified interface for connecting to multiple database systems with optional OpenTelemetry tracing and metrics collection. Built on GORM and golang-migrate, it simplifies database operations while providing production-ready observability.
 
 ## Features
 
 - **Multi-Database Support**: PostgreSQL, MySQL, MSSQL
 - **GORM Integration**: Full ORM capabilities with GORM v2
-- **Automatic Tracing**: Query-level distributed tracing
+- **Automatic Tracing**: Query-level distributed tracing via otelgorm
 - **Connection Pool Metrics**: Real-time pool health monitoring
-- **Schema Migrations**: Embedded migrations with golang-migrate
-- **Type-Safe Configuration**: Validation with struct tags
-- **Zero Configuration OTel**: Optional but seamless observability
+- **Schema Migrations**: Embedded PostgreSQL migrations with golang-migrate
+- **Validated Configuration**: `Validate()` called automatically by `NewPool`
+- **Optional OTel**: Tracing and metrics gated independently
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/db
+go get github.com/jasoet/pkg/v3/db
 ```
 
 ## Quick Start
@@ -32,24 +32,24 @@ go get github.com/jasoet/pkg/v2/db
 package main
 
 import (
-    "github.com/jasoet/pkg/v2/db"
+    "os"
     "time"
+
+    "github.com/jasoet/pkg/v3/db"
 )
 
 func main() {
-    config := db.ConnectionConfig{
+    pool, err := db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
         DBType:       db.Postgresql,
         Host:         "localhost",
         Port:         5432,
         Username:     "admin",
-        Password:     "${DB_PASSWORD}",
+        Password:     os.Getenv("DB_PASSWORD"), // read the secret from the environment
         DBName:       "myapp",
         Timeout:      5 * time.Second,
         MaxIdleConns: 5,
         MaxOpenConns: 10,
-    }
-
-    pool, err := config.Pool()
+    }))
     if err != nil {
         panic(err)
     }
@@ -64,76 +64,91 @@ func main() {
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/otel"
+    "os"
+    "time"
+
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/otel"
 )
 
-// Setup OTel
-otelConfig := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+// Setup OTel with functional options
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
-// Configure database with OTel
-config := db.ConnectionConfig{
-    DBType:       db.Postgresql,
-    Host:         "localhost",
-    Port:         5432,
-    Username:     "admin",
-    Password:     "${DB_PASSWORD}",
-    DBName:       "myapp",
-    Timeout:      5 * time.Second,
-    MaxIdleConns: 5,
-    MaxOpenConns: 10,
-    OTelConfig:   otelConfig,  // Enable tracing & metrics
-}
-
-pool, _ := config.Pool()
+pool, err := db.NewPool(
+    db.WithConnectionConfig(db.ConnectionConfig{
+        DBType:       db.Postgresql,
+        Host:         "localhost",
+        Port:         5432,
+        Username:     "admin",
+        Password:     os.Getenv("DB_PASSWORD"), // read the secret from the environment
+        DBName:       "myapp",
+        Timeout:      5 * time.Second,
+        MaxIdleConns: 5,
+        MaxOpenConns: 10,
+    }),
+    db.WithOTelConfig(otelConfig), // Enable tracing & metrics
+)
 
 // All queries are automatically traced
-pool.Find(&users)  // Creates span "db.SELECT"
-pool.Create(&user) // Creates span "db.INSERT"
+pool.Find(&users)  // Creates span "gorm.Query"
+pool.Create(&user) // Creates span "gorm.Create"
 ```
+
+### Independent Tracing/Metrics Gates
+
+Tracing and metrics are enabled independently:
+
+- The **otelgorm query-tracing plugin** is installed only when `OTelConfig` is non-nil **and** tracing is enabled (i.e. a `TracerProvider` is set; see `otel.WithoutTracing()`). If tracing is on but metrics are off, the plugin is installed with `otelgorm.WithoutMetrics()`.
+- **Pool metrics** (`db.client.connections.*`) are registered whenever `OTelConfig` is non-nil **and** metrics are enabled — regardless of whether tracing is on. A metrics-only setup therefore needs only `otel.WithMeterProvider(mp)`.
 
 ## Database Types
 
 ### PostgreSQL
 
 ```go
-config := db.ConnectionConfig{
+db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     DBType: db.Postgresql,
     Host:   "localhost",
     Port:   5432,
     // ...
-}
+}))
 ```
 
-**DSN Format:** `user=admin password=*** host=localhost port=5432 dbname=myapp sslmode=require connect_timeout=5`
+**DSN Format:** `user='admin' password='***' host='localhost' port=5432 dbname='myapp' sslmode=require connect_timeout=5`
+
+> Values are single-quoted and backslash-escaped so credentials containing spaces or special characters cannot alter connection parameters.
 
 ### MySQL
 
 ```go
-config := db.ConnectionConfig{
+db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     DBType: db.Mysql,
     Host:   "localhost",
     Port:   3306,
     // ...
-}
+}))
 ```
 
 **DSN Format:** `admin:***@tcp(localhost:3306)/myapp?parseTime=true&timeout=5s`
 
+> **Note:** `SSLMode` is ignored for MySQL — TLS is configured via DSN parameters, which this package does not expose.
+
 ### SQL Server (MSSQL)
 
 ```go
-config := db.ConnectionConfig{
+db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     DBType: db.MSSQL,
     Host:   "localhost",
     Port:   1433,
     // ...
-}
+}))
 ```
 
-**DSN Format:** `sqlserver://admin:***@localhost:1433?database=myapp&connectTimeout=5s&encrypt=disable`
+**DSN Format:** `sqlserver://admin:***@localhost:1433?connection+timeout=5&database=myapp&encrypt=true`
+
+> The DSN is built with `net/url`, so the username/password are percent-encoded. `SSLMode` maps to go-mssqldb's `encrypt` value: the default `"require"` (and `"true"`) become `encrypt=true` — go-mssqldb does not accept `encrypt=require`.
 
 ## Configuration
 
@@ -141,51 +156,66 @@ config := db.ConnectionConfig{
 
 ```go
 type ConnectionConfig struct {
-    DBType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL"`
-    Host         string        `yaml:"host" validate:"required,min=1"`
-    Port         int           `yaml:"port"`
-    Username     string        `yaml:"username" validate:"required,min=1"`
-    Password     string        `yaml:"password"`
-    DBName       string        `yaml:"dbName" validate:"required,min=1"`
-    Timeout      time.Duration `yaml:"timeout" validate:"min=3s"`
-    MaxIdleConns int           `yaml:"maxIdleConns" validate:"min=1"`
-    MaxOpenConns int           `yaml:"maxOpenConns" validate:"min=2"`
+    DBType       DatabaseType  `yaml:"dbType" validate:"required,oneof=MYSQL POSTGRES MSSQL" mapstructure:"dbType"`
+    Host         string        `yaml:"host" validate:"required,min=1" mapstructure:"host"`
+    Port         int           `yaml:"port" validate:"required,min=1,max=65535" mapstructure:"port"`
+    Username     string        `yaml:"username" validate:"required,min=1" mapstructure:"username"`
+    Password     string        `yaml:"password" mapstructure:"password"`
+    DBName       string        `yaml:"dbName" validate:"required,min=1" mapstructure:"dbName"`
+    Timeout      time.Duration `yaml:"timeout" mapstructure:"timeout"`
+    MaxIdleConns int           `yaml:"maxIdleConns" validate:"min=1" mapstructure:"maxIdleConns"`
+    MaxOpenConns int           `yaml:"maxOpenConns" validate:"min=2" mapstructure:"maxOpenConns"`
+
+    // Max connection reuse/idle durations (zero = unlimited)
+    ConnMaxLifetime time.Duration `yaml:"connMaxLifetime" mapstructure:"connMaxLifetime"`
+    ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime" mapstructure:"connMaxIdleTime"`
+
+    // TLS mode (PostgreSQL/MSSQL only; ignored for MySQL)
+    SSLMode string `yaml:"sslMode" mapstructure:"sslMode"`
+
+    // GORM logger verbosity: 1=Silent, 2=Error, 3=Warn, 4=Info (default: 1)
+    GormLogLevel int `yaml:"gormLogLevel" mapstructure:"gormLogLevel"`
 
     // Optional: Enable OpenTelemetry (nil = disabled)
-    OTelConfig   *otel.Config  `yaml:"-"`
+    OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
 }
 ```
 
-> **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev or test databases without TLS, set `SSLMode: "disable"` explicitly.
+> **TLS default:** `SSLMode` defaults to `"require"` for PostgreSQL and MSSQL. For local dev or test databases without TLS, set `SSLMode: "disable"` explicitly. MySQL ignores `SSLMode`. For MSSQL the value maps to go-mssqldb's `encrypt` DSN key (`"require"`/`"true"` → `encrypt=true`); valid MSSQL modes are `disable`, `false`, `true`, `require`, `strict`.
+>
+> **Timeout default:** a zero `Timeout` falls back to 30 seconds. Sub-second timeouts are rounded up to 1 second in the DSN so they are never truncated to 0 (which some drivers treat as "no timeout").
+>
+> **Pool sizing defaults:** an unset (zero) `MaxIdleConns` defaults to 10 and an unset `MaxOpenConns` defaults to 100, so a zero-value config still pools connections instead of dialling a fresh connection per query.
 
-### Methods
+### Functions and Methods
 
-| Method | Description |
-|--------|-------------|
-| `Pool()` | Returns GORM DB instance with connection pooling |
-| `SQLDB()` | Returns raw `*sql.DB` for direct SQL access |
-| `Dsn()` | Generates database connection string |
+| Function/Method | Description |
+|-----------------|-------------|
+| `NewPool(opts ...Option)` | Creates a GORM pool from options; validates config, opens, configures pool, pings |
+| `WithConnectionConfig(cfg)` | Option that seeds the pool configuration |
+| `WithOTelConfig(cfg)` | Option that attaches OTel instrumentation (nil = no-op) |
+| `Validate()` | Checks required fields and value ranges (called by `NewPool`) |
+| `RedactedDsn()` | DSN with the password masked as `***`, safe for logging |
+| `SQLDB()` | Opens a **new** pool and returns the raw `*sql.DB`; caller must close it |
 
 ## OpenTelemetry Integration
 
 ### Automatic Tracing
 
-When `OTelConfig` is provided, all database operations are automatically traced:
+When `OTelConfig` is provided with tracing enabled, all database operations are automatically traced:
 
 ```go
-config := db.ConnectionConfig{
-    // ... database config
-    OTelConfig: otelConfig,
-}
-
-pool, _ := config.Pool()
+pool, _ := db.NewPool(
+    db.WithConnectionConfig(cfg),
+    db.WithOTelConfig(otelConfig),
+)
 
 // Each operation creates a span
-pool.Create(&user)           // Span: "db.INSERT"
-pool.Find(&users)            // Span: "db.SELECT"
-pool.Where("age > ?", 18).Find(&users)  // Span: "db.SELECT"
-pool.Update("name", "John")  // Span: "db.UPDATE"
-pool.Delete(&user)           // Span: "db.DELETE"
+pool.Create(&user)           // Span: "gorm.Create"
+pool.Find(&users)            // Span: "gorm.Query"
+pool.Where("age > ?", 18).Find(&users)  // Span: "gorm.Query"
+pool.Update("name", "John")  // Span: "gorm.Update"
+pool.Delete(&user)           // Span: "gorm.Delete"
 ```
 
 ### Span Attributes
@@ -196,17 +226,15 @@ Each span includes:
 Span Attributes:
   db.system: "POSTGRES" | "MYSQL" | "MSSQL"
   db.name: "myapp"
-  db.statement: "SELECT * FROM users WHERE age > 18"
-  db.collection.name: "users"
-  db.rows_affected: 42
-  db.duration_ms: 15
   server.address: "localhost"
   server.port: 5432
 ```
 
+> **Security note:** by default otelgorm includes the full SQL statement text — including query variable values — in spans. If your statements may contain sensitive data, configure your own otelgorm plugin with its `otelgorm.WithoutQueryVariables()` option instead of relying on the default.
+
 ### Metrics Collection
 
-Connection pool metrics are automatically collected:
+Connection pool metrics are collected whenever metrics are enabled (independent of tracing):
 
 ```yaml
 Metrics:
@@ -223,32 +251,38 @@ Attributes:
 
 ## Database Migrations
 
+Only PostgreSQL is supported. The migration API works on a raw `*sql.DB`; GORM users obtain one via `gormDB.DB()` at the call site.
+
+Each run checks out a dedicated connection from the pool (via `db.Conn`) and releases it when finished, so it never permanently pins a pool slot and never closes the caller's `*sql.DB`.
+
+Both functions are instrumented through `otel.Layers.StartOperations`, producing a span named `db.RunPostgresMigrations` (or `db.RunPostgresMigrationsDown`) under the `operations.db` scope, with structured success/error logging.
+
 ### Using Embedded SQL Files
 
 ```go
 import (
     "context"
     "embed"
-    "github.com/jasoet/pkg/v2/db"
+
+    "github.com/jasoet/pkg/v3/db"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 func main() {
-    config := db.ConnectionConfig{/* ... */}
-    pool, _ := config.Pool()
+    pool, err := db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{/* ... */}))
+    if err != nil {
+        panic(err)
+    }
 
-    ctx := context.Background()
+    sqlDB, err := pool.DB()
+    if err != nil {
+        panic(err)
+    }
 
     // Run migrations UP
-    err := db.RunPostgresMigrationsWithGorm(
-        ctx,
-        pool,
-        migrationsFS,
-        "migrations",
-    )
-    if err != nil {
+    if err := db.RunPostgresMigrations(context.Background(), sqlDB, migrationsFS, "migrations"); err != nil {
         panic(err)
     }
 }
@@ -282,46 +316,47 @@ DROP TABLE IF EXISTS users;
 
 | Function | Description |
 |----------|-------------|
-| `RunPostgresMigrationsWithGorm(ctx, gormDB, fs, path)` | Run migrations UP with GORM |
-| `RunPostgresMigrationsDownWithGorm(ctx, gormDB, fs, path)` | Roll back migrations with GORM |
-| `RunPostgresMigrations(ctx, sqlDB, fs, path)` | Run migrations UP with raw SQL DB |
-| `RunPostgresMigrationsDown(ctx, sqlDB, fs, path)` | Roll back migrations with raw SQL DB |
+| `RunPostgresMigrations(ctx, sqlDB, fs, path)` | Apply pending UP migrations |
+| `RunPostgresMigrationsDown(ctx, sqlDB, fs, path)` | Roll back all migrations |
 
 ## Advanced Usage
 
 ### Raw SQL Access
 
 ```go
-pool, _ := config.Pool()
+pool, _ := db.NewPool(db.WithConnectionConfig(cfg))
 
-// Get raw *sql.DB
+// Get the pool's raw *sql.DB (shared with GORM)
 sqlDB, err := pool.DB()
 if err != nil {
     panic(err)
 }
 
-// Or use SQLDB() directly
-sqlDB, err := config.SQLDB()
+// Or open a separate pool with SQLDB() — you own it, so close it
+sqlDB2, err := cfg.SQLDB()
+if err != nil {
+    panic(err)
+}
+defer sqlDB2.Close()
 
 // Use standard database/sql
-rows, err := sqlDB.Query("SELECT * FROM users WHERE age > ?", 18)
+rows, err := sqlDB.Query("SELECT * FROM users WHERE age > $1", 18)
 ```
 
 ### Connection Pooling
 
 ```go
-config := db.ConnectionConfig{
+pool, _ := db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     // Connection pool settings
-    MaxIdleConns: 10,   // Max idle connections
-    MaxOpenConns: 100,  // Max open connections
-    Timeout:      30 * time.Second,
+    MaxIdleConns:    10,               // Max idle connections
+    MaxOpenConns:    100,              // Max open connections
+    ConnMaxLifetime: 30 * time.Minute, // Recycle aged connections
+    ConnMaxIdleTime: 5 * time.Minute,  // Close long-idle connections
+    Timeout:         30 * time.Second,
     // ...
-}
+}))
 
-pool, _ := config.Pool()
-
-// Pool is automatically managed
-// Connections are reused efficiently
+// Pool is automatically managed; connections are reused efficiently
 ```
 
 ### Transaction Support
@@ -347,8 +382,8 @@ err := pool.Transaction(func(tx *gorm.DB) error {
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/config"
-    "github.com/jasoet/pkg/v2/db"
+    "github.com/jasoet/pkg/v3/config"
+    "github.com/jasoet/pkg/v3/db"
 )
 
 type AppConfig struct {
@@ -361,7 +396,9 @@ database:
   host: localhost
   port: 5432
   username: admin
-  password: ${DB_PASSWORD}
+  # NOTE: the config loader does NOT expand ${VAR}. Provide the password via an
+  # environment variable (see "Use Environment Variables for Secrets" below) or
+  # inline a literal value here.
   dbName: myapp
   timeout: 5s
   maxIdleConns: 5
@@ -369,17 +406,17 @@ database:
 `
 
 cfg, _ := config.LoadString[AppConfig](yamlConfig)
-pool, _ := cfg.Database.Pool()
+pool, _ := db.NewPool(db.WithConnectionConfig(cfg.Database))
 ```
 
 ## Error Handling
 
 ```go
-pool, err := config.Pool()
+pool, err := db.NewPool(db.WithConnectionConfig(cfg))
 if err != nil {
     switch {
     case strings.Contains(err.Error(), "invalid config"):
-        // Invalid configuration (validation failed)
+        // Invalid configuration (Validate failed)
     case strings.Contains(err.Error(), "connection refused"):
         // Database not reachable
     case strings.Contains(err.Error(), "authentication failed"):
@@ -404,8 +441,8 @@ if result.Error != nil {
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/config"
-    "github.com/jasoet/pkg/v2/db"
+    "github.com/jasoet/pkg/v3/config"
+    "github.com/jasoet/pkg/v3/db"
 )
 
 type AppConfig struct {
@@ -429,7 +466,7 @@ database:
 // ENV_DATABASE_PASSWORD=secret123
 
 cfg, _ := config.LoadString[AppConfig](yamlConfig)
-pool, _ := cfg.Database.Pool()
+pool, _ := db.NewPool(db.WithConnectionConfig(cfg.Database))
 ```
 
 ### 2. Connection Pool Sizing
@@ -437,29 +474,26 @@ pool, _ := cfg.Database.Pool()
 ```go
 import "runtime"
 
-config := db.ConnectionConfig{
+db.NewPool(db.WithConnectionConfig(db.ConnectionConfig{
     // Rule of thumb: 2-3x number of CPU cores
     MaxOpenConns: runtime.NumCPU() * 3,
     // Keep some idle connections ready
     MaxIdleConns: runtime.NumCPU(),
     // ...
-}
+}))
 ```
 
 ### 3. Always Enable OTel in Production
 
 ```go
 // ✅ Good: Observability enabled
-config := db.ConnectionConfig{
-    // ... database config
-    OTelConfig: otelConfig,  // Tracing + Metrics
-}
+pool, _ := db.NewPool(
+    db.WithConnectionConfig(cfg),
+    db.WithOTelConfig(otelConfig), // Tracing + Metrics
+)
 
 // ❌ Bad: No observability
-config := db.ConnectionConfig{
-    // ... database config
-    OTelConfig: nil,  // No tracing, no metrics
-}
+pool, _ := db.NewPool(db.WithConnectionConfig(cfg)) // No tracing, no metrics
 ```
 
 ### 4. Use Context for Tracing
@@ -476,33 +510,29 @@ pool.WithContext(ctx).Find(&users)  // Trace linked
 pool.Find(&users)  // New root span
 ```
 
-### 5. Validate Configuration
+### 5. Validate Configuration Early
 
 ```go
-import "github.com/go-playground/validator/v10"
-
-config := db.ConnectionConfig{
+cfg := db.ConnectionConfig{
     DBType:       db.Postgresql,
     Host:         "localhost",
     Port:         5432,
     Username:     "admin",
     DBName:       "myapp",
-    Timeout:      5 * time.Second,
     MaxIdleConns: 5,
     MaxOpenConns: 10,
 }
 
-validate := validator.New()
-if err := validate.Struct(config); err != nil {
+// NewPool calls Validate() internally; calling it yourself surfaces
+// config errors at startup before any dial attempt.
+if err := cfg.Validate(); err != nil {
     panic(fmt.Sprintf("invalid config: %v", err))
 }
 
-pool, _ := config.Pool()
+pool, _ := db.NewPool(db.WithConnectionConfig(cfg))
 ```
 
 ## Testing
-
-The package includes comprehensive tests with 79.1% coverage:
 
 ```bash
 # Unit tests
@@ -519,34 +549,52 @@ go test ./db -tags=integration -cover
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/db"
-    "github.com/jasoet/pkg/v2/otel"
-    noopt "go.opentelemetry.io/otel/trace/noop"
+    "context"
+    "testing"
+
+    "github.com/jasoet/pkg/v3/db"
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/stretchr/testify/require"
+    "github.com/testcontainers/testcontainers-go/modules/postgres"
     noopm "go.opentelemetry.io/otel/metric/noop"
+    noopt "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestWithTestcontainer(t *testing.T) {
-    // Use testcontainers for integration tests
     ctx := context.Background()
-    container, _ := setupPostgresContainer(ctx)
-    defer container.Terminate(ctx)
 
-    config := db.ConnectionConfig{
-        DBType:   db.Postgresql,
-        Host:     container.Host(ctx),
-        Port:     container.MappedPort(ctx, "5432").Int(),
-        Username: "test",
-        Password: "test",
-        DBName:   "testdb",
-        OTelConfig: otel.NewConfig("test").
-            WithTracerProvider(noopt.NewTracerProvider()).
-            WithMeterProvider(noopm.NewMeterProvider()),
-    }
+    // Start a container (see the integration tests for a reusable helper).
+    container, err := postgres.Run(ctx, "postgres:18-alpine",
+        postgres.WithDatabase("testdb"),
+        postgres.WithUsername("test"),
+        postgres.WithPassword("test"),
+    )
+    require.NoError(t, err)
+    defer func() { _ = container.Terminate(ctx) }()
 
-    pool, err := config.Pool()
-    assert.NoError(t, err)
+    host, err := container.Host(ctx)
+    require.NoError(t, err)
+    port, err := container.MappedPort(ctx, "5432")
+    require.NoError(t, err)
 
-    // Test your code
+    pool, err := db.NewPool(
+        db.WithConnectionConfig(db.ConnectionConfig{
+            DBType:   db.Postgresql,
+            Host:     host,
+            Port:     port.Int(),
+            Username: "test",
+            Password: "test",
+            DBName:   "testdb",
+            SSLMode:  "disable", // container has no TLS
+        }),
+        db.WithOTelConfig(otel.NewConfig("test",
+            otel.WithTracerProvider(noopt.NewTracerProvider()),
+            otel.WithMeterProvider(noopm.NewMeterProvider()))),
+    )
+    require.NoError(t, err)
+
+    // Test your code with pool ...
+    _ = pool
 }
 ```
 
@@ -562,15 +610,21 @@ func TestWithTestcontainer(t *testing.T) {
 // docker ps | grep postgres
 
 // 2. Verify host and port
-config := db.ConnectionConfig{
+cfg := db.ConnectionConfig{
     Host: "localhost",  // or "127.0.0.1"
     Port: 5432,         // default PostgreSQL port
     // ...
 }
 
 // 3. Check timeout
-config.Timeout = 30 * time.Second  // Increase timeout
+cfg.Timeout = 30 * time.Second  // Increase timeout
 ```
+
+### TLS Required by Default
+
+**Problem**: connection fails with an SSL/TLS error against a local dev database
+
+**Solution:** `SSLMode` defaults to `"require"`; set `SSLMode: "disable"` (PostgreSQL) or `SSLMode: "disable"`/`"false"` (MSSQL) for servers without TLS.
 
 ### Authentication Failed
 
@@ -579,7 +633,7 @@ config.Timeout = 30 * time.Second  // Increase timeout
 **Solutions:**
 ```go
 // 1. Verify credentials
-config := db.ConnectionConfig{
+cfg := db.ConnectionConfig{
     Username: "correct_username",
     Password: "correct_password",
     // ...
@@ -599,13 +653,13 @@ config := db.ConnectionConfig{
 **Solutions:**
 ```go
 // 1. Reduce max connections
-config := db.ConnectionConfig{
+cfg := db.ConnectionConfig{
     MaxOpenConns: 20,  // Lower value
     MaxIdleConns: 5,
     // ...
 }
 
-// 2. Check pool metrics (if OTel enabled)
+// 2. Check pool metrics (if OTel metrics enabled)
 // Look at db.client.connections.active metric
 
 // 3. Increase database max_connections
@@ -623,9 +677,10 @@ config := db.ConnectionConfig{
 var migrationsFS embed.FS
 
 // 2. Verify path
-err := db.RunPostgresMigrationsWithGorm(
+sqlDB, _ := pool.DB()
+err := db.RunPostgresMigrations(
     ctx,
-    pool,
+    sqlDB,
     migrationsFS,
     "migrations",  // Correct path
 )
@@ -637,16 +692,9 @@ err := db.RunPostgresMigrationsWithGorm(
 ## Performance
 
 - **Connection Pooling**: Efficiently reuses connections
-- **Prepared Statements**: GORM uses prepared statements by default
+- **Prepared Statements**: not enabled by default. This package does not set GORM's `PrepareStmt`; enable prepared-statement caching yourself if you need it.
 - **Query Optimization**: Use indexes and EXPLAIN ANALYZE
 - **Batch Operations**: Use GORM's batch features for bulk inserts
-
-**Benchmark (typical operations):**
-```
-BenchmarkQuery-8         10000    ~500 µs/op
-BenchmarkInsert-8         5000    ~800 µs/op
-BenchmarkUpdate-8         8000    ~600 µs/op
-```
 
 ## Version Compatibility
 
@@ -655,12 +703,12 @@ BenchmarkUpdate-8         8000    ~600 µs/op
 - **PostgreSQL**: 12+
 - **MySQL**: 8.0+
 - **SQL Server**: 2019+
-- **Go**: 1.25+
-- **pkg library**: v2.0.0+
+- **Go**: 1.26+
+- **pkg library**: v3.0.0+
 
 ## Examples
 
-See [examples/](.../examples/db/db/) directory for:
+See the [examples/db/](../examples/db/) directory for:
 - Basic database connection
 - Multi-database setup
 - OpenTelemetry integration
@@ -673,7 +721,6 @@ See [examples/](.../examples/db/db/) directory for:
 
 - **[otel](../otel/)** - OpenTelemetry configuration
 - **[config](../config/)** - Configuration management
-- **[logging](../logging/)** - Structured logging
 
 ## License
 

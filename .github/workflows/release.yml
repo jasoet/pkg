@@ -2,13 +2,14 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, next, 'release/v2']
   workflow_dispatch:
 
 jobs:
   test:
     name: Test
     runs-on: [self-hosted, local, macOS, ARM64]
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -16,7 +17,10 @@ jobs:
           fetch-depth: 0
 
       - name: Test
-        run: nix develop --command go test -race -count=1 ./... -tags=!examples
+        run: nix develop --command go test -race -count=1 ./...
+
+      - name: Integration tests
+        run: nix develop --command bash -c "go list ./... | grep -v examples | xargs go test -count=1 -tags=integration -timeout=20m"
 
   release:
     name: Release
@@ -55,6 +59,6 @@ jobs:
           sleep 5
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$LATEST_TAG" ]; then
-            echo "Warming Go proxy for github.com/jasoet/pkg/v2@${LATEST_TAG}"
-            GOPROXY=https://proxy.golang.org GO111MODULE=on nix develop --command go list -m "github.com/jasoet/pkg/v2@${LATEST_TAG}" || true
+            echo "Warming Go proxy for github.com/jasoet/pkg/v3@${LATEST_TAG}"
+            GOPROXY=https://proxy.golang.org GO111MODULE=on nix develop --command go list -m "github.com/jasoet/pkg/v3@${LATEST_TAG}" || true
           fi

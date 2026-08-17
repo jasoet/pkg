@@ -2,11 +2,11 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
-	"sync"
+	"os"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -17,6 +17,17 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+// sendSelfSIGTERM delivers SIGTERM to the current process so a running Start*
+// convenience function (which installs its own SIGTERM handler) shuts down
+// gracefully. The signal is suppressed from terminating the process because a
+// handler is registered.
+func sendSelfSIGTERM(t *testing.T) {
+	t.Helper()
+	p, err := os.FindProcess(os.Getpid())
+	require.NoError(t, err)
+	require.NoError(t, p.Signal(syscall.SIGTERM))
+}
 
 func TestNewServer(t *testing.T) {
 	server, err := New(
@@ -106,164 +117,107 @@ func TestServerSetupEchoServer(t *testing.T) {
 }
 
 func TestServerStartStop(t *testing.T) {
-	// Use a random available port
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
-	listener.Close()
+	port := freePort(t)
 
 	server, err := New(
 		WithGRPCPort(port),
 		WithH2CMode(),
+		WithShutdownTimeout(5*time.Second),
 	)
 	require.NoError(t, err)
 
-	// Start server in goroutine
-	var wg sync.WaitGroup
-	wg.Add(1)
+	startErr := make(chan error, 1)
+	go func() { startErr <- server.Start() }()
+	t.Cleanup(func() { _ = server.Stop() })
 
-	go func() {
-		defer wg.Done()
-		_ = server.Start()
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
+	waitForPort(t, port, 5*time.Second)
 	assert.True(t, server.IsRunning())
 
-	// Stop server
-	stopErr := server.Stop()
-	assert.NoError(t, stopErr)
-
-	// Wait for start goroutine to complete
-	wg.Wait()
-
-	// Server should be stopped
+	require.NoError(t, server.Stop())
+	assert.NoError(t, recvWithTimeout(t, startErr, 10*time.Second))
 	assert.False(t, server.IsRunning())
 }
 
 func TestServerDoubleStart(t *testing.T) {
-	server, err := New(WithGRPCPort("0")) // Use any available port
+	port := freePort(t)
+	server, err := New(WithGRPCPort(port), WithShutdownTimeout(5*time.Second))
 	require.NoError(t, err)
 
-	// Start server in goroutine
-	go func() {
-		server.Start()
-	}()
+	startErr := make(chan error, 1)
+	go func() { startErr <- server.Start() }()
+	t.Cleanup(func() { _ = server.Stop() })
 
-	// Wait for server to start
-	time.Sleep(50 * time.Millisecond)
+	waitForPort(t, port, 5*time.Second)
 
-	// Try to start again
+	// A second Start while running must fail.
 	err = server.Start()
 	assert.Error(t, err, "Expected error when starting server twice")
 
-	// Cleanup
-	server.Stop()
+	require.NoError(t, server.Stop())
+	assert.NoError(t, recvWithTimeout(t, startErr, 10*time.Second))
+}
+
+// runConvenienceStart starts one of the fire-and-forget Start* helpers in a
+// goroutine, waits deterministically for it to listen, asserts the registrar
+// ran, then triggers graceful shutdown via SIGTERM and waits for the helper to
+// return (which also exercises the signal.Stop cleanup path).
+func runConvenienceStart(t *testing.T, port string, called *int32, start func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		start()
+		close(done)
+	}()
+
+	waitForPort(t, port, 5*time.Second)
+	assert.Equal(t, int32(1), atomic.LoadInt32(called), "Expected service registrar to be called")
+
+	sendSelfSIGTERM(t)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Start* did not return after SIGTERM")
+	}
 }
 
 func TestStartFunction(t *testing.T) {
-	// Get available port
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
-	listener.Close()
-
-	// Test the convenience Start function
-	var serviceRegistrarCalled int32
-	serviceRegistrar := func(s *grpc.Server) {
-		atomic.StoreInt32(&serviceRegistrarCalled, 1)
-	}
-
-	// Start in goroutine
-	go func() {
-		Start(port, serviceRegistrar)
-	}()
-
-	// Wait a bit
-	time.Sleep(100 * time.Millisecond)
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
+	port := freePort(t)
+	var called int32
+	registrar := func(s *grpc.Server) { atomic.StoreInt32(&called, 1) }
+	runConvenienceStart(t, port, &called, func() { _ = Start(port, registrar) })
 }
 
 func TestStartH2CFunction(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
-	listener.Close()
-
-	var serviceRegistrarCalled int32
-	serviceRegistrar := func(s *grpc.Server) {
-		atomic.StoreInt32(&serviceRegistrarCalled, 1)
-	}
-
-	// Test StartH2C in goroutine
-	go func() {
-		StartH2C(port, serviceRegistrar)
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
+	port := freePort(t)
+	var called int32
+	registrar := func(s *grpc.Server) { atomic.StoreInt32(&called, 1) }
+	runConvenienceStart(t, port, &called, func() { _ = StartH2C(port, registrar) })
 }
 
 func TestStartSeparateFunction(t *testing.T) {
-	// Get two available ports
-	listener1, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	grpcPort := fmt.Sprintf("%d", listener1.Addr().(*net.TCPAddr).Port)
-	listener1.Close()
-
-	listener2, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	httpPort := fmt.Sprintf("%d", listener2.Addr().(*net.TCPAddr).Port)
-	listener2.Close()
-
-	var serviceRegistrarCalled int32
-	serviceRegistrar := func(s *grpc.Server) {
-		atomic.StoreInt32(&serviceRegistrarCalled, 1)
-	}
-
-	// Test StartSeparate in goroutine
-	go func() {
-		StartSeparate(grpcPort, httpPort, serviceRegistrar)
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
+	grpcPort := freePort(t)
+	httpPort := freePort(t)
+	var called int32
+	registrar := func(s *grpc.Server) { atomic.StoreInt32(&called, 1) }
+	runConvenienceStart(t, grpcPort, &called, func() { _ = StartSeparate(grpcPort, httpPort, registrar) })
 }
 
 func TestStartWithOptions(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	port := fmt.Sprintf("%d", listener.Addr().(*net.TCPAddr).Port)
-	listener.Close()
-
-	var serviceRegistrarCalled int32
-	serviceRegistrar := func(s *grpc.Server) {
-		atomic.StoreInt32(&serviceRegistrarCalled, 1)
-	}
-
-	// Test Start with additional options
-	go func() {
-		Start(port, serviceRegistrar,
-			WithCORS(),
-			WithRateLimit(200.0),
-			WithoutReflection(),
-		)
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&serviceRegistrarCalled), "Expected service registrar to be called")
+	port := freePort(t)
+	var called int32
+	registrar := func(s *grpc.Server) { atomic.StoreInt32(&called, 1) }
+	runConvenienceStart(t, port, &called, func() {
+		_ = Start(port, registrar, WithCORS(), WithRateLimit(200.0), WithoutReflection())
+	})
 }
 
 func TestServerWithCustomShutdown(t *testing.T) {
 	shutdownCalled := false
+	port := freePort(t)
 
 	server, err := New(
-		WithGRPCPort("0"),
+		WithGRPCPort(port),
+		WithShutdownTimeout(5*time.Second),
 		WithShutdownHandler(func() error {
 			shutdownCalled = true
 			return nil
@@ -271,15 +225,14 @@ func TestServerWithCustomShutdown(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Start and immediately stop
-	go func() {
-		server.Start()
-	}()
+	startErr := make(chan error, 1)
+	go func() { startErr <- server.Start() }()
+	t.Cleanup(func() { _ = server.Stop() })
 
-	time.Sleep(50 * time.Millisecond)
+	waitForPort(t, port, 5*time.Second)
 
-	err = server.Stop()
-	assert.NoError(t, err)
+	require.NoError(t, server.Stop())
+	assert.NoError(t, recvWithTimeout(t, startErr, 10*time.Second))
 	assert.True(t, shutdownCalled, "Expected custom shutdown handler to be called")
 }
 

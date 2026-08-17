@@ -1,4 +1,4 @@
-module github.com/jasoet/pkg/v2
+module github.com/jasoet/pkg/v3
 
 go 1.26.0
 
@@ -15,6 +15,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lib/pq v1.12.0
+	github.com/nexus-rpc/sdk-go v0.6.0
 	github.com/rs/zerolog v1.35.0
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
@@ -159,7 +160,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/nexus-rpc/sdk-go v0.6.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.3.0 // indirect

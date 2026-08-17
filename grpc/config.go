@@ -5,11 +5,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"google.golang.org/grpc"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // ServerMode defines the server operation mode
@@ -53,7 +54,8 @@ type config struct {
 	shutdown         func() error       // Custom shutdown handler
 
 	// Gateway Configuration
-	gatewayBasePath string // Base path for gRPC gateway routes (default: "/api/v1")
+	gatewayBasePath  string                  // Base path for gRPC gateway routes (default: "/api/v1")
+	gatewayRegistrar func(*runtime.ServeMux) // Register handlers on the gateway mux
 
 	// Echo-specific Features
 	enableCORS      bool                   // Enable CORS middleware
@@ -162,6 +164,12 @@ func (c *config) validate() error {
 		return fmt.Errorf("idle timeout cannot be negative")
 	}
 
+	// A non-positive rate would make Echo's limiter reject every request (429),
+	// which is never the intent of enabling rate limiting.
+	if c.enableRateLimit && c.rateLimit <= 0 {
+		return fmt.Errorf("rate limit must be positive when rate limiting is enabled, got %v", c.rateLimit)
+	}
+
 	return nil
 }
 
@@ -176,16 +184,6 @@ func (c *config) getHTTPAddress() string {
 		return c.getGRPCAddress() // Use same port for H2C
 	}
 	return ":" + c.httpPort
-}
-
-// isH2CMode returns true if server is running in H2C mode
-func (c *config) isH2CMode() bool {
-	return c.mode == H2CMode
-}
-
-// isSeparateMode returns true if server is running in separate mode
-func (c *config) isSeparateMode() bool {
-	return c.mode == SeparateMode
 }
 
 // ============================================================================
@@ -355,6 +353,17 @@ func WithHealthPath(path string) Option {
 func WithGatewayBasePath(path string) Option {
 	return func(c *config) {
 		c.gatewayBasePath = path
+	}
+}
+
+// WithGatewayRegistrar sets the function to register handlers on the gRPC
+// gateway mux — typically closures around generated code such as
+// pb.RegisterXxxHandlerServer(ctx, mux, conn). It is invoked during server
+// start after the gateway mux is created and before it is mounted on Echo.
+// The mounted gateway only serves what is registered through this option.
+func WithGatewayRegistrar(fn func(mux *runtime.ServeMux)) Option {
+	return func(c *config) {
+		c.gatewayRegistrar = fn
 	}
 }
 

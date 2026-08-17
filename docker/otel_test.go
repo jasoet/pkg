@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 func TestOTelInstrumentation_AddSpanAttributes(t *testing.T) {

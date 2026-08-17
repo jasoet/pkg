@@ -1,18 +1,18 @@
-# Server Package Examples (v2)
+# Server Package Examples (v3)
 
 This directory contains runnable examples demonstrating the features of the `server` package with OpenTelemetry support.
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/server/examples/example.go](https://github.com/jasoet/pkg/blob/main/server/examples/example.go)
+**Full example implementation:** [example.go](./example.go) (in this directory)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
 ```go
-// Basic usage pattern with v2 (OpenTelemetry)
+// Basic usage pattern with v3 (OpenTelemetry)
 import (
-    "github.com/jasoet/pkg/server"
-    "github.com/jasoet/pkg/otel"
+    "github.com/jasoet/pkg/v3/server"
+    "github.com/jasoet/pkg/v3/otel"
     "github.com/labstack/echo/v4"
 )
 
@@ -23,21 +23,35 @@ operation := func(e *echo.Echo) {
 shutdown := func(e *echo.Echo) {
     // Cleanup
 }
-server.Start(8080, operation, shutdown)
+srv, _ := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
+srv.Start() // blocks until srv.Shutdown(ctx) is called
 
 // Option 2: With OpenTelemetry (logging only)
 otelCfg := otel.NewConfig("my-service")  // Default logging to stdout
-config := server.DefaultConfig(8080, operation, shutdown)
-config.OTelConfig = otelCfg
-server.StartWithConfig(config)
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
+srv.Start()
 
 // Option 3: Full OpenTelemetry (traces + metrics + logs)
-otelCfg := otel.NewConfig("my-service").
+otelCfg = otel.NewConfig("my-service").
     WithTracerProvider(tracerProvider).
     WithMeterProvider(meterProvider).
     WithServiceVersion("1.0.0")
-config.OTelConfig = otelCfg
-server.StartWithConfig(config)
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
+srv.Start()
 ```
 
 **Built-in endpoints:**
@@ -57,11 +71,10 @@ The examples in this directory complement the comprehensive documentation in the
 
 ## Running the Examples
 
-To run the interactive examples:
+To run the interactive examples from the repository root:
 
 ```bash
-cd /path/to/pkg/server/examples
-go run -tags example example.go
+go run -tags=example ./examples/server
 ```
 
 This will run through 5 different server examples in sequence, each demonstrating different aspects of the server package.
@@ -96,49 +109,62 @@ This will run through 5 different server examples in sequence, each demonstratin
 - In-flight request completion
 - Configurable shutdown timeouts
 
-## v2 Breaking Changes
+## v3 Breaking Changes
 
-**⚠️ Important:** v2 introduces breaking changes from v1:
+**⚠️ Important:** v3 introduces breaking changes from v2:
 
-### Removed (v1):
-- `EnableMetrics` field
-- `MetricsPath` field
-- `MetricsSubsystem` field
-- Prometheus metrics integration
-- `github.com/rs/zerolog` logging
+### Removed (v2):
+- `server.Start(port, operation, shutdown, middleware...)` (blocked on OS signals)
+- `server.StartWithConfig(config)` (blocked on OS signals)
+- `server.DefaultConfig(port, operation, shutdown)`
 
-### Added (v2):
-- `OTelConfig *otel.Config` field
-- OpenTelemetry traces, metrics, and logs
-- Default LoggerProvider via `otel.NewConfig()`
-- Independent control of telemetry pillars
-- Simple `fmt` logging for server lifecycle
+### Added (v3):
+- `server.New(opts ...Option) (*Server, error)` — validates config, prepares Echo without binding
+- `srv.Start()` — blocks until `Shutdown` is called; returns `nil` on a clean shutdown
+- `srv.Shutdown(ctx)` — programmatic, idempotent graceful shutdown
+- `srv.Addr()` — bound listener address (discovers the OS-assigned port with `WithPort(0)`)
+- `srv.Echo()` — access to the underlying Echo instance before `Start`
+- Auto-installed OTel tracing and metrics middleware when `OTelConfig` is set
+
+Note: a stopped `Server` cannot be restarted — `Start` returns an error; create a new one with `New`.
 
 ### Migration Guide
 
-**Before (v1):**
+**Before (v2):**
 ```go
-config := server.Config{
-    Port: 8080,
-    EnableMetrics: true,
-    MetricsPath: "/metrics",
-}
+config := server.DefaultConfig(8080, operation, shutdown)
+config.ShutdownTimeout = 30 * time.Second
+err := server.StartWithConfig(config) // blocked until SIGINT/SIGTERM
 ```
 
-**After (v2):**
+**After (v3):**
 ```go
 // Without telemetry
-config := server.DefaultConfig(8080, operation, shutdown)
+srv, _ := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
 
 // With OpenTelemetry logging
 otelCfg := otel.NewConfig("my-service")
-config.OTelConfig = otelCfg
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
 
 // With full telemetry (traces + metrics + logs)
-otelCfg := otel.NewConfig("my-service").
-    WithTracerProvider(tp).
-    WithMeterProvider(mp)
-config.OTelConfig = otelCfg
+otelCfg = otel.NewConfig("my-service",
+    otel.WithTracerProvider(tp),
+    otel.WithMeterProvider(mp))
+srv, _ = server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithOTelConfig(otelCfg),
+)
 ```
 
 ## Integration with Other Packages
@@ -159,7 +185,7 @@ The examples demonstrate integration with:
 
 ## Related Documentation
 
-For comprehensive documentation, configuration options, and additional examples, see the main server package README at `../README.md`.
+For comprehensive documentation, configuration options, and additional examples, see the main server package README at [`../../server/README.md`](../../server/README.md).
 
 The server package README includes:
 - Complete configuration reference

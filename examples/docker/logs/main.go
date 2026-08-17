@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v3/docker"
 )
 
 func main() {

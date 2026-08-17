@@ -1,26 +1,27 @@
 # REST Client
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/rest.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/rest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/rest.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/rest)
 
 Resilient HTTP client with automatic retries, OpenTelemetry instrumentation, and middleware support built on Resty.
 
 ## Overview
 
-The `rest` package provides a production-ready HTTP client with built-in resilience patterns, observability, and extensibility through middleware. Built on top of go-resty, it adds OpenTelemetry tracing, metrics, and customizable request/response processing.
+The `rest` package provides a production-ready HTTP client with built-in resilience patterns, observability, and extensibility through middleware. Built on top of go-resty, it adds OpenTelemetry tracing, metrics, and customizable request/response processing — while returning library-owned types (`rest.Response`, typed errors) so callers never depend on resty in their own code.
 
 ## Features
 
-- **Automatic Retries**: Configurable retry logic with exponential backoff
+- **Automatic Retries**: Idempotent methods retried on transient network errors, HTTP 5xx, and 429 (honoring `Retry-After`), with jittered exponential backoff; non-idempotent methods opt-in via `RetryNonIdempotent`
+- **Library-Owned Response**: `rest.Response` with status predicates — no resty types in the public API
+- **Typed Errors**: `errors.As`-friendly error types for 401/403, 404, 5xx, other 4xx, and execution failures
 - **OpenTelemetry Integration**: Distributed tracing and metrics
 - **Middleware System**: Extensible request/response processing
 - **Timeout Management**: Request-level timeout configuration
 - **Thread-Safe**: Concurrent-safe middleware management
-- **Flexible API**: Support for all HTTP methods
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/rest
+go get github.com/jasoet/pkg/v3/rest
 ```
 
 ## Quick Start
@@ -32,7 +33,9 @@ package main
 
 import (
     "context"
-    "github.com/jasoet/pkg/v2/rest"
+    "fmt"
+
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 func main() {
@@ -53,7 +56,7 @@ func main() {
         panic(err)
     }
 
-    fmt.Println(response.String())
+    fmt.Println(response.Body)
 }
 ```
 
@@ -62,14 +65,16 @@ func main() {
 ```go
 import (
     "time"
-    "github.com/jasoet/pkg/v2/rest"
+
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 config := rest.Config{
-    RetryCount:       3,
-    RetryWaitTime:    1 * time.Second,
-    RetryMaxWaitTime: 5 * time.Second,
-    Timeout:          30 * time.Second,
+    RetryCount:         3,
+    RetryWaitTime:      1 * time.Second,
+    RetryMaxWaitTime:   5 * time.Second,
+    Timeout:            30 * time.Second,
+    MaxResponseBodyLog: 2048,
 }
 
 client := rest.NewClient(
@@ -81,14 +86,15 @@ client := rest.NewClient(
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/rest"
-    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/rest"
 )
 
-// Setup OTel
-otelConfig := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+// Setup OTel (functional options)
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+)
 
 // Create client with OTel
 client := rest.NewClient(
@@ -110,6 +116,13 @@ type Config struct {
     RetryMaxWaitTime time.Duration // Maximum retry wait time
     Timeout          time.Duration // Request timeout
 
+    // Limits bytes of response body stored in logs/errors. 0 = unlimited.
+    MaxResponseBodyLog int
+
+    // Retry non-idempotent methods (POST/PATCH) too. Default false: only
+    // idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS) are retried.
+    RetryNonIdempotent bool
+
     // Optional: Enable OpenTelemetry (nil = disabled)
     OTelConfig       *otel.Config
 }
@@ -117,12 +130,106 @@ type Config struct {
 
 ### Default Configuration
 
-```go
-DefaultRestConfig() returns:
-- RetryCount:       1
-- RetryWaitTime:    2 seconds
+`DefaultRestConfig()` returns:
+
+- RetryCount: 1
+- RetryWaitTime: 2 seconds
 - RetryMaxWaitTime: 10 seconds
-- Timeout:          30 seconds
+- Timeout: 30 seconds
+- MaxResponseBodyLog: 1024
+- RetryNonIdempotent: false
+
+### Retry Behavior
+
+Retries are applied only when they are safe and can plausibly succeed:
+
+- **Methods**: only idempotent methods (`GET`, `HEAD`, `PUT`, `DELETE`,
+  `OPTIONS`) are retried by default. Set `RetryNonIdempotent: true` (or pass
+  `rest.WithRetryNonIdempotent()`) to also retry `POST`/`PATCH` — do this only
+  when the endpoint is safe to repeat, since retrying a non-idempotent request
+  can duplicate side effects (e.g. a double charge).
+- **Status codes**: `429 Too Many Requests` and any `5xx`. A `Retry-After`
+  header (delta-seconds or HTTP-date) is honored for the retry delay; otherwise
+  the jittered exponential backoff between `RetryWaitTime` and
+  `RetryMaxWaitTime` is used.
+- **Transport errors**: transient network failures are retried. Permanent
+  failures are **not** retried — malformed URL / unsupported scheme,
+  x509/TLS certificate errors, and context cancellation or deadline
+  (including the client `Timeout`) fail fast instead of burning the backoff
+  budget.
+- **Not retried**: `4xx` other than `429` (client errors that will not change
+  on retry).
+
+## Response Type
+
+`MakeRequest` and `MakeRequestWithTrace` return the library-owned `*rest.Response`:
+
+```go
+type Response struct {
+    StatusCode int
+    Body       string
+    Header     http.Header
+}
+```
+
+### Status Predicates
+
+```go
+resp, err := client.MakeRequest(ctx, "GET", url, "", nil)
+
+resp.IsSuccess()     // 2xx
+resp.IsError()       // any status >= 400
+resp.IsServerError() // 5xx
+resp.IsClientError() // 4xx
+resp.IsAuthError()   // 401 or 403
+resp.IsNotFound()    // 404
+```
+
+Note: even when a request returns a typed error for a non-2xx status, the
+`*Response` is still returned (non-nil) so you can inspect the status, body,
+and headers.
+
+## Error Handling
+
+Non-2xx responses and execution failures produce typed errors. The error
+types are exported for type switches / `errors.As`; construction is internal
+to the package.
+
+| Error type | Condition | Sentinel (`errors.Is`) |
+|---|---|---|
+| `*rest.ExecutionError` | Network/DNS/timeout failure | wraps underlying error |
+| `*rest.UnauthorizedError` | HTTP 401 or 403 | `rest.ErrUnauthorized` |
+| `*rest.ResourceNotFoundError` | HTTP 404 | `rest.ErrResourceNotFound` |
+| `*rest.ServerError` | HTTP 5xx | `rest.ErrServer` |
+| `*rest.ResponseError` | Other HTTP 4xx | `rest.ErrResponse` |
+
+Each HTTP error type exposes `StatusCode`, `Msg`, and `RespBody` (truncated to
+`MaxResponseBodyLog`).
+
+```go
+resp, err := client.MakeRequest(ctx, "GET", url, "", nil)
+if err != nil {
+    var authErr *rest.UnauthorizedError
+    var notFound *rest.ResourceNotFoundError
+    var srvErr *rest.ServerError
+    var execErr *rest.ExecutionError
+
+    switch {
+    case errors.As(err, &authErr):
+        log.Printf("auth failed (HTTP %d)", authErr.StatusCode)
+    case errors.As(err, &notFound):
+        log.Printf("missing resource (HTTP %d)", notFound.StatusCode)
+    case errors.As(err, &srvErr):
+        log.Printf("server error (HTTP %d): %s", srvErr.StatusCode, srvErr.RespBody)
+    case errors.As(err, &execErr):
+        log.Printf("request execution failed: %v", execErr.Unwrap())
+    default:
+        log.Printf("request failed: %v", err)
+    }
+    return
+}
+
+fmt.Println(resp.Body)
 ```
 
 ## Client API
@@ -136,29 +243,39 @@ WithRestConfig(config Config)
 // Add single middleware
 WithMiddleware(middleware Middleware)
 
-// Set multiple middlewares
+// Set multiple middlewares (replaces the chain, including the default LoggingMiddleware)
 WithMiddlewares(middlewares ...Middleware)
 
-// Enable OpenTelemetry
+// Enable OpenTelemetry. Order-independent with WithRestConfig: the OTel config
+// is merged after all options run, so it is never discarded by option order.
 WithOTelConfig(cfg *otel.Config)
+
+// Opt in to retrying non-idempotent methods (POST/PATCH). Also order-independent.
+WithRetryNonIdempotent()
 ```
 
 ### Methods
 
 ```go
-// Make HTTP request with tracing
+// Make HTTP request
+MakeRequest(
+    ctx context.Context,
+    method string,
+    url string,
+    body string,
+    headers map[string]string,
+) (*rest.Response, error)
+
+// Make HTTP request with resty trace enabled (populates RequestInfo.TraceInfo for middleware)
 MakeRequestWithTrace(
     ctx context.Context,
     method string,
     url string,
     body string,
     headers map[string]string,
-) (*resty.Response, error)
+) (*rest.Response, error)
 
-// Get underlying Resty client
-GetRestClient() *resty.Client
-
-// Get current configuration
+// Get current configuration (a copy)
 GetRestConfig() *Config
 
 // Middleware management
@@ -167,24 +284,44 @@ SetMiddlewares(middlewares ...Middleware)
 GetMiddlewares() []Middleware
 ```
 
+### Escape Hatch: GetRestClient
+
+`GetRestClient()` returns the underlying `*resty.Client` for advanced use
+cases the wrapper does not cover — custom TLS configuration, binary request
+bodies via `SetBody(interface{})`, automatic result unmarshaling with
+`SetResult`, file uploads, etc. Responses from calls made directly through
+the resty client are resty types and bypass the middleware chain and the
+typed-error mapping above. Note that `GetRestClient()` calls still record
+retry metrics (the retry hook lives on the resty client itself) while
+bypassing the other middleware telemetry (tracing, logging, request metrics).
+
+```go
+client := rest.NewClient()
+
+// Advanced: use resty directly
+restyClient := client.GetRestClient()
+restyClient.R().
+    SetHeader("X-Custom", "value").
+    SetQueryParam("page", "1").
+    Get("https://api.example.com/users")
+```
+
+Note: mutating the resty client after `NewClient` returns is not thread-safe
+for concurrent use with `MakeRequest`/`MakeRequestWithTrace`.
+
 ## Middleware System
 
 ### Built-in Middleware
 
 #### LoggingMiddleware
 
-Logs request and response details:
+Logs request and response details (method, URL, status code, duration,
+errors). Added by default when no middleware options are provided.
 
 ```go
 client := rest.NewClient(
     rest.WithMiddleware(rest.NewLoggingMiddleware()),
 )
-
-// Logs:
-// - Method, URL
-// - Status code
-// - Duration
-// - Errors
 ```
 
 #### NoOpMiddleware
@@ -199,11 +336,17 @@ client := rest.NewClient(
 
 #### OpenTelemetry Middlewares
 
-Automatically added when `OTelConfig` is provided:
+Automatically prepended when `OTelConfig` is provided (the default
+`LoggingMiddleware` is dropped in that case, since OTel provides logging):
 
 1. **OTelTracingMiddleware** - Distributed tracing
 2. **OTelMetricsMiddleware** - HTTP client metrics
 3. **OTelLoggingMiddleware** - Structured logging
+
+> **Warning:** `SetMiddlewares` (and `WithMiddlewares`) replace the *entire*
+> chain, including these auto-installed OTel middlewares — after calling them,
+> tracing/metrics/logging middleware are gone. Use `AddMiddleware` to append
+> without disturbing the chain, or re-add the OTel middlewares explicitly.
 
 ### Custom Middleware
 
@@ -222,6 +365,10 @@ type Middleware interface {
     AfterRequest(ctx context.Context, info RequestInfo)
 }
 ```
+
+`RequestInfo` carries method, URL, headers, body, timing, status code,
+truncated response body, error, and — for `MakeRequestWithTrace` — a
+`TraceInfo` with DNS/TCP/TLS/server/response/total durations.
 
 **Example:**
 
@@ -243,7 +390,7 @@ func (m *AuthMiddleware) BeforeRequest(
 
 func (m *AuthMiddleware) AfterRequest(
     ctx context.Context,
-    info RequestInfo,
+    info rest.RequestInfo,
 ) {
     // Process response
 }
@@ -261,8 +408,9 @@ client := rest.NewClient(
 When `OTelConfig` is provided, all requests are traced:
 
 ```go
-otelConfig := otel.NewConfig("my-client").
-    WithTracerProvider(tracerProvider)
+otelConfig := otel.NewConfig("my-client",
+    otel.WithTracerProvider(tracerProvider),
+)
 
 client := rest.NewClient(
     rest.WithOTelConfig(otelConfig),
@@ -274,18 +422,23 @@ response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", nil)
 
 ### Span Attributes
 
-Each HTTP request span includes:
+Each HTTP request span (named after the HTTP method, kind=client) includes:
 
 ```yaml
 Span Attributes:
-  http.method: "GET" | "POST" | "PUT" | "DELETE" | ...
-  http.url: "https://api.example.com/users"
-  http.status_code: 200
-  http.duration_ms: 150
-  pkg.rest.client.name: "my-client"
-  pkg.rest.retry.max_count: 3
-  pkg.rest.timeout_ms: 30000
+  http.request.method: "GET" | "POST" | "PUT" | "DELETE" | ...
+  url.full: "https://api.example.com/users"
+  http.request.body.size: 42
+  http.response.status_code: 200
+  http.response.body.size: 1024
+  http.request.duration_ms: 150
 ```
+
+The span status is `Error` when the request fails or returns a status >= 400,
+`Ok` otherwise. Trace context (W3C TraceContext) is injected into the request
+headers for distributed tracing. Bodies larger than `MaxResponseBodyLog`
+(default 1024 bytes) report the truncated length in the `http.client.response.size`
+metric and the `http.response.body.size` span attribute.
 
 ### Metrics Collection
 
@@ -293,15 +446,23 @@ Automatic HTTP client metrics:
 
 ```yaml
 Metrics:
-  http.client.request.duration: Histogram of request durations
-  http.client.request.count: Counter of total requests
-  http.client.request.active: Gauge of active requests
+  http.client.request.count: Counter of total requests ({request})
+  http.client.request.duration: Histogram of request durations (ms)
+  http.client.request.size: Histogram of request body sizes (By)
+  http.client.response.size: Histogram of response body sizes (By)
+  http.client.retry.count: Counter of retry attempts ({retry})
 
-Attributes:
-  http.method: "GET"
-  http.status_code: 200
-  service.name: "my-client"
+Metric Attributes:
+  http.request.method: "GET"
+  http.response.status_code: 200
 ```
+
+`http.client.retry.count` is wired into resty's retry hook, so it increments
+on both transport errors and status-based (5xx / 429) retries; it also carries an
+`http.retry.attempt` attribute with the resty attempt number. The counter
+counts failed retryable attempts (retries actually performed), and retries
+triggered by transport errors lose trace-exemplar correlation because they
+fall back to `context.Background()` when no response/request context exists.
 
 ## Advanced Usage
 
@@ -309,25 +470,28 @@ Attributes:
 
 ```go
 // GET
-response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", headers)
+response, _ := client.MakeRequest(ctx, "GET", url, "", headers)
 
 // POST
-response, _ := client.MakeRequestWithTrace(ctx, "POST", url, `{"key":"value"}`, headers)
+response, _ := client.MakeRequest(ctx, "POST", url, `{"key":"value"}`, headers)
 
 // PUT
-response, _ := client.MakeRequestWithTrace(ctx, "PUT", url, body, headers)
+response, _ := client.MakeRequest(ctx, "PUT", url, body, headers)
 
 // DELETE
-response, _ := client.MakeRequestWithTrace(ctx, "DELETE", url, "", headers)
+response, _ := client.MakeRequest(ctx, "DELETE", url, "", headers)
 
 // PATCH
-response, _ := client.MakeRequestWithTrace(ctx, "PATCH", url, body, headers)
+response, _ := client.MakeRequest(ctx, "PATCH", url, body, headers)
 
 // HEAD
-response, _ := client.MakeRequestWithTrace(ctx, "HEAD", url, "", headers)
+response, _ := client.MakeRequest(ctx, "HEAD", url, "", headers)
 
 // OPTIONS
-response, _ := client.MakeRequestWithTrace(ctx, "OPTIONS", url, "", headers)
+response, _ := client.MakeRequest(ctx, "OPTIONS", url, "", headers)
+
+// Custom methods fall back to resty's Execute
+response, _ := client.MakeRequest(ctx, "REPORT", url, body, headers)
 ```
 
 ### Custom Headers
@@ -339,10 +503,13 @@ headers := map[string]string{
     "X-API-Key":     "secret",
 }
 
-response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", headers)
+response, _ := client.MakeRequest(ctx, "GET", url, "", headers)
 ```
 
 ### Request Body
+
+The `body` parameter is a string. For binary payloads, use `GetRestClient()`
+and build the request directly with resty's `SetBody(interface{})`.
 
 ```go
 body := `{
@@ -350,15 +517,15 @@ body := `{
     "email": "john@example.com"
 }`
 
-response, _ := client.MakeRequestWithTrace(ctx, "POST", url, body, headers)
+response, _ := client.MakeRequest(ctx, "POST", url, body, headers)
 ```
 
 ### Configuration from YAML
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/config"
-    "github.com/jasoet/pkg/v2/rest"
+    "github.com/jasoet/pkg/v3/config"
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 type AppConfig struct {
@@ -371,48 +538,11 @@ rest:
   retryWaitTime: 1s
   retryMaxWaitTime: 5s
   timeout: 30s
+  maxResponseBodyLog: 2048
 `
 
 cfg, _ := config.LoadString[AppConfig](yamlConfig)
 client := rest.NewClient(rest.WithRestConfig(cfg.REST))
-```
-
-### Access Underlying Resty Client
-
-For advanced Resty features:
-
-```go
-client := rest.NewClient()
-
-// Get Resty client
-restyClient := client.GetRestClient()
-
-// Use Resty directly
-restyClient.R().
-    SetHeader("X-Custom", "value").
-    SetQueryParam("page", "1").
-    Get("https://api.example.com/users")
-```
-
-## Error Handling
-
-```go
-response, err := client.MakeRequestWithTrace(ctx, "GET", url, "", nil)
-
-if err != nil {
-    // Network error, timeout, or other client error
-    log.Printf("Request failed: %v", err)
-    return
-}
-
-// Check HTTP status
-if response.StatusCode() != 200 {
-    log.Printf("HTTP error: %d - %s", response.StatusCode(), response.String())
-    return
-}
-
-// Process response
-fmt.Println(response.String())
 ```
 
 ## Best Practices
@@ -424,7 +554,7 @@ fmt.Println(response.String())
 ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
 
-response, err := client.MakeRequestWithTrace(ctx, "GET", url, "", nil)
+response, err := client.MakeRequest(ctx, "GET", url, "", nil)
 ```
 
 ### 2. Configure Retries Appropriately
@@ -432,12 +562,18 @@ response, err := client.MakeRequestWithTrace(ctx, "GET", url, "", nil)
 ```go
 // ✅ Good: Reasonable retry config
 config := rest.Config{
-    RetryCount:       3,              // Retry up to 3 times
+    RetryCount:       3,               // Retry up to 3 times
     RetryWaitTime:    1 * time.Second, // Start with 1s
     RetryMaxWaitTime: 10 * time.Second, // Cap at 10s
     Timeout:          30 * time.Second,
 }
 ```
+
+By default retries trigger only for idempotent methods on transient network
+errors, HTTP 5xx, and 429 (honoring `Retry-After`). Non-idempotent methods
+(POST/PATCH) are retried only when you set `RetryNonIdempotent: true`. Permanent
+transport errors (bad URL/scheme, x509/TLS, context cancel/deadline) and 4xx
+other than 429 are never retried. See [Retry Behavior](#retry-behavior).
 
 ### 3. Always Enable OTel in Production
 
@@ -458,13 +594,13 @@ client := rest.NewClient()
 var httpClient = rest.NewClient(/* config */)
 
 func fetchUser(id string) {
-    httpClient.MakeRequestWithTrace(/* ... */)
+    httpClient.MakeRequest(/* ... */)
 }
 
 // ❌ Bad: New client per request
 func fetchUser(id string) {
     client := rest.NewClient() // Creates new connection pool
-    client.MakeRequestWithTrace(/* ... */)
+    client.MakeRequest(/* ... */)
 }
 ```
 
@@ -484,7 +620,8 @@ client := rest.NewClient(
 
 ## Testing
 
-The package includes comprehensive tests with 93% coverage:
+The package ships compile-checked examples (`example_test.go`) and unit tests
+backed by `httptest` servers:
 
 ```bash
 # Run tests
@@ -498,8 +635,11 @@ go test ./rest -cover
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/rest"
+    "net/http"
     "net/http/httptest"
+    "testing"
+
+    "github.com/jasoet/pkg/v3/rest"
 )
 
 func TestMyCode(t *testing.T) {
@@ -512,10 +652,10 @@ func TestMyCode(t *testing.T) {
 
     // Use no-op middleware for testing
     client := rest.NewClient(
-        rest.WithMiddleware(rest.NewNoOpMiddleware()),
+        rest.WithMiddlewares(rest.NewNoOpMiddleware()),
     )
 
-    response, err := client.MakeRequestWithTrace(
+    response, err := client.MakeRequest(
         context.Background(),
         "GET",
         server.URL,
@@ -524,7 +664,8 @@ func TestMyCode(t *testing.T) {
     )
 
     assert.NoError(t, err)
-    assert.Equal(t, 200, response.StatusCode())
+    assert.Equal(t, 200, response.StatusCode)
+    assert.True(t, response.IsSuccess())
 }
 ```
 
@@ -555,14 +696,17 @@ defer cancel()
 ```go
 // 1. Check retry configuration
 config := rest.Config{
-    RetryCount:       3,              // Must be > 0
+    RetryCount:       3, // Must be > 0
     RetryWaitTime:    1 * time.Second,
     RetryMaxWaitTime: 5 * time.Second,
 }
 
-// 2. Verify error is retryable
-// Resty retries on network errors and 5xx status codes
-// Does NOT retry on 4xx client errors
+// 2. Verify the request is retryable
+// By default only idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS) are retried,
+// on transient network errors, 5xx, and 429. POST/PATCH require
+// RetryNonIdempotent: true (or rest.WithRetryNonIdempotent()). Permanent errors
+// (bad URL/scheme, x509/TLS, context cancel/deadline) and 4xx other than 429
+// are never retried.
 ```
 
 ### OTel Not Tracing
@@ -594,21 +738,17 @@ client.MakeRequestWithTrace(ctx, /* ... */) // Propagates context
 - **Low Overhead**: Minimal middleware overhead (~microseconds)
 - **Efficient Retries**: Exponential backoff prevents thundering herd
 
-**Benchmark (typical request):**
-```
-BenchmarkRequest-8         1000    ~1ms/op (including network)
-BenchmarkMiddleware-8     10000    ~5µs/op (middleware overhead)
-```
-
 ## Examples
 
-See [examples/](.../examples/rest/rest/) directory for:
+See [examples/rest/](../examples/rest/) directory for:
 - Basic HTTP requests
 - OpenTelemetry integration
 - Custom middleware
 - Error handling
 - Retry configuration
 - Authentication patterns
+
+Compile-checked examples also live in [`example_test.go`](./example_test.go).
 
 ## Related Packages
 

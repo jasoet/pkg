@@ -15,10 +15,14 @@ import (
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Mock workflow service client
@@ -138,9 +142,49 @@ func (m *mockArgoClient) NewInfoServiceClient() (info.InfoServiceClient, error) 
 	return nil, errors.New("not implemented")
 }
 
+func TestSubmitWorkflow_EmitsSpanFromContextConfig(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() {
+		assert.NoError(t, tp.Shutdown(context.Background()))
+	})
+
+	cfg := otel.NewConfig("test-service", otel.WithTracerProvider(tp))
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
+
+	testWf := &v1alpha1.Workflow{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "test-",
+			Namespace:    "argo",
+		},
+		Spec: v1alpha1.WorkflowSpec{
+			Entrypoint: "main",
+		},
+	}
+
+	mockWfClient := &mockWorkflowServiceClient{
+		createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+			created := testWf.DeepCopy()
+			created.Name = "test-span"
+			created.UID = "uid-span"
+			return created, nil
+		},
+	}
+	client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+	created, err := SubmitWorkflow(ctx, client, testWf)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1, "expected exactly one ended span")
+	assert.Equal(t, "argo.SubmitWorkflow", spans[0].Name)
+	assert.Equal(t, "github.com/jasoet/pkg/v3/argo", spans[0].InstrumentationScope.Name)
+}
+
 func TestSubmitWorkflow(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	testWf := &v1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{
@@ -164,7 +208,7 @@ func TestSubmitWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		created, err := SubmitWorkflow(ctx, client, testWf, cfg)
+		created, err := SubmitWorkflow(ctx, client, testWf)
 		require.NoError(t, err)
 		require.NotNil(t, created)
 		assert.Equal(t, "test-abc123", created.Name)
@@ -180,7 +224,7 @@ func TestSubmitWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		created, err := SubmitWorkflow(ctx, client, testWf, cfg)
+		created, err := SubmitWorkflow(ctx, client, testWf)
 		require.Error(t, err)
 		assert.Nil(t, created)
 		assert.Contains(t, err.Error(), "failed to submit workflow")
@@ -197,7 +241,7 @@ func TestSubmitWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		created, err := SubmitWorkflow(ctx, client, testWf, nil)
+		created, err := SubmitWorkflow(context.Background(), client, testWf)
 		require.NoError(t, err)
 		require.NotNil(t, created)
 		assert.Equal(t, "test-xyz789", created.Name)
@@ -205,8 +249,8 @@ func TestSubmitWorkflow(t *testing.T) {
 }
 
 func TestSubmitAndWait(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	testWf := &v1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{
@@ -242,7 +286,7 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		completed, err := SubmitAndWait(ctx, client, testWf, cfg, 30*time.Second)
+		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second, WithPollInterval(5*time.Millisecond))
 		require.NoError(t, err)
 		require.NotNil(t, completed)
 		assert.Equal(t, v1alpha1.WorkflowSucceeded, completed.Status.Phase)
@@ -272,14 +316,15 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		completed, err := SubmitAndWait(ctx, client, testWf, cfg, 30*time.Second)
+		completed, err := SubmitAndWait(ctx, client, testWf, 30*time.Second, WithPollInterval(5*time.Millisecond))
 		require.Error(t, err)
 		require.NotNil(t, completed)
 		assert.Equal(t, v1alpha1.WorkflowFailed, completed.Status.Phase)
+		assert.ErrorIs(t, err, ErrWorkflowFailed)
 		assert.Contains(t, err.Error(), "workflow failed")
 	})
 
-	t.Run("workflow timeout", func(t *testing.T) {
+	t.Run("workflow timeout wraps deadline and sentinel", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
 			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
 				created := testWf.DeepCopy()
@@ -296,15 +341,100 @@ func TestSubmitAndWait(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		_, err := SubmitAndWait(ctx, client, testWf, cfg, 1*time.Second)
+		_, err := SubmitAndWait(ctx, client, testWf, 100*time.Millisecond, WithPollInterval(10*time.Millisecond))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "timeout")
+		assert.ErrorIs(t, err, ErrWaitTimeout, "timeout error should match ErrWaitTimeout sentinel")
+		assert.ErrorIs(t, err, context.DeadlineExceeded, "timeout error should wrap context.DeadlineExceeded")
+	})
+
+	t.Run("parent context cancellation is not mislabeled as timeout", func(t *testing.T) {
+		mockWfClient := &mockWorkflowServiceClient{
+			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+				created := testWf.DeepCopy()
+				created.Name = "test-cancel"
+				return created, nil
+			},
+			getWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowGetRequest) (*v1alpha1.Workflow, error) {
+				result := testWf.DeepCopy()
+				result.Name = "test-cancel"
+				result.Status.Phase = v1alpha1.WorkflowRunning
+				return result, nil
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		go func() {
+			time.Sleep(30 * time.Millisecond)
+			cancel()
+		}()
+
+		_, err := SubmitAndWait(cancelCtx, client, testWf, 10*time.Second, WithPollInterval(5*time.Millisecond))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.NotErrorIs(t, err, ErrWaitTimeout, "a cancellation must not be reported as a timeout")
+		assert.Contains(t, err.Error(), "canceled")
+	})
+
+	t.Run("permanent poll error aborts early", func(t *testing.T) {
+		callCount := 0
+		mockWfClient := &mockWorkflowServiceClient{
+			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+				created := testWf.DeepCopy()
+				created.Name = "test-notfound"
+				return created, nil
+			},
+			getWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowGetRequest) (*v1alpha1.Workflow, error) {
+				callCount++
+				return nil, status.Error(codes.NotFound, "workflows.argoproj.io \"test-notfound\" not found")
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		start := time.Now()
+		_, err := SubmitAndWait(ctx, client, testWf, 10*time.Second, WithPollInterval(5*time.Millisecond))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrWaitTimeout, "a permanent NotFound must not spin until timeout")
+		assert.Contains(t, err.Error(), "failed to get workflow status")
+		assert.Less(t, time.Since(start), 2*time.Second, "should abort promptly on a permanent error")
+		assert.Equal(t, 1, callCount, "should not retry a permanent error")
+	})
+
+	t.Run("transient poll error is retried", func(t *testing.T) {
+		callCount := 0
+		mockWfClient := &mockWorkflowServiceClient{
+			createWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowCreateRequest) (*v1alpha1.Workflow, error) {
+				created := testWf.DeepCopy()
+				created.Name = "test-transient"
+				return created, nil
+			},
+			getWorkflowFunc: func(ctx context.Context, req *workflow.WorkflowGetRequest) (*v1alpha1.Workflow, error) {
+				callCount++
+				if callCount < 3 {
+					return nil, status.Error(codes.Unavailable, "server temporarily unavailable")
+				}
+				result := testWf.DeepCopy()
+				result.Name = "test-transient"
+				result.Status.Phase = v1alpha1.WorkflowSucceeded
+				return result, nil
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		completed, err := SubmitAndWait(ctx, client, testWf, 10*time.Second, WithPollInterval(5*time.Millisecond))
+		require.NoError(t, err)
+		require.NotNil(t, completed)
+		assert.Equal(t, v1alpha1.WorkflowSucceeded, completed.Status.Phase)
+		assert.GreaterOrEqual(t, callCount, 3, "transient errors should be retried until success")
 	})
 }
 
 func TestGetWorkflowStatus(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	t.Run("successful get", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
@@ -324,7 +454,7 @@ func TestGetWorkflowStatus(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		status, err := GetWorkflowStatus(ctx, client, "argo", "test-workflow", cfg)
+		status, err := GetWorkflowStatus(ctx, client, "argo", "test-workflow")
 		require.NoError(t, err)
 		require.NotNil(t, status)
 		assert.Equal(t, v1alpha1.WorkflowSucceeded, status.Phase)
@@ -340,7 +470,7 @@ func TestGetWorkflowStatus(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		status, err := GetWorkflowStatus(ctx, client, "argo", "nonexistent", cfg)
+		status, err := GetWorkflowStatus(ctx, client, "argo", "nonexistent")
 		require.Error(t, err)
 		assert.Nil(t, status)
 		assert.Contains(t, err.Error(), "failed to get workflow")
@@ -359,7 +489,7 @@ func TestGetWorkflowStatus(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		status, err := GetWorkflowStatus(ctx, client, "argo", "test", nil)
+		status, err := GetWorkflowStatus(context.Background(), client, "argo", "test")
 		require.NoError(t, err)
 		require.NotNil(t, status)
 		assert.Equal(t, v1alpha1.WorkflowRunning, status.Phase)
@@ -367,8 +497,8 @@ func TestGetWorkflowStatus(t *testing.T) {
 }
 
 func TestListWorkflows(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	t.Run("list all workflows", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
@@ -384,11 +514,48 @@ func TestListWorkflows(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		workflows, err := ListWorkflows(ctx, client, "argo", "", cfg)
+		workflows, err := ListWorkflows(ctx, client, "argo", "")
 		require.NoError(t, err)
 		require.Len(t, workflows, 2)
 		assert.Equal(t, "wf-1", workflows[0].Name)
 		assert.Equal(t, "wf-2", workflows[1].Name)
+	})
+
+	t.Run("follows pagination continue tokens", func(t *testing.T) {
+		call := 0
+		mockWfClient := &mockWorkflowServiceClient{
+			listWorkflowsFunc: func(ctx context.Context, req *workflow.WorkflowListRequest) (*v1alpha1.WorkflowList, error) {
+				call++
+				switch call {
+				case 1:
+					assert.Empty(t, req.ListOptions.Continue, "first page must not send a continue token")
+					return &v1alpha1.WorkflowList{
+						ListMeta: metav1.ListMeta{Continue: "token-page-2"},
+						Items: []v1alpha1.Workflow{
+							{ObjectMeta: metav1.ObjectMeta{Name: "wf-1"}},
+							{ObjectMeta: metav1.ObjectMeta{Name: "wf-2"}},
+						},
+					}, nil
+				case 2:
+					assert.Equal(t, "token-page-2", req.ListOptions.Continue, "second page must send the continue token")
+					return &v1alpha1.WorkflowList{
+						Items: []v1alpha1.Workflow{
+							{ObjectMeta: metav1.ObjectMeta{Name: "wf-3"}},
+						},
+					}, nil
+				default:
+					return nil, errors.New("unexpected extra list call")
+				}
+			},
+		}
+
+		client := &mockArgoClient{workflowServiceClient: mockWfClient}
+
+		workflows, err := ListWorkflows(ctx, client, "argo", "")
+		require.NoError(t, err)
+		require.Len(t, workflows, 3, "should aggregate items across all pages")
+		assert.Equal(t, "wf-3", workflows[2].Name)
+		assert.Equal(t, 2, call, "should have followed exactly one continue token")
 	})
 
 	t.Run("list with label selector", func(t *testing.T) {
@@ -405,7 +572,7 @@ func TestListWorkflows(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		workflows, err := ListWorkflows(ctx, client, "argo", "app=myapp", cfg)
+		workflows, err := ListWorkflows(ctx, client, "argo", "app=myapp")
 		require.NoError(t, err)
 		require.Len(t, workflows, 1)
 	})
@@ -419,7 +586,7 @@ func TestListWorkflows(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		workflows, err := ListWorkflows(ctx, client, "argo", "", cfg)
+		workflows, err := ListWorkflows(ctx, client, "argo", "")
 		require.Error(t, err)
 		assert.Nil(t, workflows)
 		assert.Contains(t, err.Error(), "failed to list workflows")
@@ -427,8 +594,8 @@ func TestListWorkflows(t *testing.T) {
 }
 
 func TestDeleteWorkflow(t *testing.T) {
-	ctx := context.Background()
 	cfg := otel.NewConfig("test")
+	ctx := otel.ContextWithConfig(context.Background(), cfg)
 
 	t.Run("successful deletion", func(t *testing.T) {
 		mockWfClient := &mockWorkflowServiceClient{
@@ -441,7 +608,7 @@ func TestDeleteWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		err := DeleteWorkflow(ctx, client, "argo", "test-workflow", cfg)
+		err := DeleteWorkflow(ctx, client, "argo", "test-workflow")
 		require.NoError(t, err)
 	})
 
@@ -454,7 +621,7 @@ func TestDeleteWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		err := DeleteWorkflow(ctx, client, "argo", "test-workflow", cfg)
+		err := DeleteWorkflow(ctx, client, "argo", "test-workflow")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to delete workflow")
 	})
@@ -468,7 +635,7 @@ func TestDeleteWorkflow(t *testing.T) {
 
 		client := &mockArgoClient{workflowServiceClient: mockWfClient}
 
-		err := DeleteWorkflow(ctx, client, "argo", "test-workflow", nil)
+		err := DeleteWorkflow(context.Background(), client, "argo", "test-workflow")
 		require.NoError(t, err)
 	})
 }

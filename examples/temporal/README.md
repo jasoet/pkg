@@ -1,25 +1,30 @@
 # Temporal Workflow Examples
 
-This directory contains examples demonstrating how to use Temporal workflows in Go. These examples show practical usage patterns and best practices for implementing Temporal workflows, activities, workers, and schedulers.
+This directory contains examples demonstrating how to use Temporal workflows in Go with `github.com/jasoet/pkg/v3/temporal`. These examples show practical usage patterns and best practices for implementing Temporal workflows, activities, workers, and schedulers.
 
 ## 📍 Example Code Locations
 
 **Workflow examples:**
-- [Simple workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/simple_workflow.go)
-- [Activity workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/activity_workflow.go)
-- [Error handling workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/error_handling_workflow.go)
-- [Timer workflow](https://github.com/jasoet/pkg/blob/main/temporal/examples/workflows/timer_workflow.go)
+- [Simple workflow](./workflows/simple_workflow.go)
+- [Activity workflow](./workflows/activity_workflow.go)
+- [Error handling workflow](./workflows/error_handling_workflow.go)
+- [Timer workflow](./workflows/timer_workflow.go)
 
 **Other examples:**
-- [Basic activities](https://github.com/jasoet/pkg/blob/main/temporal/examples/activities/basic_activities.go)
-- [Basic worker](https://github.com/jasoet/pkg/blob/main/temporal/examples/worker/basic_worker.go)
-- [Basic scheduler](https://github.com/jasoet/pkg/blob/main/temporal/examples/scheduler/basic_scheduler.go)
+- [Basic activities](./activities/basic_activities.go)
+- [Basic worker](./worker/basic_worker.go)
+- [Basic scheduler](./scheduler/basic_scheduler.go)
+- [Dashboard](./dashboard/main.go)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
 ```go
 // Basic usage pattern
-import "github.com/jasoet/pkg/temporal"
+import (
+    "github.com/jasoet/pkg/v3/temporal"
+    "go.temporal.io/sdk/client"
+    "go.temporal.io/sdk/worker"
+)
 
 // 1. Define workflow
 func MyWorkflow(ctx workflow.Context, input string) (string, error) {
@@ -28,7 +33,7 @@ func MyWorkflow(ctx workflow.Context, input string) (string, error) {
         StartToCloseTimeout: 10 * time.Second,
     }
     ctx = workflow.WithActivityOptions(ctx, ao)
-    
+
     var result string
     err := workflow.ExecuteActivity(ctx, MyActivity, input).Get(ctx, &result)
     return result, err
@@ -40,28 +45,39 @@ func MyActivity(ctx context.Context, input string) (string, error) {
     return "processed: " + input, nil
 }
 
-// 3. Create worker
-client, _ := temporal.NewClient(temporal.ClientConfig{
-    HostPort: "localhost:7233",
-})
-worker := temporal.NewWorker(client, "my-task-queue")
-worker.RegisterWorkflow(MyWorkflow)
-worker.RegisterActivity(MyActivity)
+// 3. Create client (caller owns it; defaults are localhost:7233 / "default")
+ctx := context.Background()
+c, err := temporal.NewClient(
+    temporal.WithHostPort("localhost:7233"),
+    temporal.WithNamespace("default"),
+)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to create Temporal client")
+}
+defer c.Close()
 
-// 4. Start worker (in a goroutine)
-go func() {
-    err := worker.Run(context.Background())
-    if err != nil {
-        log.Fatal().Err(err).Msg("Worker failed")
-    
-}()
+// 4. Create a worker manager and register a worker
+wm, err := temporal.NewWorkerManager(c)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to create worker manager")
+}
+defer wm.Close(ctx) // stops workers; does NOT close c
 
-// 5. Trigger workflow manually
+w := wm.Register("my-task-queue", worker.Options{})
+w.RegisterWorkflow(MyWorkflow)
+w.RegisterActivity(MyActivity)
+
+// 5. Start all workers (blocks the process via signal handling in real apps)
+if err := wm.StartAll(ctx); err != nil {
+    log.Fatal().Err(err).Msg("Worker failed")
+}
+
+// 6. Trigger workflow manually (from another process, using the SDK client)
 workflowOptions := client.StartWorkflowOptions{
     ID:        "my-workflow-id",
     TaskQueue: "my-task-queue",
 }
-we, err := client.ExecuteWorkflow(context.Background(), workflowOptions, MyWorkflow, "input-data")
+we, err := c.ExecuteWorkflow(ctx, workflowOptions, MyWorkflow, "input-data")
 if err != nil {
     log.Error().Err(err).Msg("Failed to start workflow")
 }
@@ -69,14 +85,14 @@ log.Info().Str("workflow_id", we.GetID()).Str("run_id", we.GetRunID()).Msg("Work
 
 // Get workflow result
 var result string
-err = we.Get(context.Background(), &result)
+err = we.Get(ctx, &result)
 
-// 6. Or create a scheduler for periodic execution
-scheduleManager, err := temporal.NewScheduleManager(client)
+// 7. Or create a schedule for periodic execution
+scheduleManager, err := temporal.NewScheduleManager(c)
 if err != nil {
     log.Fatal().Err(err).Msg("failed to create schedule manager")
 }
-defer scheduleManager.Close()
+defer scheduleManager.Close(ctx) // does NOT close c
 
 scheduleID := "my-schedule-id"
 scheduleOptions := temporal.WorkflowScheduleOptions{
@@ -87,43 +103,41 @@ scheduleOptions := temporal.WorkflowScheduleOptions{
     Args:       []any{"scheduled-input"},
 }
 
-scheduleHandle, err := scheduleManager.CreateWorkflowSchedule(
-    context.Background(), 
-    scheduleID, 
-    scheduleOptions,
-)
+scheduleHandle, err := scheduleManager.CreateWorkflowSchedule(ctx, scheduleID, scheduleOptions)
 if err != nil {
     log.Error().Err(err).Msg("Failed to create schedule")
 }
 log.Info().Str("schedule_id", scheduleID).Msg("Schedule created")
 
 // Delete schedule when done
-err = scheduleHandle.Delete(context.Background())
+err = scheduleHandle.Delete(ctx)
 ```
 
 **Key features:**
+- Typed constructors: `temporal.NewClient(opts ...Option)`, `temporal.NewWorkerManager(c)`, `temporal.NewScheduleManager(c)`, `temporal.NewWorkflowManager(c)` / `temporal.NewWorkflowManagerWithNamespace(c, ns)`
+- Caller-owned client: managers never close the client; you do
 - Durable execution with automatic retries
 - Built-in error handling and compensation
 - Timer and scheduling support
-- Integration with logging package
-- Manual workflow invocation with ExecuteWorkflow
+- Direct access to the `go.temporal.io/sdk` client for anything the managers don't cover
 - Scheduled workflows with cron-like intervals
 - Async execution with result retrieval
 
 ## Directory Structure
 
 ```
-pkg/temporal/examples/
+examples/temporal/
 ├── workflows/     # Example workflow implementations
 ├── activities/    # Example activity implementations
 ├── worker/        # Example worker setup
 ├── scheduler/     # Example scheduler setup
+├── dashboard/     # HTTP dashboard for monitoring workflows
 └── README.md      # This file
 ```
 
 ## Prerequisites
 
-- Go 1.22.2 or later
+- Go 1.23 or later
 - Temporal server running (default: localhost:7233)
 - Understanding of basic Temporal concepts
 
@@ -162,20 +176,38 @@ The `scheduler/` directory contains examples of scheduler setup:
 2. **Cron Scheduler**: A scheduler using cron-based scheduling
 3. **One-time Scheduler**: A scheduler for one-time execution
 
+### Dashboard
+
+The `dashboard/` directory contains a runnable HTTP dashboard (`main.go`) built on `temporal.WorkflowManager`.
+
 ## How to Run the Examples
 
-Each example directory contains a README.md with specific instructions for running that example. In general, you'll need to:
+The `workflows/`, `activities/`, `worker/`, and `scheduler/` packages are guarded by the `example` build tag and expose `Run*` functions rather than `main` programs:
 
-1. Start the Temporal server
-2. Run the worker in one terminal
-3. Run the workflow starter in another terminal
+```bash
+# Compile-check all examples
+go build -tags=example ./examples/temporal/...
+
+# Run the dashboard (a real main package, no build tag)
+cd examples/temporal/dashboard
+go run main.go
+
+# Or with custom configuration
+TEMPORAL_HOST=temporal.example.com:7233 \
+TEMPORAL_NAMESPACE=production \
+go run main.go
+```
+
+Then open http://localhost:8080 in your browser.
+
+To run a worker or scheduler example, call its `Run*` function (e.g. `worker.RunBasicWorker()`, `scheduler.RunIntervalScheduler()`) from your own `main`, with a Temporal server listening on `localhost:7233`.
 
 ## Best Practices
 
-- Use the `NewClient()` function from the main temporal package
+- Create the client with `temporal.NewClient(...)` and close it yourself — managers never close the client
 - Always handle errors properly in workflows and activities
-- Use proper logging with zerolog
-- Implement proper shutdown handling for workers
+- Use proper logging with zerolog (the SDK logger can be bridged via `temporal.NewZerologAdapter`)
+- Implement proper shutdown handling for workers (`WorkerManager.Close(ctx)` stops all registered workers)
 - Use meaningful task queue names
 - Structure your code to separate workflows, activities, and worker setup
 
@@ -183,9 +215,10 @@ Each example directory contains a README.md with specific instructions for runni
 
 These examples use the main temporal package from this project. Key integration points:
 
-- Client creation using `temporal.NewClient()`
-- Worker management using `temporal.WorkerManager`
-- Schedule management using `temporal.ScheduleManager`
+- Client creation using `temporal.NewClient()` with functional options (`WithHostPort`, `WithNamespace`, `WithOTelConfig`, `WithConfig`)
+- Worker management using `temporal.NewWorkerManager(c)`
+- Schedule management using `temporal.NewScheduleManager(c)`
+- Workflow queries using `temporal.NewWorkflowManager(c)` / `temporal.NewWorkflowManagerWithNamespace(c, ns)`
 - Logging using `temporal.ZerologAdapter`
 
-For more details on the main temporal package, see the source code in the parent directory.
+For more details on the main temporal package, see the [temporal package README](../../temporal/README.md).

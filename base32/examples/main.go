@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jasoet/pkg/v2/base32"
+	"github.com/jasoet/pkg/v3/base32"
 )
 
 func main() {
-	fmt.Println("=== Base32 Package Examples ===\n")
+	fmt.Println("=== Base32 Package Examples ===")
 
 	// Example 1: URL Shortener
 	urlShortenerExample()

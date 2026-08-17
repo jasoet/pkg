@@ -7,7 +7,7 @@ import (
 
 	"github.com/docker/go-connections/nat"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // ContainerRequest represents a declarative container configuration,
@@ -89,7 +89,7 @@ type ContainerRequest struct {
 	Timeout time.Duration
 
 	// OTelConfig enables OpenTelemetry instrumentation (optional)
-	OTelConfig *otel.Config
+	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
 }
 
 // config is the internal configuration used by the executor.
@@ -234,12 +234,15 @@ func WithRequest(req ContainerRequest) Option {
 			c.exposedPorts[natPort] = struct{}{}
 		}
 
-		// Port bindings
+		// Port bindings. Also record the port in exposedPorts (as WithPortBindings
+		// does) so a bound port is always exposed on the container, keeping struct-
+		// and option-based configuration at parity.
 		for containerPort, hostPort := range req.PortBindings {
 			natPort, err := parsePort(containerPort)
 			if err != nil {
 				return fmt.Errorf("invalid container port %s: %w", containerPort, err)
 			}
+			c.exposedPorts[natPort] = struct{}{}
 			c.portBindings[natPort] = []nat.PortBinding{
 				{HostPort: hostPort},
 			}

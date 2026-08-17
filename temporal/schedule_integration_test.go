@@ -12,7 +12,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
+	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
 func TestScheduleManagerIntegration(t *testing.T) {
@@ -60,12 +60,10 @@ func TestScheduleManagerIntegration(t *testing.T) {
 			Args:      []interface{}{"test-cron"}, // Provide the required argument
 		}
 
+		// Creating a schedule does not require a worker; it must succeed against
+		// the running container.
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-		if err != nil {
-			// Schedule creation might fail if no worker is available, which is expected
-			t.Logf("Expected failure creating schedule without worker: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating a cron schedule must succeed")
 
 		require.NotNil(t, handle, "Schedule handle should not be nil")
 
@@ -114,10 +112,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		}
 
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-		if err != nil {
-			t.Logf("Expected failure creating interval schedule: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating an interval schedule must succeed")
 
 		require.NotNil(t, handle, "Schedule handle should not be nil")
 
@@ -145,10 +140,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		}
 
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-		if err != nil {
-			t.Logf("Could not create schedule for list test: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating a schedule for the list test must succeed")
 
 		// List schedules
 		schedules, err := scheduleManager.ListSchedules(ctx, 10)
@@ -190,10 +182,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		}
 
 		handle, err := scheduleManager.CreateSchedule(ctx, scheduleID, initialSpec, scheduleAction)
-		if err != nil {
-			t.Logf("Could not create schedule for update test: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating a schedule for the update test must succeed")
 
 		// Update the schedule
 		updatedSpec := client.ScheduleSpec{
@@ -229,10 +218,7 @@ func TestScheduleManagerIntegration(t *testing.T) {
 		}
 
 		_, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-		if err != nil {
-			t.Logf("Could not create schedule for delete test: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating a schedule for the delete test must succeed")
 
 		// Delete the schedule
 		err = scheduleManager.DeleteSchedule(ctx, scheduleID)
@@ -278,10 +264,7 @@ func TestScheduleManagerErrorHandling(t *testing.T) {
 
 		// Create first schedule
 		handle1, err := scheduleManager.CreateSchedule(ctx, scheduleID, scheduleSpec, scheduleAction)
-		if err != nil {
-			t.Logf("Could not create first schedule: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating the first schedule must succeed")
 		defer handle1.Delete(ctx)
 
 		// Try to create duplicate (should fail)
@@ -349,15 +332,19 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	config.HostPort = container.HostPort()
 
 	t.Run("NewScheduleManagerWithConfig", func(t *testing.T) {
-		sm, err := NewScheduleManager(config)
+		temporalClient, err := NewClient(WithConfig(*config))
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
 		require.NotNil(t, sm, "ScheduleManager created with config should not be nil")
 		assert.NotNil(t, sm.GetClient(), "Client should be created")
-		sm.Close()
+		sm.Close(ctx)
 	})
 
 	t.Run("NewScheduleManagerWithClient", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -367,14 +354,8 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 		assert.Equal(t, temporalClient, sm.GetClient(), "Client should match")
 	})
 
-	t.Run("NewScheduleManagerWithInvalidType", func(t *testing.T) {
-		sm, err := NewScheduleManager("invalid-type")
-		assert.Error(t, err, "Should return error for invalid type")
-		assert.Nil(t, sm, "ScheduleManager should be nil for invalid type")
-	})
-
 	t.Run("CreateScheduleWithOptions", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -401,10 +382,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 		}
 
 		handle, err := sm.CreateScheduleWithOptions(ctx, options)
-		if err != nil {
-			t.Logf("Expected failure creating schedule with options: %v", err)
-			return
-		}
+		require.NoError(t, err, "CreateScheduleWithOptions must succeed")
 		require.NotNil(t, handle)
 
 		// Cleanup
@@ -413,7 +391,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("CreateWorkflowSchedule", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -435,10 +413,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 		}
 
 		handle, err := sm.CreateWorkflowSchedule(ctx, scheduleName, wfOptions)
-		if err != nil {
-			t.Logf("Expected failure creating workflow schedule: %v", err)
-			return
-		}
+		require.NoError(t, err, "CreateWorkflowSchedule must succeed")
 		require.NotNil(t, handle)
 
 		// Cleanup
@@ -447,7 +422,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteSchedules", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -476,10 +451,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 			}
 
 			_, err := sm.CreateSchedule(ctx, scheduleID, spec, action)
-			if err != nil {
-				t.Logf("Could not create schedule for delete all test: %v", err)
-				continue
-			}
+			require.NoError(t, err, "creating a schedule for the delete-all test must succeed")
 		}
 
 		// Delete all schedules
@@ -492,7 +464,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteSchedulesWithEmpty", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -509,7 +481,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("GetScheduleHandlers", func(t *testing.T) {
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err)
 		defer temporalClient.Close()
 
@@ -533,10 +505,7 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 		}
 
 		handle, err := sm.CreateSchedule(ctx, scheduleID, spec, action)
-		if err != nil {
-			t.Logf("Could not create schedule for get handlers test: %v", err)
-			return
-		}
+		require.NoError(t, err, "creating a schedule for the get-handlers test must succeed")
 
 		// Get handlers
 		handlers := sm.GetScheduleHandlers()
@@ -549,14 +518,18 @@ func TestScheduleManagerAdditionalMethods(t *testing.T) {
 	})
 
 	t.Run("CloseScheduleManager", func(t *testing.T) {
-		sm, err := NewScheduleManager(config)
+		temporalClient, err := NewClient(WithConfig(*config))
+		require.NoError(t, err)
+		defer temporalClient.Close()
+
+		sm, err := NewScheduleManager(temporalClient)
 		require.NoError(t, err)
 		require.NotNil(t, sm)
 
 		// Should not panic
-		sm.Close()
+		sm.Close(ctx)
 
 		// Closing again should also be safe
-		sm.Close()
+		sm.Close(ctx)
 	})
 }

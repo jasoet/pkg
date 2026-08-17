@@ -1,23 +1,22 @@
-// Package otel provides OpenTelemetry instrumentation utilities for github.com/jasoet/pkg/v2.
+// Package otel provides OpenTelemetry instrumentation utilities for github.com/jasoet/pkg/v3.
 //
 // This package offers:
 //   - Centralized configuration for traces, metrics, and logs
 //   - Library-specific semantic conventions
 //   - No-op implementations when telemetry is disabled
 //   - Integrated span and logging with automatic correlation
-//   - Layer-aware instrumentation (Handler, Operations, Service, Repository)
+//   - Layer-aware instrumentation (Handler, Middleware, Operations, Service, Repository)
 //
 // # Configuration
 //
-// Create an otel.Config with the desired providers:
+// Create an otel.Config with NewConfig and functional options:
 //
-//	cfg := &otel.Config{
-//	    TracerProvider: tracerProvider,  // optional
-//	    MeterProvider:  meterProvider,   // optional
-//	    LoggerProvider: loggerProvider,  // optional
-//	    ServiceName:    "my-service",
-//	    ServiceVersion: "1.0.0",
-//	}
+//	cfg := otel.NewConfig("my-service",
+//	    otel.WithServiceVersion("1.0.0"),
+//	    otel.WithTracerProvider(tracerProvider),  // optional
+//	    otel.WithMeterProvider(meterProvider),    // optional
+//	    otel.WithLoggerProvider(loggerProvider),  // optional
+//	)
 //
 // Then pass this config to package configurations (server.Config, grpc options, etc.).
 //
@@ -44,9 +43,10 @@
 //	if err := repo.Save(lc.Context(), data); err != nil {
 //	    return lc.Error(err, "save failed")
 //	}
-//	return lc.Success("User created")
+//	lc.Success("User created")
+//	return nil
 //
-// Available layers: StartHandler, StartOperations, StartService, StartRepository
+// Available layers: StartHandler, StartMiddleware, StartOperations, StartService, StartRepository
 //
 // # Standard Logging Helper
 //

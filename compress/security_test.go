@@ -639,6 +639,153 @@ func TestTarGzBase64RoundTrip(t *testing.T) {
 // Edge Case Tests - Special Characters in Filenames
 // ============================================================================
 
+// ============================================================================
+// Security Tests - Leaf Symlink Overwrite (TOCTOU)
+// ============================================================================
+
+// TestUnTarRefusesLeafSymlink verifies that a pre-existing symlink at the leaf
+// target inside the destination cannot redirect an extracted file's write to a
+// location outside the destination.
+func TestUnTarRefusesLeafSymlink(t *testing.T) {
+	// Victim file outside the destination that must not be overwritten.
+	outsideDir := t.TempDir()
+	victim := filepath.Join(outsideDir, "victim.txt")
+	require.NoError(t, os.WriteFile(victim, []byte("ORIGINAL"), 0o600))
+
+	destDir := t.TempDir()
+	// Plant a leaf symlink inside the destination pointing at the outside file.
+	link := filepath.Join(destDir, "evil")
+	require.NoError(t, os.Symlink(victim, link))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tarEntry(t, tw, "evil", []byte("PWNED"))
+	require.NoError(t, tw.Close())
+
+	_, err := UnTar(&buf, destDir)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrPathTraversal)
+
+	// The outside victim file must be untouched.
+	content, rerr := os.ReadFile(victim)
+	require.NoError(t, rerr)
+	assert.Equal(t, "ORIGINAL", string(content), "extraction wrote through a leaf symlink")
+}
+
+// ============================================================================
+// Security Tests - Overwrite Truncation
+// ============================================================================
+
+// TestUnTarTruncatesExistingLongerFile verifies that extracting a shorter file
+// over a longer pre-existing file does not leave stale trailing bytes.
+func TestUnTarTruncatesExistingLongerFile(t *testing.T) {
+	destDir := t.TempDir()
+	existing := filepath.Join(destDir, "data.txt")
+	require.NoError(t, os.WriteFile(existing, []byte("LONG-OLD-CONTENT-AAAAAAAAAAAA"), 0o644))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tarEntry(t, tw, "data.txt", []byte("short"))
+	require.NoError(t, tw.Close())
+
+	written, err := UnTar(&buf, destDir)
+	require.NoError(t, err)
+	assert.Equal(t, int64(len("short")), written)
+
+	content, rerr := os.ReadFile(existing)
+	require.NoError(t, rerr)
+	assert.Equal(t, "short", string(content), "stale trailing bytes remained after overwrite")
+}
+
+// ============================================================================
+// Security Tests - Archive Size Hard Cap (mid-file enforcement)
+// ============================================================================
+
+// TestUnTarArchiveSizeHardCap verifies WithMaxArchiveSize is enforced mid-file:
+// a single oversized entry must not be fully written before the limit trips.
+func TestUnTarArchiveSizeHardCap(t *testing.T) {
+	destDir := t.TempDir()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tarEntry(t, tw, "big.txt", bytes.Repeat([]byte("x"), 1000))
+	require.NoError(t, tw.Close())
+
+	written, err := UnTar(&buf, destDir, WithMaxArchiveSize(10))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSizeLimitExceeded)
+
+	// No overshoot: the whole 1000-byte file must not have been written.
+	assert.LessOrEqual(t, written, int64(10), "archive size cap overshot")
+
+	// The aborted partial file must be cleaned up.
+	_, serr := os.Stat(filepath.Join(destDir, "big.txt"))
+	assert.True(t, os.IsNotExist(serr), "partial file left on disk after size-limit abort")
+}
+
+// ============================================================================
+// Security Tests - Relative "." Destination
+// ============================================================================
+
+// TestUnTarRelativeDotDestination verifies that "." is accepted as a relative
+// destination directory (it must not be misclassified as path traversal).
+func TestUnTarRelativeDotDestination(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tarEntry(t, tw, "hello.txt", []byte("hi"))
+	require.NoError(t, tw.Close())
+
+	written, err := UnTar(&buf, ".")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), written)
+
+	content, rerr := os.ReadFile(filepath.Join(dir, "hello.txt"))
+	require.NoError(t, rerr)
+	assert.Equal(t, "hi", string(content))
+}
+
+// ============================================================================
+// Security Tests - Benign ".." in Filenames
+// ============================================================================
+
+// TestUnTarAllowsDoubleDotInFilename verifies that names merely containing ".."
+// (not as a path element) are allowed and extracted correctly.
+func TestUnTarAllowsDoubleDotInFilename(t *testing.T) {
+	assert.True(t, validTarPath("report..final.txt"))
+
+	destDir := t.TempDir()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tarEntry(t, tw, "report..final.txt", []byte("ok"))
+	require.NoError(t, tw.Close())
+
+	written, err := UnTar(&buf, destDir)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), written)
+
+	content, rerr := os.ReadFile(filepath.Join(destDir, "report..final.txt"))
+	require.NoError(t, rerr)
+	assert.Equal(t, "ok", string(content))
+}
+
+// ============================================================================
+// Security Tests - Partial Output Cleanup
+// ============================================================================
+
+// TestUnGzRemovesPartialFileOnSizeLimit verifies UnGz does not leave a partial
+// output file behind when it aborts on the size limit.
+func TestUnGzRemovesPartialFileOnSizeLimit(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "out.txt")
+	_, err := UnGz(gzBytes(t, bytes.Repeat([]byte("x"), 100)), dst, WithMaxFileSize(10))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSizeLimitExceeded)
+
+	_, serr := os.Stat(dst)
+	assert.True(t, os.IsNotExist(serr), "partial UnGz output left on disk after size-limit abort")
+}
+
 func TestUnTarSpecialCharactersInFilenames(t *testing.T) {
 	t.Run("handles filenames with spaces", func(t *testing.T) {
 		var buf bytes.Buffer

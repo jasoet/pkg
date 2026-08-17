@@ -254,3 +254,24 @@ func TestHTTPWithContinueOn(t *testing.T) {
 	require.NotNil(t, step.ContinueOn)
 	assert.True(t, step.ContinueOn.Failed)
 }
+
+func TestHTTP_ContinueOnSetters(t *testing.T) {
+	t.Run("method", func(t *testing.T) {
+		http := NewHTTP("check", WithHTTPURL("https://api.example.com")).
+			ContinueOn(&v1alpha1.ContinueOn{Failed: true})
+		steps, err := http.Steps()
+		require.NoError(t, err)
+		require.NotNil(t, steps[0].ContinueOn)
+		assert.True(t, steps[0].ContinueOn.Failed)
+	})
+
+	t.Run("option", func(t *testing.T) {
+		http := NewHTTP("check",
+			WithHTTPURL("https://api.example.com"),
+			WithHTTPContinueOn(&v1alpha1.ContinueOn{Failed: true}))
+		steps, err := http.Steps()
+		require.NoError(t, err)
+		require.NotNil(t, steps[0].ContinueOn)
+		assert.True(t, steps[0].ContinueOn.Failed)
+	})
+}

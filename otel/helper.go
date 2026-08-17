@@ -33,7 +33,7 @@ func F(key string, value any) Field {
 // It uses OTel logging when available (with automatic trace_id/span_id injection),
 // otherwise falls back to plain zerolog.
 //
-// This is the standard logging pattern for all packages in github.com/jasoet/pkg/v2:
+// This is the standard logging pattern for all packages in github.com/jasoet/pkg/v3:
 //   - When OTel is configured: uses OTel LoggerProvider for automatic log-span correlation
 //   - When OTel is not configured: falls back to zerolog
 //
@@ -61,13 +61,13 @@ type LogHelper struct {
 // Parameters:
 //   - ctx: Context for trace correlation (captured at construction time)
 //   - config: OTel configuration (can be nil for zerolog-only mode)
-//   - scopeName: OpenTelemetry scope name (e.g., "github.com/jasoet/pkg/v2/argo")
+//   - scopeName: OpenTelemetry scope name (e.g., "github.com/jasoet/pkg/v3/argo")
 //   - function: Function name to include in logs (optional, can be empty string)
 //
 // Example:
 //
 //	// With OTel configured and function name
-//	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
+//	logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v3/mypackage", "mypackage.DoWork")
 //	logger.Debug("Starting work", F("workerId", 123))
 //
 //	// Without function name (when used with spans)
@@ -86,22 +86,28 @@ func NewLogHelper(ctx context.Context, config *Config, scopeName, function strin
 	if config != nil && config.IsLoggingEnabled() {
 		h.otelLogger = config.GetLogger(scopeName)
 	} else {
-		serviceName := scopeName
-		if config != nil && config.ServiceName != "" {
-			serviceName = config.ServiceName
-		}
-
 		loggerCtx := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
 			With().
 			Timestamp().
-			Str("service", serviceName).
 			Int("pid", os.Getpid())
 
+		// Only label a value as "service" when we actually have a service name.
+		// The scopeName is an instrumentation scope (often a module path) and
+		// must not be mislabeled as the service; record it under "scope".
+		if config != nil && config.ServiceName != "" {
+			loggerCtx = loggerCtx.Str("service", config.ServiceName)
+		}
+		if scopeName != "" {
+			loggerCtx = loggerCtx.Str("scope", scopeName)
+		}
 		if function != "" {
 			loggerCtx = loggerCtx.Str("function", function)
 		}
 
-		h.logger = loggerCtx.Logger()
+		// Default the fallback logger to Info level. Without an explicit level
+		// a fresh zerolog logger emits Debug/Trace, so callers that pass a nil
+		// config (e.g. rest/middleware) would leak Debug logs in production.
+		h.logger = loggerCtx.Logger().Level(zerolog.InfoLevel)
 	}
 
 	return h
@@ -224,6 +230,7 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	record.SetTimestamp(time.Now())
 	record.SetBody(otellog.StringValue(msg))
 	record.SetSeverity(severity)
+	record.SetSeverityText(severityText(severity))
 
 	if h.function != "" {
 		record.AddAttributes(otellog.String("function", h.function))
@@ -249,6 +256,26 @@ func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Fi
 	}
 
 	h.otelLogger.Emit(h.ctx, record)
+}
+
+// severityText maps an OTel severity to its canonical text label, matching the
+// levels LogHelper emits. Setting SeverityText ensures the "severity" field is
+// present in both console and OTLP output.
+func severityText(severity otellog.Severity) string {
+	switch {
+	case severity >= otellog.SeverityFatal:
+		return "FATAL"
+	case severity >= otellog.SeverityError:
+		return "ERROR"
+	case severity >= otellog.SeverityWarn:
+		return "WARN"
+	case severity >= otellog.SeverityInfo:
+		return "INFO"
+	case severity >= otellog.SeverityDebug:
+		return "DEBUG"
+	default:
+		return "TRACE"
+	}
 }
 
 // addFields adds Field key-value pairs to a zerolog event.

@@ -10,7 +10,7 @@
 // Example:
 //
 //	// Encode a value
-//	id, err := base32.EncodeBase32(12345, 8)  // "000000C1S", nil
+//	id, err := base32.EncodeBase32(12345, 8)  // "00000C1S", nil
 //
 //	// Add checksum
 //	idWithChecksum, err := base32.AppendChecksum(id)
@@ -90,7 +90,7 @@ func EncodeBase32(value uint64, length int) (string, error) {
 	}
 
 	if value > 0 {
-		return "", fmt.Errorf("value too large for %d Base32 characters", length)
+		return "", fmt.Errorf("value too large for %d Base32 characters: %w", length, ErrValueTooLarge)
 	}
 
 	return string(result), nil
@@ -98,34 +98,44 @@ func EncodeBase32(value uint64, length int) (string, error) {
 
 // DecodeBase32 decodes a Base32 string to an unsigned integer.
 //
-// Returns an error if the string contains invalid characters.
-// Supports case-insensitive input and common error corrections (I→1, L→1, O→0).
+// The input is normalized via NormalizeBase32 first: it is uppercased,
+// separators (dashes, spaces, tabs, newlines) are removed per the Crockford
+// spec, and common lookalikes are corrected (I→1, L→1, O→0). This keeps
+// DecodeBase32 consistent with the checksum entry points, so the
+// Validate → Strip → Decode pipeline works on dashed/lowercase input.
+//
+// Returns ErrEmptyInput when the input is empty (or empty after
+// normalization), ErrInvalidCharacter for characters outside the alphabet,
+// and ErrOverflow when the value does not fit in a uint64. Match with
+// errors.Is.
 //
 // Example:
 //
-//	val, err := base32.DecodeBase32("C1P9")  // 12345, nil
-//	val, err := base32.DecodeBase32("c1p9")  // 12345, nil (case-insensitive)
-//	val, err := base32.DecodeBase32("C1PO")  // 12345, nil (O→0 correction)
+//	val, err := base32.DecodeBase32("C1S")     // 12345, nil
+//	val, err := base32.DecodeBase32("c1s")     // 12345, nil (case-insensitive)
+//	val, err := base32.DecodeBase32("I0")      // 32, nil (I→1 correction)
+//	val, err := base32.DecodeBase32("00 0C1S") // 12345, nil (separators ignored)
 //
 // Parameters:
 //   - encoded: The Base32-encoded string to decode
 //
 // Returns:
 //   - The decoded unsigned integer value
-//   - An error if the input contains invalid characters
+//   - An error if the input is empty or contains invalid characters
 func DecodeBase32(encoded string) (uint64, error) {
+	encoded = NormalizeBase32(encoded)
 	if encoded == "" {
-		return 0, fmt.Errorf("empty Base32 string")
+		return 0, fmt.Errorf("empty Base32 input: %w", ErrEmptyInput)
 	}
 
 	var result uint64
 	for i, char := range encoded {
 		value, ok := base32DecodeMap[char]
 		if !ok {
-			return 0, fmt.Errorf("invalid Base32 character '%c' at position %d", char, i)
+			return 0, fmt.Errorf("invalid Base32 character '%c' at position %d: %w", char, i, ErrInvalidCharacter)
 		}
 		if result > math.MaxUint64/32 {
-			return 0, fmt.Errorf("value overflow at position %d", i)
+			return 0, fmt.Errorf("value overflow at position %d: %w", i, ErrOverflow)
 		}
 		// The pre-check above (result > math.MaxUint64/32) is sufficient to prevent overflow;
 		// a secondary next < result check is unreachable and has been removed.
@@ -193,7 +203,7 @@ var normalizeReplacer = strings.NewReplacer(
 //
 //	base32.NormalizeBase32("abc-def")   // "ABCDEF"
 //	base32.NormalizeBase32("1O 2I")     // "1021"
-//	base32.NormalizeBase32("hell0")     // "HELL0"
+//	base32.NormalizeBase32("hell0")     // "HE110" (L→1 correction)
 func NormalizeBase32(input string) string {
 	return normalizeReplacer.Replace(strings.ToUpper(input))
 }
@@ -207,7 +217,7 @@ func NormalizeBase32(input string) string {
 //	base32.EncodeBase32Compact(0)      // "0"
 //	base32.EncodeBase32Compact(31)     // "Z"
 //	base32.EncodeBase32Compact(32)     // "10"
-//	base32.EncodeBase32Compact(12345)  // "C1P9"
+//	base32.EncodeBase32Compact(12345)  // "C1S"
 func EncodeBase32Compact(value uint64) string {
 	if value == 0 {
 		return "0"

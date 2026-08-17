@@ -4,13 +4,13 @@ This directory contains examples demonstrating how to use the `concurrent` packa
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/concurrent/examples/example.go](https://github.com/jasoet/pkg/blob/main/concurrent/examples/example.go)
+**Full example implementation:** [example.go](example.go)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
 ```go
 // Basic usage pattern
-import "github.com/jasoet/pkg/concurrent"
+import "github.com/jasoet/pkg/v3/concurrent"
 
 // Define functions to run concurrently
 funcs := map[string]concurrent.Func[string]{
@@ -51,15 +51,15 @@ The `concurrent` package provides utilities for:
 
 ## Running the Examples
 
-To run the examples, use the following command from the `concurrent/examples` directory:
+The example is behind the `example` build tag. From the repository root:
 
 ```bash
-go run example.go
+go run -tags=example ./examples/concurrent/
 ```
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/concurrent/examples/example.go) file demonstrates several use cases:
+The [example.go](example.go) file demonstrates several use cases:
 
 ### 1. Basic Concurrent Execution
 
@@ -215,9 +215,9 @@ func processBatch(items []Item) ([]ProcessedItem, error) {
 - Type-safe result building with `ExecuteConcurrentlyTyped`
 
 ### Error Handling
-- **Fail-fast behavior**: First error cancels all other operations
-- **Context cancellation**: Proper context propagation for cancellation
-- **Error propagation**: Errors are returned immediately without waiting for other operations
+- **Fail-fast behavior**: the first error or panic cancels the shared context, signaling the other functions to stop
+- **Context cancellation**: proper context propagation for cancellation
+- **Error propagation**: `ExecuteConcurrently` waits for every goroutine to exit before returning, then returns the first causal error. Cancellation only *signals* siblings to stop — a function that ignores `ctx` still runs to completion, so the call blocks until the slowest function returns
 
 ### Performance
 - **Concurrent execution**: All functions run in parallel
@@ -242,13 +242,15 @@ results, err := concurrent.ExecuteConcurrently(ctx, funcs)
 
 ### 2. Error Handling
 ```go
-// Handle errors appropriately
+// Handle errors appropriately.
+// Note: execution is all-or-nothing — on error `results` is nil, so there are
+// no partial results to inspect. The returned error is the first causal error.
 results, err := concurrent.ExecuteConcurrently(ctx, funcs)
 if err != nil {
     log.Printf("Concurrent execution failed: %v", err)
-    // Handle partial results if needed
     return
 }
+// results is only non-nil when every function succeeded.
 ```
 
 ### 3. Function Design
@@ -266,16 +268,40 @@ func fetchUserData(ctx context.Context) (UserData, error) {
 ```
 
 ### 4. Resource Management
+
+`ExecuteConcurrently` starts *every* function in the map at once — it does not
+bound concurrency itself. To limit how many run simultaneously, process the
+items in fixed-size batches and call `ExecuteConcurrently` once per batch. This
+caps concurrency at `maxConcurrency` while still processing **every** item (do
+not simply `break` out of the loop past the limit — that silently drops the
+remaining items).
+
 ```go
-// Limit concurrent operations to avoid resource exhaustion
-funcs := make(map[string]concurrent.Func[string])
-for i, item := range items {
-    if i >= maxConcurrency {
-        break // Limit number of concurrent operations
+// Process all items, at most maxConcurrency at a time.
+var allResults []string
+for start := 0; start < len(items); start += maxConcurrency {
+    end := start + maxConcurrency
+    if end > len(items) {
+        end = len(items)
     }
-    funcs[fmt.Sprintf("item_%d", i)] = createProcessingFunc(item)
+
+    funcs := make(map[string]concurrent.Func[string])
+    for i, item := range items[start:end] {
+        funcs[fmt.Sprintf("item_%d", start+i)] = createProcessingFunc(item)
+    }
+
+    batch, err := concurrent.ExecuteConcurrently(ctx, funcs)
+    if err != nil {
+        return nil, err
+    }
+    for _, r := range batch {
+        allResults = append(allResults, r)
+    }
 }
 ```
+
+For finer-grained control (a fixed pool of long-lived workers pulling from a
+channel), use a classic worker pool instead of `ExecuteConcurrently`.
 
 ## Use Cases
 

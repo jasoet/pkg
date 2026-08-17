@@ -275,6 +275,60 @@ func TestScript_InvalidMemoryQuantity(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestScript_UnknownLanguageErrors(t *testing.T) {
+	// An unknown language must surface an error from Templates rather than silently
+	// defaulting to bash and running the source under the wrong interpreter.
+	script := NewScript("bad-lang", "golang",
+		WithScriptContent("package main"))
+	_, err := script.Templates()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown script language")
+}
+
+func TestScript_UnknownLanguageClearedByExplicitImage(t *testing.T) {
+	// Providing an explicit image is a deliberate interpreter override and clears the
+	// unknown-language error.
+	script := NewScript("custom-lang", "golang",
+		WithScriptImage("golang:1.25"),
+		WithScriptCommand("go", "run"),
+		WithScriptContent("package main; func main() {}"))
+	templates, err := script.Templates()
+	require.NoError(t, err)
+	require.Len(t, templates, 1)
+	assert.Equal(t, "golang:1.25", templates[0].Script.Image)
+}
+
+func TestScript_EmptySourceErrors(t *testing.T) {
+	// A script with neither inline content nor a source reference is rejected server-side;
+	// fail early with a clear message.
+	script := NewScript("empty", "bash")
+	_, err := script.Templates()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty source")
+}
+
+func TestScript_ContinueOn(t *testing.T) {
+	t.Run("method", func(t *testing.T) {
+		script := NewScript("s", "bash", WithScriptContent("echo hi")).
+			ContinueOn(&v1alpha1.ContinueOn{Failed: true})
+		steps, err := script.Steps()
+		require.NoError(t, err)
+		require.Len(t, steps, 1)
+		require.NotNil(t, steps[0].ContinueOn)
+		assert.True(t, steps[0].ContinueOn.Failed)
+	})
+
+	t.Run("option", func(t *testing.T) {
+		script := NewScript("s", "bash",
+			WithScriptContent("echo hi"),
+			WithScriptContinueOn(&v1alpha1.ContinueOn{Failed: true}))
+		steps, err := script.Steps()
+		require.NoError(t, err)
+		require.NotNil(t, steps[0].ContinueOn)
+		assert.True(t, steps[0].ContinueOn.Failed)
+	})
+}
+
 func TestScriptSource(t *testing.T) {
 	t.Run("sets script source from artifact", func(t *testing.T) {
 		script := NewScript("artifact-test", "bash").

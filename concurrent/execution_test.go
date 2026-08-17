@@ -4,6 +4,7 @@ package concurrent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -218,7 +219,7 @@ func TestExecuteConcurrentlyWithInterface(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[ResultValue, MixedTypeDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[MixedTypeDTO, ResultValue](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, "Hello", result.StringValue)
 		assert.Equal(t, 42.5, result.FloatValue)
@@ -242,7 +243,7 @@ func TestExecuteConcurrentlyWithInterface(t *testing.T) {
 			return MixedTypeDTO{}, nil // Won't be called due to error
 		}
 
-		result, err := ExecuteConcurrentlyTyped[ResultValue, MixedTypeDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[MixedTypeDTO, ResultValue](context.Background(), resultBuilder, funcs)
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Equal(t, MixedTypeDTO{}, result)
@@ -289,13 +290,108 @@ func TestExecuteConcurrentlyWithInterface(t *testing.T) {
 			return dto, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[ResultValue, MixedTypeDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[MixedTypeDTO, ResultValue](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, "Hello", result.StringValue)
 		assert.Equal(t, 42.5, result.FloatValue)
 		assert.Equal(t, 100, result.IntValue)
 		assert.Equal(t, "Hello d", result.Combined) // 'd' is ASCII 100
 	})
+}
+
+func TestExecuteConcurrentlyTypedResultFirstOrder(t *testing.T) {
+	// Result-first type-parameter order: ExecuteConcurrentlyTyped[Output, Input]
+	// must accept Func[int] functions and a builder returning string.
+	t.Run("result type parameter comes first", func(t *testing.T) {
+		funcs := map[string]Func[int]{
+			"answer": func(ctx context.Context) (int, error) {
+				return 42, nil
+			},
+		}
+
+		resultBuilder := func(results map[string]int) (string, error) {
+			return fmt.Sprintf("answer=%d", results["answer"]), nil
+		}
+
+		result, err := ExecuteConcurrentlyTyped[string, int](context.Background(), resultBuilder, funcs)
+		assert.NoError(t, err)
+		assert.Equal(t, "answer=42", result)
+	})
+}
+
+func TestExecuteConcurrently_NilFunctionRejected(t *testing.T) {
+	// A nil function in the map must be rejected up front with an error naming
+	// its key, before any goroutine is started.
+	called := false
+	funcs := map[string]Func[int]{
+		"good": func(ctx context.Context) (int, error) {
+			called = true
+			return 1, nil
+		},
+		"bad": nil,
+	}
+
+	results, err := ExecuteConcurrently[int](context.Background(), funcs)
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.Contains(t, err.Error(), "nil function")
+	assert.Contains(t, err.Error(), `"bad"`)
+	assert.False(t, called, "no function should run when a nil function is present")
+}
+
+func TestExecuteConcurrently_PanicWithErrorValueWraps(t *testing.T) {
+	// When a function panics with an error value, the recovered error must be
+	// wrapped with %w so errors.Is can find the original panic error, and the
+	// reported error must include the goroutine stack trace.
+	sentinel := errors.New("boom sentinel")
+	funcs := map[string]Func[int]{
+		"panicker": func(ctx context.Context) (int, error) {
+			panic(sentinel)
+		},
+	}
+
+	results, err := ExecuteConcurrently[int](context.Background(), funcs)
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.ErrorIs(t, err, sentinel, "panic(err) should be wrapped with %%w")
+	assert.Contains(t, err.Error(), "panic in")
+	// The stack trace should mention this test's panicking function frame.
+	assert.Contains(t, err.Error(), "concurrent.TestExecuteConcurrently_PanicWithErrorValueWraps",
+		"error should include the captured goroutine stack trace")
+}
+
+func TestExecuteConcurrently_PanicWithNonErrorIncludesStack(t *testing.T) {
+	// A non-error panic value is still reported with the panic message and the
+	// captured stack trace.
+	funcs := map[string]Func[int]{
+		"panicker": func(ctx context.Context) (int, error) {
+			panic("plain string panic")
+		},
+	}
+
+	results, err := ExecuteConcurrently[int](context.Background(), funcs)
+	assert.Error(t, err)
+	assert.Nil(t, results)
+	assert.Contains(t, err.Error(), "plain string panic")
+	assert.Contains(t, err.Error(), "goroutine ", "error should include the captured stack trace")
+}
+
+func TestExecuteConcurrentlyTyped_NilResultBuilder(t *testing.T) {
+	// A nil resultBuilder must be rejected up front with an error, before any
+	// function is executed, rather than panicking after all work completes.
+	called := false
+	funcs := map[string]Func[int]{
+		"answer": func(ctx context.Context) (int, error) {
+			called = true
+			return 42, nil
+		},
+	}
+
+	result, err := ExecuteConcurrentlyTyped[string, int](context.Background(), nil, funcs)
+	assert.Error(t, err)
+	assert.Equal(t, "", result)
+	assert.Contains(t, err.Error(), "resultBuilder")
+	assert.False(t, called, "no function should run when resultBuilder is nil")
 }
 
 func TestExecuteConcurrentlyTyped(t *testing.T) {
@@ -331,7 +427,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[string, StringDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[StringDTO, string](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, "Hello", result.Greeting)
 		assert.Equal(t, "World", result.Name)
@@ -357,7 +453,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[float64, TestDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[TestDTO, float64](context.Background(), resultBuilder, funcs)
 		assert.NoError(t, err)
 		assert.Equal(t, 10.0, result.Value1)
 		assert.Equal(t, 20.0, result.Value2)
@@ -384,7 +480,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			}, nil
 		}
 
-		result, err := ExecuteConcurrentlyTyped[float64, TestDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[TestDTO, float64](context.Background(), resultBuilder, funcs)
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Equal(t, TestDTO{}, result)
@@ -406,7 +502,7 @@ func TestExecuteConcurrentlyTyped(t *testing.T) {
 			return TestDTO{}, expectedErr
 		}
 
-		result, err := ExecuteConcurrentlyTyped[float64, TestDTO](context.Background(), resultBuilder, funcs)
+		result, err := ExecuteConcurrentlyTyped[TestDTO, float64](context.Background(), resultBuilder, funcs)
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Equal(t, TestDTO{}, result)

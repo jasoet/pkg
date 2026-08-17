@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 )
 
@@ -48,10 +49,15 @@ func ExecuteConcurrently[T any](ctx context.Context, funcs map[string]Func[T]) (
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
+					// Capture the panicking goroutine's stack trace so the
+					// origin of the panic is not lost. debug.Stack must be
+					// called here, inside the deferred recover, to capture the
+					// stack at the point of the panic.
+					stack := debug.Stack()
 					if err, ok := r.(error); ok {
-						resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %w", key, err)}
+						resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %w\n%s", key, err, stack)}
 					} else {
-						resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %v", key, r)}
+						resultCh <- result{key: key, err: fmt.Errorf("panic in %q: %v\n%s", key, r, stack)}
 					}
 					cancel()
 				}
@@ -98,16 +104,25 @@ func isContextErr(err error) bool {
 }
 
 // ExecuteConcurrentlyTyped executes multiple functions concurrently and transforms
-// the results into a typed struct using the provided resultBuilder function.
+// the results into a typed value using the provided resultBuilder function.
 //
 // This is a more type-safe alternative to ExecuteConcurrently when you know the
 // exact structure of the results.
-func ExecuteConcurrentlyTyped[T any, R any](
+//
+// Type parameters are result-first: instantiate as
+// ExecuteConcurrentlyTyped[Output, Input].
+//
+// A nil resultBuilder is rejected up front with an error, before any function
+// is executed.
+func ExecuteConcurrentlyTyped[R any, T any](
 	ctx context.Context,
 	resultBuilder func(map[string]T) (R, error),
 	funcs map[string]Func[T],
 ) (R, error) {
 	var zero R
+	if resultBuilder == nil {
+		return zero, errors.New("nil resultBuilder provided")
+	}
 	results, err := ExecuteConcurrently(ctx, funcs)
 	if err != nil {
 		return zero, err

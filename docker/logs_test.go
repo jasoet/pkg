@@ -1,7 +1,10 @@
+//go:build integration
+
 package docker_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v3/docker"
 )
 
 func TestLogOptions_WithStdout(t *testing.T) {
@@ -25,7 +28,9 @@ func TestLogOptions_WithStdout(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx, docker.WithStdout(true), docker.WithStderr(false))
 	require.NoError(t, err)
@@ -45,7 +50,9 @@ func TestLogOptions_WithStderr(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx, docker.WithStdout(false), docker.WithStderr(true))
 	require.NoError(t, err)
@@ -65,7 +72,9 @@ func TestLogOptions_WithTimestamps(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx, docker.WithTimestamps())
 	require.NoError(t, err)
@@ -85,7 +94,9 @@ func TestLogOptions_WithTail(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx, docker.WithTail("2"))
 	require.NoError(t, err)
@@ -105,7 +116,9 @@ func TestLogOptions_WithSince(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	// Use a wide window so the log (generated ~2s ago) is included
 	logs, err := exec.Logs(ctx, docker.WithSince("1m"))
@@ -126,7 +139,9 @@ func TestLogOptions_WithUntil(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	// Docker Until is relative to daemon time: "1s" means "until 1 second ago"
 	// so we must NOT use it to capture recent logs. Use an RFC3339 timestamp
@@ -157,7 +172,9 @@ func TestLogOptions_Combined(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.Logs(ctx,
 		docker.WithStdout(true),
@@ -182,7 +199,9 @@ func TestLogMethods_GetStdout(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.GetStdout(ctx)
 	require.NoError(t, err)
@@ -202,7 +221,9 @@ func TestLogMethods_GetStderr(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	// Wait for the container's short-lived command to finish.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.GetStderr(ctx)
 	require.NoError(t, err)
@@ -225,8 +246,9 @@ func TestFollowLogs_ToWriter(t *testing.T) {
 
 	var buf strings.Builder
 	err = exec.FollowLogs(ctx, &buf)
-	// May get context deadline exceeded, which is expected
-	if err != nil && err != context.DeadlineExceeded {
+	// May get context deadline exceeded, which is expected. FollowLogs wraps its
+	// errors, so compare with errors.Is rather than identity.
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		t.Logf("FollowLogs error (expected): %v", err)
 	}
 

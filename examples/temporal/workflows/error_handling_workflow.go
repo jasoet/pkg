@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jasoet/pkg/v2/examples/temporal/activities"
+	"github.com/jasoet/pkg/v3/examples/temporal/activities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -174,14 +174,14 @@ func ErrorHandlingWorkflow(ctx workflow.Context, url string) (string, error) {
 // import (
 //     "context"
 //     "github.com/rs/zerolog/log"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal/examples/activities"
+//     "github.com/jasoet/pkg/v3/temporal"
+//     "github.com/jasoet/pkg/v3/temporal"
 //     "go.temporal.io/sdk/client"
 // )
 //
 // func main() {
 //     // Create a Temporal client
-//     client, err := temporal.NewClient(temporal.DefaultConfig())
+//     client, err := temporal.NewClient()
 //     if err != nil {
 //         log.Fatal().Err(err).Msg("Failed to create Temporal client")
 //     }

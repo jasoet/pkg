@@ -1,3 +1,5 @@
+//go:build integration
+
 package docker_test
 
 import (
@@ -8,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v3/docker"
 )
 
 // Fix 1 (H6): WaitForLog must return error instead of panicking on invalid regex.
@@ -21,7 +23,7 @@ func TestWaitForLog_InvalidRegex_ReturnsError(t *testing.T) {
 	require.NotNil(t, w)
 
 	// WaitUntilReady must return an error, not panic.
-	err := w.WaitUntilReady(context.Background(), nil, "fake-id")
+	err := w.WaitUntilReady(context.Background(), docker.ContainerTarget{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid regex pattern")
 }
@@ -64,7 +66,7 @@ func TestConnectionString_PlaceholderReplacement(t *testing.T) {
 
 	exec, err := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:18765"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker").WithStartupTimeout(30*1000000000),
@@ -76,10 +78,15 @@ func TestConnectionString_PlaceholderReplacement(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
+	host, err := exec.Host(ctx)
+	require.NoError(t, err)
+	port, err := exec.MappedPort(ctx, "80/tcp")
+	require.NoError(t, err)
+
 	// New convention: {{endpoint}} as placeholder.
 	connStr, err := exec.ConnectionString(ctx, "80/tcp", "http://{{endpoint}}/api")
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:18765/api", connStr)
+	assert.Equal(t, "http://"+host+":"+port+"/api", connStr)
 
 	// The old %s placeholder must NOT be treated as a format verb any more —
 	// it should appear literally in the output (no substitution).
@@ -94,7 +101,7 @@ func TestConnectionString_NoInjection(t *testing.T) {
 
 	exec, err := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:18766"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker").WithStartupTimeout(30*1000000000),
@@ -106,10 +113,13 @@ func TestConnectionString_NoInjection(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
+	host, err := exec.Host(ctx)
+	require.NoError(t, err)
+
 	// A template that contains format verbs other than the placeholder must
 	// not cause a format-string injection or a runtime panic.
 	connStr, err := exec.ConnectionString(ctx, "80/tcp", "dsn://user:p%40ss@{{endpoint}}/db?sslmode=disable")
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(connStr, "dsn://user:p%40ss@localhost:"), "unexpected connStr: %s", connStr)
+	assert.True(t, strings.HasPrefix(connStr, "dsn://user:p%40ss@"+host+":"), "unexpected connStr: %s", connStr)
 	assert.True(t, strings.HasSuffix(connStr, "/db?sslmode=disable"), "unexpected connStr: %s", connStr)
 }

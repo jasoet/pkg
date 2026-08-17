@@ -1,3 +1,5 @@
+//go:build integration
+
 package docker_test
 
 import (
@@ -11,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jasoet/pkg/v2/docker"
+	"github.com/jasoet/pkg/v3/docker"
 )
 
 func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
@@ -22,7 +24,7 @@ func TestExecutor_FunctionalOptions_Nginx(t *testing.T) {
 	exec, err := docker.New(
 		docker.WithImage("nginx:alpine"),
 		docker.WithPorts("80:0"), // Random host port
-		docker.WithName("test-nginx-functional"),
+		docker.WithName(uniqueName(t, "nginx-functional")),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("start worker processes").
@@ -69,7 +71,7 @@ func TestExecutor_StructBased_Nginx(t *testing.T) {
 	req := docker.ContainerRequest{
 		Image:        "nginx:alpine",
 		ExposedPorts: []string{"80/tcp"},
-		Name:         "test-nginx-struct",
+		Name:         uniqueName(t, "nginx-struct"),
 		AutoRemove:   true,
 		WaitingFor: docker.WaitForLog("start worker processes").
 			WithStartupTimeout(30 * time.Second),
@@ -107,7 +109,7 @@ func TestExecutor_Hybrid_Redis(t *testing.T) {
 
 	exec, err := docker.New(
 		docker.WithRequest(req),
-		docker.WithName("test-redis-hybrid"),
+		docker.WithName(uniqueName(t, "redis-hybrid")),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("Ready to accept connections").
@@ -151,7 +153,7 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 	t.Run("WaitForPort", func(t *testing.T) {
 		exec, _ := docker.New(
 			docker.WithImage("nginx:alpine"),
-			docker.WithPorts("80:8888"),
+			docker.WithPorts("80:0"),
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
 				docker.WaitForPort("80/tcp").WithStartupTimeout(30*time.Second),
@@ -162,8 +164,9 @@ func TestExecutor_WaitStrategies(t *testing.T) {
 		require.NoError(t, err)
 		defer exec.Terminate(ctx)
 
-		port, _ := exec.MappedPort(ctx, "80/tcp")
-		assert.Equal(t, "8888", port)
+		port, err := exec.MappedPort(ctx, "80/tcp")
+		require.NoError(t, err)
+		assert.NotEmpty(t, port)
 	})
 
 	t.Run("WaitForHTTP", func(t *testing.T) {
@@ -205,8 +208,9 @@ func TestExecutor_Logs(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	// Wait for container to finish
-	time.Sleep(2 * time.Second)
+	// Wait for container to finish (no AutoRemove, so logs remain readable)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	// Get logs
 	logs, err := exec.Logs(ctx)
@@ -288,7 +292,7 @@ func TestExecutor_Network(t *testing.T) {
 
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:9999"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
@@ -299,29 +303,31 @@ func TestExecutor_Network(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	t.Run("Host", func(t *testing.T) {
-		host, err := exec.Host(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "localhost", host)
-	})
+	// Host is derived from the daemon host; for a local daemon it is "localhost".
+	host, err := exec.Host(ctx)
+	require.NoError(t, err)
 
 	t.Run("MappedPort", func(t *testing.T) {
 		port, err := exec.MappedPort(ctx, "80/tcp")
 		require.NoError(t, err)
-		assert.Equal(t, "9999", port)
+		assert.NotEmpty(t, port)
 	})
 
 	t.Run("Endpoint", func(t *testing.T) {
+		port, err := exec.MappedPort(ctx, "80/tcp")
+		require.NoError(t, err)
 		endpoint, err := exec.Endpoint(ctx, "80/tcp")
 		require.NoError(t, err)
-		assert.Equal(t, "localhost:9999", endpoint)
+		assert.Equal(t, host+":"+port, endpoint)
 	})
 
 	t.Run("GetAllPorts", func(t *testing.T) {
+		port, err := exec.MappedPort(ctx, "80/tcp")
+		require.NoError(t, err)
 		ports, err := exec.GetAllPorts(ctx)
 		require.NoError(t, err)
 		assert.Contains(t, ports, "80/tcp")
-		assert.Equal(t, "9999", ports["80/tcp"])
+		assert.Equal(t, port, ports["80/tcp"])
 	})
 
 	t.Run("GetNetworks", func(t *testing.T) {
@@ -344,12 +350,14 @@ func TestExecutor_Lifecycle(t *testing.T) {
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
 		docker.WithPorts("80:0"),
-		docker.WithName("test-lifecycle"),
+		docker.WithName(uniqueName(t, "lifecycle")),
 	)
 
 	// Start
 	err := exec.Start(ctx)
 	require.NoError(t, err)
+	// Guard against a leaked container if an assertion fails mid-test.
+	defer exec.Terminate(ctx)
 
 	running, _ := exec.IsRunning(ctx)
 	assert.True(t, running)
@@ -358,7 +366,8 @@ func TestExecutor_Lifecycle(t *testing.T) {
 	err = exec.Stop(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(1 * time.Second)
+	err = exec.WaitForState(ctx, "exited", 15*time.Second)
+	require.NoError(t, err)
 	running, _ = exec.IsRunning(ctx)
 	assert.False(t, running)
 
@@ -366,7 +375,8 @@ func TestExecutor_Lifecycle(t *testing.T) {
 	err = exec.Restart(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(1 * time.Second)
+	err = exec.WaitForState(ctx, "running", 15*time.Second)
+	require.NoError(t, err)
 	running, _ = exec.IsRunning(ctx)
 	assert.True(t, running)
 
@@ -392,7 +402,8 @@ func TestExecutor_EnvironmentVariables(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, _ := exec.Logs(ctx)
 	assert.Contains(t, logs, "hello")
@@ -413,7 +424,8 @@ func TestExecutor_WorkDir(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, _ := exec.Logs(ctx)
 	assert.Contains(t, logs, "/tmp")
@@ -449,7 +461,7 @@ func TestExecutor_MultipleContainers(t *testing.T) {
 	nginx, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
 		docker.WithPorts("80:0"),
-		docker.WithName("test-multi-nginx"),
+		docker.WithName(uniqueName(t, "multi-nginx")),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
@@ -460,7 +472,7 @@ func TestExecutor_MultipleContainers(t *testing.T) {
 	redis, _ := docker.New(
 		docker.WithImage("redis:7-alpine"),
 		docker.WithPorts("6379:0"),
-		docker.WithName("test-multi-redis"),
+		docker.WithName(uniqueName(t, "multi-redis")),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("Ready to accept").WithStartupTimeout(30*time.Second),
@@ -501,14 +513,13 @@ func TestExecutor_AutoRemove(t *testing.T) {
 	err := exec.Start(ctx)
 	require.NoError(t, err)
 
-	// Wait for container to finish
+	// Wait for container to finish. With AutoRemove, Wait observes the removed
+	// condition, so the container is already gone once Wait returns.
 	_, err = exec.Wait(ctx)
 	require.NoError(t, err)
 
-	// Container should auto-remove, status check should fail eventually
-	time.Sleep(2 * time.Second)
+	// Container was auto-removed, so a status check must fail.
 	_, err = exec.Status(ctx)
-	// Error expected because container was auto-removed
 	assert.Error(t, err)
 }
 
@@ -550,7 +561,7 @@ func TestExecutor_ConnectionString(t *testing.T) {
 
 	exec, _ := docker.New(
 		docker.WithImage("nginx:alpine"),
-		docker.WithPorts("80:8765"),
+		docker.WithPorts("80:0"),
 		docker.WithAutoRemove(true),
 		docker.WithWaitStrategy(
 			docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
@@ -561,9 +572,14 @@ func TestExecutor_ConnectionString(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
+	host, err := exec.Host(ctx)
+	require.NoError(t, err)
+	port, err := exec.MappedPort(ctx, "80/tcp")
+	require.NoError(t, err)
+
 	connStr, err := exec.ConnectionString(ctx, "80/tcp", "http://{{endpoint}}/api")
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:8765/api", connStr)
+	assert.Equal(t, "http://"+host+":"+port+"/api", connStr)
 }
 
 func TestExecutor_GetLogsSince(t *testing.T) {
@@ -579,9 +595,11 @@ func TestExecutor_GetLogsSince(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(4 * time.Second)
+	// Wait for the container to finish producing its output.
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
-	// Use a wide window (1 minute) to capture logs generated ~2-4s ago
+	// Use a wide window (1 minute) to capture logs generated moments ago.
 	logs, err := exec.GetLogsSince(ctx, "1m")
 	require.NoError(t, err)
 	assert.NotEmpty(t, logs)
@@ -600,7 +618,8 @@ func TestExecutor_GetLastNLines(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	logs, err := exec.GetLastNLines(ctx, 3)
 	require.NoError(t, err)
@@ -621,10 +640,10 @@ func TestExecutor_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("PortAlreadyInUse", func(t *testing.T) {
-		// Start first container
+		// Start first container on a random host port.
 		exec1, _ := docker.New(
 			docker.WithImage("nginx:alpine"),
-			docker.WithPorts("80:7777"),
+			docker.WithPorts("80:0"),
 			docker.WithAutoRemove(true),
 			docker.WithWaitStrategy(
 				docker.WaitForLog("nginx").WithStartupTimeout(30*time.Second),
@@ -635,14 +654,19 @@ func TestExecutor_ErrorHandling(t *testing.T) {
 		require.NoError(t, err)
 		defer exec1.Terminate(ctx)
 
-		// Try to start second container on same port
+		// Discover the actual host port so the second container can collide with it.
+		hostPort, err := exec1.MappedPort(ctx, "80/tcp")
+		require.NoError(t, err)
+
+		// Try to start second container bound to the same host port.
 		exec2, _ := docker.New(
 			docker.WithImage("nginx:alpine"),
-			docker.WithPorts("80:7777"), // Same port
+			docker.WithPorts("80:"+hostPort), // Same host port → conflict
 		)
 
 		err = exec2.Start(ctx)
 		assert.Error(t, err) // Should fail
+		defer exec2.Terminate(ctx)
 	})
 }
 
@@ -659,7 +683,8 @@ func TestExecutor_StdoutStderr(t *testing.T) {
 	require.NoError(t, err)
 	defer exec.Terminate(ctx)
 
-	time.Sleep(2 * time.Second)
+	_, err = exec.Wait(ctx)
+	require.NoError(t, err)
 
 	// Get all logs
 	allLogs, err := exec.Logs(ctx)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/log"
 	noopl "go.opentelemetry.io/otel/log/noop"
 	"go.opentelemetry.io/otel/metric"
@@ -15,416 +17,218 @@ import (
 func TestNewConfig(t *testing.T) {
 	t.Run("creates config with service name", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		if cfg.ServiceName != "test-service" {
-			t.Errorf("expected ServiceName to be 'test-service', got '%s'", cfg.ServiceName)
-		}
+		assert.Equal(t, "test-service", cfg.ServiceName)
 	})
 
 	t.Run("has default logger provider", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		if cfg.LoggerProvider == nil {
-			t.Error("expected LoggerProvider to be set by default")
-		}
+		assert.NotNil(t, cfg.LoggerProvider, "expected LoggerProvider to be set by default")
 	})
 
 	t.Run("has nil tracer provider by default", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		if cfg.TracerProvider != nil {
-			t.Error("expected TracerProvider to be nil by default")
-		}
+		assert.Nil(t, cfg.TracerProvider)
 	})
 
 	t.Run("has nil meter provider by default", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		if cfg.MeterProvider != nil {
-			t.Error("expected MeterProvider to be nil by default")
-		}
+		assert.Nil(t, cfg.MeterProvider)
 	})
 
 	t.Run("has empty service version by default", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		if cfg.ServiceVersion != "" {
-			t.Errorf("expected ServiceVersion to be empty, got '%s'", cfg.ServiceVersion)
-		}
+		assert.Empty(t, cfg.ServiceVersion)
 	})
 }
 
 func TestWithTracerProvider(t *testing.T) {
 	t.Run("sets tracer provider", func(t *testing.T) {
-		cfg := NewConfig("test-service")
 		tp := noopt.NewTracerProvider()
-
-		cfg.WithTracerProvider(tp)
-
-		if cfg.TracerProvider != tp {
-			t.Error("expected TracerProvider to be set")
-		}
+		cfg := NewConfig("test-service", WithTracerProvider(tp))
+		assert.Equal(t, tp, cfg.TracerProvider)
 	})
 
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-		tp := noopt.NewTracerProvider()
-
-		result := cfg.WithTracerProvider(tp)
-
-		if result != cfg {
-			t.Error("expected WithTracerProvider to return same config instance")
-		}
-	})
-
-	t.Run("allows method chaining", func(t *testing.T) {
+	t.Run("combines with other options", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
 		mp := noopm.NewMeterProvider()
 
-		cfg := NewConfig("test-service").
-			WithTracerProvider(tp).
-			WithMeterProvider(mp)
+		cfg := NewConfig("test-service",
+			WithTracerProvider(tp),
+			WithMeterProvider(mp))
 
-		if cfg.TracerProvider != tp {
-			t.Error("expected TracerProvider to be set")
-		}
-		if cfg.MeterProvider != mp {
-			t.Error("expected MeterProvider to be set")
-		}
+		assert.Equal(t, tp, cfg.TracerProvider)
+		assert.Equal(t, mp, cfg.MeterProvider)
 	})
 }
 
 func TestWithMeterProvider(t *testing.T) {
 	t.Run("sets meter provider", func(t *testing.T) {
-		cfg := NewConfig("test-service")
 		mp := noopm.NewMeterProvider()
-
-		cfg.WithMeterProvider(mp)
-
-		if cfg.MeterProvider != mp {
-			t.Error("expected MeterProvider to be set")
-		}
-	})
-
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-		mp := noopm.NewMeterProvider()
-
-		result := cfg.WithMeterProvider(mp)
-
-		if result != cfg {
-			t.Error("expected WithMeterProvider to return same config instance")
-		}
+		cfg := NewConfig("test-service", WithMeterProvider(mp))
+		assert.Equal(t, mp, cfg.MeterProvider)
 	})
 }
 
 func TestWithLoggerProvider(t *testing.T) {
 	t.Run("sets custom logger provider", func(t *testing.T) {
-		cfg := NewConfig("test-service")
 		lp := noopl.NewLoggerProvider()
-
-		cfg.WithLoggerProvider(lp)
-
-		if cfg.LoggerProvider != lp {
-			t.Error("expected LoggerProvider to be set to custom provider")
-		}
+		cfg := NewConfig("test-service", WithLoggerProvider(lp))
+		assert.Equal(t, lp, cfg.LoggerProvider)
 	})
 
 	t.Run("replaces default logger provider", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-		defaultLogger := cfg.LoggerProvider
+		defaultLogger := NewConfig("test-service").LoggerProvider
 
 		customLogger := noopl.NewLoggerProvider()
-		cfg.WithLoggerProvider(customLogger)
+		cfg := NewConfig("test-service", WithLoggerProvider(customLogger))
 
-		if cfg.LoggerProvider == defaultLogger {
-			t.Error("expected LoggerProvider to be replaced")
-		}
-		if cfg.LoggerProvider != customLogger {
-			t.Error("expected LoggerProvider to be custom provider")
-		}
-	})
-
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-		lp := noopl.NewLoggerProvider()
-
-		result := cfg.WithLoggerProvider(lp)
-
-		if result != cfg {
-			t.Error("expected WithLoggerProvider to return same config instance")
-		}
+		assert.NotEqual(t, defaultLogger, cfg.LoggerProvider)
+		assert.Equal(t, customLogger, cfg.LoggerProvider)
 	})
 }
 
 func TestWithServiceVersion(t *testing.T) {
 	t.Run("sets service version", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-
-		cfg.WithServiceVersion("v1.2.3")
-
-		if cfg.ServiceVersion != "v1.2.3" {
-			t.Errorf("expected ServiceVersion to be 'v1.2.3', got '%s'", cfg.ServiceVersion)
-		}
+		cfg := NewConfig("test-service", WithServiceVersion("v1.2.3"))
+		assert.Equal(t, "v1.2.3", cfg.ServiceVersion)
 	})
 
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-
-		result := cfg.WithServiceVersion("v1.0.0")
-
-		if result != cfg {
-			t.Error("expected WithServiceVersion to return same config instance")
-		}
-	})
-
-	t.Run("allows method chaining with other methods", func(t *testing.T) {
+	t.Run("combines with other options", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
 
-		cfg := NewConfig("test-service").
-			WithServiceVersion("v2.0.0").
-			WithTracerProvider(tp)
+		cfg := NewConfig("test-service",
+			WithServiceVersion("v2.0.0"),
+			WithTracerProvider(tp))
 
-		if cfg.ServiceVersion != "v2.0.0" {
-			t.Errorf("expected ServiceVersion to be 'v2.0.0', got '%s'", cfg.ServiceVersion)
-		}
-		if cfg.TracerProvider != tp {
-			t.Error("expected TracerProvider to be set")
-		}
+		assert.Equal(t, "v2.0.0", cfg.ServiceVersion)
+		assert.Equal(t, tp, cfg.TracerProvider)
 	})
 }
 
 func TestWithoutLogging(t *testing.T) {
 	t.Run("disables logging by setting provider to nil", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-
-		// Verify default logger is set
-		if cfg.LoggerProvider == nil {
-			t.Error("expected default LoggerProvider to be set")
-		}
-
-		cfg.WithoutLogging()
-
-		if cfg.LoggerProvider != nil {
-			t.Error("expected LoggerProvider to be nil after WithoutLogging")
-		}
+		cfg := NewConfig("test-service", WithoutLogging())
+		assert.Nil(t, cfg.LoggerProvider)
 	})
 
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-
-		result := cfg.WithoutLogging()
-
-		if result != cfg {
-			t.Error("expected WithoutLogging to return same config instance")
-		}
-	})
-
-	t.Run("allows method chaining", func(t *testing.T) {
+	t.Run("combines with other options", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
 
-		cfg := NewConfig("test-service").
-			WithoutLogging().
-			WithTracerProvider(tp)
+		cfg := NewConfig("test-service",
+			WithoutLogging(),
+			WithTracerProvider(tp))
 
-		if cfg.LoggerProvider != nil {
-			t.Error("expected LoggerProvider to be nil")
-		}
-		if cfg.TracerProvider != tp {
-			t.Error("expected TracerProvider to be set")
-		}
+		assert.Nil(t, cfg.LoggerProvider)
+		assert.Equal(t, tp, cfg.TracerProvider)
 	})
 }
 
-func TestDisableTracing(t *testing.T) {
+func TestWithoutTracing(t *testing.T) {
 	t.Run("disables tracing by setting provider to nil", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
-
-		// Verify tracer is set
-		if cfg.TracerProvider == nil {
-			t.Error("expected TracerProvider to be set")
-		}
-
-		cfg.DisableTracing()
-
-		if cfg.TracerProvider != nil {
-			t.Error("expected TracerProvider to be nil after DisableTracing")
-		}
+		cfg := NewConfig("test-service",
+			WithTracerProvider(noopt.NewTracerProvider()),
+			WithoutTracing())
+		assert.Nil(t, cfg.TracerProvider)
 	})
 
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
-
-		result := cfg.DisableTracing()
-
-		if result != cfg {
-			t.Error("expected DisableTracing to return same config instance")
-		}
-	})
-
-	t.Run("allows method chaining", func(t *testing.T) {
+	t.Run("combines with other options", func(t *testing.T) {
 		mp := noopm.NewMeterProvider()
 
-		cfg := NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider()).
-			DisableTracing().
-			WithMeterProvider(mp)
+		cfg := NewConfig("test-service",
+			WithoutTracing(),
+			WithMeterProvider(mp))
 
-		if cfg.TracerProvider != nil {
-			t.Error("expected TracerProvider to be nil")
-		}
-		if cfg.MeterProvider != mp {
-			t.Error("expected MeterProvider to be set")
-		}
+		assert.Nil(t, cfg.TracerProvider)
+		assert.Equal(t, mp, cfg.MeterProvider)
 	})
 
 	t.Run("works when tracer provider is already nil", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-
-		cfg.DisableTracing()
-
-		if cfg.TracerProvider != nil {
-			t.Error("expected TracerProvider to remain nil")
-		}
+		cfg := NewConfig("test-service", WithoutTracing())
+		assert.Nil(t, cfg.TracerProvider)
 	})
 }
 
-func TestDisableMetrics(t *testing.T) {
+func TestWithoutMetrics(t *testing.T) {
 	t.Run("disables metrics by setting provider to nil", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithMeterProvider(noopm.NewMeterProvider())
-
-		// Verify meter is set
-		if cfg.MeterProvider == nil {
-			t.Error("expected MeterProvider to be set")
-		}
-
-		cfg.DisableMetrics()
-
-		if cfg.MeterProvider != nil {
-			t.Error("expected MeterProvider to be nil after DisableMetrics")
-		}
+		cfg := NewConfig("test-service",
+			WithMeterProvider(noopm.NewMeterProvider()),
+			WithoutMetrics())
+		assert.Nil(t, cfg.MeterProvider)
 	})
 
-	t.Run("returns config for method chaining", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithMeterProvider(noopm.NewMeterProvider())
-
-		result := cfg.DisableMetrics()
-
-		if result != cfg {
-			t.Error("expected DisableMetrics to return same config instance")
-		}
-	})
-
-	t.Run("allows method chaining", func(t *testing.T) {
+	t.Run("combines with other options", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
 
-		cfg := NewConfig("test-service").
-			WithMeterProvider(noopm.NewMeterProvider()).
-			DisableMetrics().
-			WithTracerProvider(tp)
+		cfg := NewConfig("test-service",
+			WithoutMetrics(),
+			WithTracerProvider(tp))
 
-		if cfg.MeterProvider != nil {
-			t.Error("expected MeterProvider to be nil")
-		}
-		if cfg.TracerProvider != tp {
-			t.Error("expected TracerProvider to be set")
-		}
+		assert.Nil(t, cfg.MeterProvider)
+		assert.Equal(t, tp, cfg.TracerProvider)
 	})
 
 	t.Run("works when meter provider is already nil", func(t *testing.T) {
-		cfg := NewConfig("test-service")
-
-		cfg.DisableMetrics()
-
-		if cfg.MeterProvider != nil {
-			t.Error("expected MeterProvider to remain nil")
-		}
+		cfg := NewConfig("test-service", WithoutMetrics())
+		assert.Nil(t, cfg.MeterProvider)
 	})
 }
 
 func TestIsTracingEnabled(t *testing.T) {
 	t.Run("returns false when config is nil", func(t *testing.T) {
 		var cfg *Config
-		if cfg.IsTracingEnabled() {
-			t.Error("expected IsTracingEnabled to return false for nil config")
-		}
+		assert.False(t, cfg.IsTracingEnabled())
 	})
 
 	t.Run("returns false when tracer provider is nil", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-		if cfg.IsTracingEnabled() {
-			t.Error("expected IsTracingEnabled to return false when TracerProvider is nil")
-		}
+		assert.False(t, cfg.IsTracingEnabled())
 	})
 
 	t.Run("returns true when tracer provider is set", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithTracerProvider(noopt.NewTracerProvider())
-
-		if !cfg.IsTracingEnabled() {
-			t.Error("expected IsTracingEnabled to return true when TracerProvider is set")
-		}
+		cfg := NewConfig("test-service",
+			WithTracerProvider(noopt.NewTracerProvider()))
+		assert.True(t, cfg.IsTracingEnabled())
 	})
 }
 
 func TestIsMetricsEnabled(t *testing.T) {
 	t.Run("returns false when config is nil", func(t *testing.T) {
 		var cfg *Config
-		if cfg.IsMetricsEnabled() {
-			t.Error("expected IsMetricsEnabled to return false for nil config")
-		}
+		assert.False(t, cfg.IsMetricsEnabled())
 	})
 
 	t.Run("returns false when meter provider is nil", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-		if cfg.IsMetricsEnabled() {
-			t.Error("expected IsMetricsEnabled to return false when MeterProvider is nil")
-		}
+		assert.False(t, cfg.IsMetricsEnabled())
 	})
 
 	t.Run("returns true when meter provider is set", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithMeterProvider(noopm.NewMeterProvider())
-
-		if !cfg.IsMetricsEnabled() {
-			t.Error("expected IsMetricsEnabled to return true when MeterProvider is set")
-		}
+		cfg := NewConfig("test-service",
+			WithMeterProvider(noopm.NewMeterProvider()))
+		assert.True(t, cfg.IsMetricsEnabled())
 	})
 }
 
 func TestIsLoggingEnabled(t *testing.T) {
 	t.Run("returns false when config is nil", func(t *testing.T) {
 		var cfg *Config
-		if cfg.IsLoggingEnabled() {
-			t.Error("expected IsLoggingEnabled to return false for nil config")
-		}
+		assert.False(t, cfg.IsLoggingEnabled())
 	})
 
 	t.Run("returns false when logger provider is nil", func(t *testing.T) {
-		cfg := NewConfig("test-service").WithoutLogging()
-		if cfg.IsLoggingEnabled() {
-			t.Error("expected IsLoggingEnabled to return false when LoggerProvider is nil")
-		}
+		cfg := NewConfig("test-service", WithoutLogging())
+		assert.False(t, cfg.IsLoggingEnabled())
 	})
 
 	t.Run("returns true when logger provider is set", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-		if !cfg.IsLoggingEnabled() {
-			t.Error("expected IsLoggingEnabled to return true when LoggerProvider is set")
-		}
+		assert.True(t, cfg.IsLoggingEnabled())
 	})
 
 	t.Run("returns true with custom logger provider", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithLoggerProvider(noopl.NewLoggerProvider())
-
-		if !cfg.IsLoggingEnabled() {
-			t.Error("expected IsLoggingEnabled to return true with custom LoggerProvider")
-		}
+		cfg := NewConfig("test-service",
+			WithLoggerProvider(noopl.NewLoggerProvider()))
+		assert.True(t, cfg.IsLoggingEnabled())
 	})
 }
 
@@ -433,36 +237,23 @@ func TestGetTracer(t *testing.T) {
 		cfg := NewConfig("test-service")
 
 		tracer := cfg.GetTracer("test-scope")
+		require.NotNil(t, tracer)
 
-		if tracer == nil {
-			t.Error("expected GetTracer to return a tracer")
-		}
-
-		// Verify it's a no-op tracer by checking it doesn't panic
+		// Verify it's a no-op tracer by checking it doesn't panic.
 		_, span := tracer.Start(context.Background(), "test-operation")
 		span.End()
 	})
 
 	t.Run("returns tracer from provider when tracing is enabled", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
-		cfg := NewConfig("test-service").WithTracerProvider(tp)
-
-		tracer := cfg.GetTracer("test-scope")
-
-		if tracer == nil {
-			t.Error("expected GetTracer to return a tracer")
-		}
+		cfg := NewConfig("test-service", WithTracerProvider(tp))
+		assert.NotNil(t, cfg.GetTracer("test-scope"))
 	})
 
 	t.Run("accepts tracer options", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
-		cfg := NewConfig("test-service").WithTracerProvider(tp)
-
-		tracer := cfg.GetTracer("test-scope", trace.WithInstrumentationVersion("v1.0.0"))
-
-		if tracer == nil {
-			t.Error("expected GetTracer to return a tracer with options")
-		}
+		cfg := NewConfig("test-service", WithTracerProvider(tp))
+		assert.NotNil(t, cfg.GetTracer("test-scope", trace.WithInstrumentationVersion("v1.0.0")))
 	})
 }
 
@@ -471,112 +262,71 @@ func TestGetMeter(t *testing.T) {
 		cfg := NewConfig("test-service")
 
 		meter := cfg.GetMeter("test-scope")
+		require.NotNil(t, meter)
 
-		if meter == nil {
-			t.Error("expected GetMeter to return a meter")
-		}
-
-		// Verify it's a no-op meter by checking it doesn't panic
+		// Verify it's a no-op meter by checking it doesn't error.
 		_, err := meter.Int64Counter("test-counter")
-		if err != nil {
-			t.Errorf("expected no-op meter to not error, got: %v", err)
-		}
+		assert.NoError(t, err)
 	})
 
 	t.Run("returns meter from provider when metrics are enabled", func(t *testing.T) {
 		mp := noopm.NewMeterProvider()
-		cfg := NewConfig("test-service").WithMeterProvider(mp)
-
-		meter := cfg.GetMeter("test-scope")
-
-		if meter == nil {
-			t.Error("expected GetMeter to return a meter")
-		}
+		cfg := NewConfig("test-service", WithMeterProvider(mp))
+		assert.NotNil(t, cfg.GetMeter("test-scope"))
 	})
 
 	t.Run("accepts meter options", func(t *testing.T) {
 		mp := noopm.NewMeterProvider()
-		cfg := NewConfig("test-service").WithMeterProvider(mp)
-
-		meter := cfg.GetMeter("test-scope", metric.WithInstrumentationVersion("v1.0.0"))
-
-		if meter == nil {
-			t.Error("expected GetMeter to return a meter with options")
-		}
+		cfg := NewConfig("test-service", WithMeterProvider(mp))
+		assert.NotNil(t, cfg.GetMeter("test-scope", metric.WithInstrumentationVersion("v1.0.0")))
 	})
 }
 
 func TestGetLogger(t *testing.T) {
 	t.Run("returns no-op logger when logging is disabled", func(t *testing.T) {
-		cfg := NewConfig("test-service").WithoutLogging()
+		cfg := NewConfig("test-service", WithoutLogging())
 
 		logger := cfg.GetLogger("test-scope")
+		require.NotNil(t, logger)
 
-		if logger == nil {
-			t.Error("expected GetLogger to return a logger")
-		}
-
-		// Verify it's a no-op logger by checking it doesn't panic
-		logger.Emit(context.Background(), log.Record{})
+		// Verify it's a no-op logger by checking it doesn't panic.
+		assert.NotPanics(t, func() {
+			logger.Emit(context.Background(), log.Record{})
+		})
 	})
 
 	t.Run("returns logger from provider when logging is enabled", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		logger := cfg.GetLogger("test-scope")
-
-		if logger == nil {
-			t.Error("expected GetLogger to return a logger")
-		}
+		assert.NotNil(t, cfg.GetLogger("test-scope"))
 	})
 
 	t.Run("accepts logger options", func(t *testing.T) {
 		lp := noopl.NewLoggerProvider()
-		cfg := NewConfig("test-service").WithLoggerProvider(lp)
-
-		logger := cfg.GetLogger("test-scope", log.WithInstrumentationVersion("v1.0.0"))
-
-		if logger == nil {
-			t.Error("expected GetLogger to return a logger with options")
-		}
+		cfg := NewConfig("test-service", WithLoggerProvider(lp))
+		assert.NotNil(t, cfg.GetLogger("test-scope", log.WithInstrumentationVersion("v1.0.0")))
 	})
 }
 
 func TestShutdown(t *testing.T) {
 	t.Run("returns nil when config is nil", func(t *testing.T) {
 		var cfg *Config
-		err := cfg.Shutdown(context.Background())
-		if err != nil {
-			t.Errorf("expected no error for nil config, got: %v", err)
-		}
+		assert.NoError(t, cfg.Shutdown(context.Background()))
 	})
 
 	t.Run("succeeds with default logger provider", func(t *testing.T) {
 		cfg := NewConfig("test-service")
-
-		err := cfg.Shutdown(context.Background())
-		if err != nil {
-			t.Errorf("expected Shutdown to succeed, got error: %v", err)
-		}
+		assert.NoError(t, cfg.Shutdown(context.Background()))
 	})
 
 	t.Run("succeeds with no-op logger provider", func(t *testing.T) {
-		cfg := NewConfig("test-service").
-			WithLoggerProvider(noopl.NewLoggerProvider())
-
-		err := cfg.Shutdown(context.Background())
-		if err != nil {
-			t.Errorf("expected Shutdown to succeed with no-op logger, got error: %v", err)
-		}
+		cfg := NewConfig("test-service",
+			WithLoggerProvider(noopl.NewLoggerProvider()))
+		assert.NoError(t, cfg.Shutdown(context.Background()))
 	})
 
 	t.Run("succeeds without logger provider", func(t *testing.T) {
-		cfg := NewConfig("test-service").WithoutLogging()
-
-		err := cfg.Shutdown(context.Background())
-		if err != nil {
-			t.Errorf("expected Shutdown to succeed without logger, got error: %v", err)
-		}
+		cfg := NewConfig("test-service", WithoutLogging())
+		assert.NoError(t, cfg.Shutdown(context.Background()))
 	})
 
 	t.Run("respects context cancellation", func(t *testing.T) {
@@ -585,7 +335,7 @@ func TestShutdown(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
-		// Should still succeed or return context error
+		// Should still succeed or return context error.
 		_ = cfg.Shutdown(ctx)
 	})
 }
@@ -594,15 +344,11 @@ func TestNoopProviderSingletons(t *testing.T) {
 	t.Run("GetTracer returns same singleton-backed tracer across calls", func(t *testing.T) {
 		cfg := NewConfig("test-service") // TracerProvider is nil → uses singleton
 
-		// Call multiple times — must not allocate new provider each time
 		tracer1 := cfg.GetTracer("scope-a")
 		tracer2 := cfg.GetTracer("scope-a")
+		require.NotNil(t, tracer1)
+		require.NotNil(t, tracer2)
 
-		if tracer1 == nil || tracer2 == nil {
-			t.Error("expected non-nil tracers")
-		}
-
-		// Verify tracer works without panic
 		_, span := tracer1.Start(context.Background(), "op")
 		span.End()
 	})
@@ -612,102 +358,77 @@ func TestNoopProviderSingletons(t *testing.T) {
 
 		meter1 := cfg.GetMeter("scope-a")
 		meter2 := cfg.GetMeter("scope-a")
-
-		if meter1 == nil || meter2 == nil {
-			t.Error("expected non-nil meters")
-		}
+		require.NotNil(t, meter1)
+		require.NotNil(t, meter2)
 
 		_, err := meter1.Int64Counter("counter1")
-		if err != nil {
-			t.Errorf("expected no error, got: %v", err)
-		}
+		assert.NoError(t, err)
 	})
 
 	t.Run("GetLogger returns singleton-backed logger across calls", func(t *testing.T) {
-		cfg := NewConfig("test-service").WithoutLogging() // LoggerProvider nil → uses singleton
+		cfg := NewConfig("test-service", WithoutLogging()) // LoggerProvider nil → uses singleton
 
 		logger1 := cfg.GetLogger("scope-a")
 		logger2 := cfg.GetLogger("scope-a")
+		require.NotNil(t, logger1)
+		require.NotNil(t, logger2)
 
-		if logger1 == nil || logger2 == nil {
-			t.Error("expected non-nil loggers")
-		}
-
-		// Verify logger works without panic
-		logger1.Emit(context.Background(), log.Record{})
+		assert.NotPanics(t, func() {
+			logger1.Emit(context.Background(), log.Record{})
+		})
 	})
 
 	t.Run("package-level noop singletons are usable", func(t *testing.T) {
-		// Verify singletons are initialized and usable (they are value types, not pointers)
 		tracer := noopTracerProvider.Tracer("test")
 		_, span := tracer.Start(context.Background(), "op")
 		span.End()
 
 		meter := noopMeterProvider.Meter("test")
 		_, err := meter.Int64Counter("c")
-		if err != nil {
-			t.Errorf("noopMeterProvider counter unexpected error: %v", err)
-		}
+		assert.NoError(t, err)
 
 		logger := noopLoggerProvider.Logger("test")
-		logger.Emit(context.Background(), log.Record{})
+		assert.NotPanics(t, func() {
+			logger.Emit(context.Background(), log.Record{})
+		})
 	})
 }
 
 func TestDefaultLoggerProvider(t *testing.T) {
 	t.Run("creates a logger provider", func(t *testing.T) {
 		lp := defaultLoggerProvider("test-service", false)
-
-		if lp == nil {
-			t.Error("expected defaultLoggerProvider to return a provider")
-		}
+		assert.NotNil(t, lp)
 	})
 
 	t.Run("created logger can emit logs", func(t *testing.T) {
 		lp := defaultLoggerProvider("test-service", false)
 		logger := lp.Logger("test-scope")
-
-		// Should not panic
-		logger.Emit(context.Background(), log.Record{})
+		assert.NotPanics(t, func() {
+			logger.Emit(context.Background(), log.Record{})
+		})
 	})
 }
 
-func TestFullConfigChaining(t *testing.T) {
-	t.Run("supports full method chaining", func(t *testing.T) {
+func TestNewConfigAllOptions(t *testing.T) {
+	t.Run("applies all options together", func(t *testing.T) {
 		tp := noopt.NewTracerProvider()
 		mp := noopm.NewMeterProvider()
 		lp := noopl.NewLoggerProvider()
 
-		cfg := NewConfig("my-service").
-			WithServiceVersion("v2.0.0").
-			WithTracerProvider(tp).
-			WithMeterProvider(mp).
-			WithLoggerProvider(lp)
+		cfg := NewConfig("my-service",
+			WithServiceVersion("v2.0.0"),
+			WithTracerProvider(tp),
+			WithMeterProvider(mp),
+			WithLoggerProvider(lp))
 
-		if cfg.ServiceName != "my-service" {
-			t.Error("ServiceName not set correctly")
-		}
-		if cfg.ServiceVersion != "v2.0.0" {
-			t.Error("ServiceVersion not set correctly")
-		}
-		if cfg.TracerProvider != tp {
-			t.Error("TracerProvider not set correctly")
-		}
-		if cfg.MeterProvider != mp {
-			t.Error("MeterProvider not set correctly")
-		}
-		if cfg.LoggerProvider != lp {
-			t.Error("LoggerProvider not set correctly")
-		}
+		assert.Equal(t, "my-service", cfg.ServiceName)
+		assert.Equal(t, "v2.0.0", cfg.ServiceVersion)
+		assert.Equal(t, tp, cfg.TracerProvider)
+		assert.Equal(t, mp, cfg.MeterProvider)
+		assert.Equal(t, lp, cfg.LoggerProvider)
 
-		if !cfg.IsTracingEnabled() {
-			t.Error("Tracing should be enabled")
-		}
-		if !cfg.IsMetricsEnabled() {
-			t.Error("Metrics should be enabled")
-		}
-		if !cfg.IsLoggingEnabled() {
-			t.Error("Logging should be enabled")
-		}
+		assert.True(t, cfg.IsTracingEnabled())
+		assert.True(t, cfg.IsMetricsEnabled())
+		assert.True(t, cfg.IsLoggingEnabled())
 	})
 }

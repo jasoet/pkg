@@ -48,7 +48,7 @@ tasks:
     silent: true
     cmds:
       - mkdir -p output
-      - '{{.N}} go test -race -count=1 -coverprofile=output/coverage.out -covermode=atomic ./... -tags=!examples'
+      - '{{.N}} go test -race -count=1 -coverprofile=output/coverage.out -covermode=atomic ./...'
       - '{{.N}} go tool cover -html=output/coverage.out -o output/coverage.html'
       - 'echo "✓ Coverage: output/coverage.html"'
 
@@ -233,7 +233,7 @@ tasks:
     desc: Run unit tests for CI (no coverage HTML)
     silent: true
     cmds:
-      - '{{.N}} go test -race -count=1 ./... -tags=!examples'
+      - '{{.N}} go test -race -count=1 ./...'
 
   ci:lint:
     desc: Run golangci-lint for CI
@@ -261,8 +261,8 @@ tasks:
       - |
         LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
         if [ -n "$LATEST_TAG" ]; then
-          echo "Warming Go proxy for github.com/jasoet/pkg/v2@${LATEST_TAG}"
-          {{.N}} bash -c "GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m \"github.com/jasoet/pkg/v2@${LATEST_TAG}\"" || true
+          echo "Warming Go proxy for github.com/jasoet/pkg/v3@${LATEST_TAG}"
+          {{.N}} bash -c "GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m \"github.com/jasoet/pkg/v3@${LATEST_TAG}\"" || true
         fi
 
   clean:

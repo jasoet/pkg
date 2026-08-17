@@ -1,8 +1,8 @@
 # OpenTelemetry Integration
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/otel.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/otel)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/otel.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/otel)
 
-Unified OpenTelemetry v2 configuration and instrumentation utilities for the `pkg` library ecosystem.
+Unified OpenTelemetry configuration, instrumentation, and logging utilities for the `pkg` library ecosystem.
 
 ## Overview
 
@@ -12,13 +12,16 @@ The `otel` package provides centralized OpenTelemetry configuration that enables
 - **Metrics** - Performance and health measurements
 - **Logs** - Structured logging via OpenTelemetry standard
 
+Since v3, the former `logging` package is absorbed into `otel`: global zerolog bootstrap (`otel.Initialize`, `otel.InitializeWithFile`, `otel.ContextLogger`) and OTLP logger providers (`otel.NewLoggerProviderWithOptions`) live here.
+
 ## Features
 
-- **Unified Configuration**: Single config object for all telemetry pillars
+- **Unified Configuration**: Single config object for all telemetry pillars, built with functional options
 - **Selective Enablement**: Enable only the telemetry you need
 - **No-op by Default**: Zero overhead when providers are not configured
-- **Method Chaining**: Fluent API for configuration
+- **Layer Instrumentation**: `otel.Layers.Start*()` spans with integrated, correlated logging
 - **Standard Logging Helper**: OTel-aware logging with automatic trace correlation
+- **Global Logger Bootstrap**: zerolog global logger setup with console and/or file output
 - **OTLP Logging Support**: Export logs to OpenTelemetry collectors with flexible options
 - **Granular Log Levels**: Fine-grained control over log verbosity (debug, info, warn, error, none)
 - **Graceful Shutdown**: Proper resource cleanup
@@ -26,7 +29,7 @@ The `otel` package provides centralized OpenTelemetry configuration that enables
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/otel
+go get github.com/jasoet/pkg/v3/otel
 ```
 
 ## Quick Start
@@ -34,33 +37,18 @@ go get github.com/jasoet/pkg/v2/otel
 ### Basic Configuration
 
 ```go
-package main
+import "github.com/jasoet/pkg/v3/otel"
 
-import (
-    "context"
-    "github.com/jasoet/pkg/v2/otel"
-    "go.opentelemetry.io/otel/sdk/trace"
-    "go.opentelemetry.io/otel/sdk/metric"
-)
+// Create unified OTel config (compile-checked: ExampleNewConfig)
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider), // optional
+    otel.WithMeterProvider(meterProvider),   // optional
+    otel.WithServiceVersion("1.0.0"))
 
-func main() {
-    // Create tracer and meter providers (your setup)
-    tracerProvider := trace.NewTracerProvider(/* ... */)
-    meterProvider := metric.NewMeterProvider(/* ... */)
+// Use with library packages via their OTelConfig field / WithOTelConfig option
 
-    // Create unified OTel config
-    otelConfig := otel.NewConfig("my-service").
-        WithTracerProvider(tracerProvider).
-        WithMeterProvider(meterProvider).
-        WithServiceVersion("1.0.0")
-
-    // Use with library packages
-    // server.Start(server.Config{OTelConfig: otelConfig, ...})
-    // db.Pool(db.Config{OTelConfig: otelConfig, ...})
-
-    // Cleanup on shutdown
-    defer otelConfig.Shutdown(context.Background())
-}
+// Cleanup on shutdown
+defer otelConfig.Shutdown(context.Background())
 ```
 
 ### Selective Telemetry
@@ -68,98 +56,106 @@ func main() {
 Enable only what you need:
 
 ```go
-// Tracing only
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithoutLogging()  // Disable default logging
+// Tracing only (default logging disabled)
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithoutLogging())
 
-// Metrics only
-cfg := otel.NewConfig("my-service").
-    WithMeterProvider(meterProvider).
-    WithoutLogging()
+// Metrics only (default logging disabled)
+cfg := otel.NewConfig("my-service",
+    otel.WithMeterProvider(meterProvider),
+    otel.WithoutLogging())
 
 // All three pillars
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider).
-    WithLoggerProvider(loggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+    otel.WithLoggerProvider(loggerProvider))
 ```
 
 ### Custom Logger Provider
 
-Use the `logging` package for better formatting and automatic trace correlation:
+Use `otel.NewLoggerProviderWithOptions` for better formatting and automatic trace correlation (compile-checked: `ExampleNewLoggerProviderWithOptions`):
 
 ```go
-import (
-    "github.com/jasoet/pkg/v2/logging"
-    "github.com/jasoet/pkg/v2/otel"
-)
+import "github.com/jasoet/pkg/v3/otel"
 
-// Production-ready logger with trace correlation
-loggerProvider := logging.NewLoggerProvider("my-service", false)
+loggerProvider, err := otel.NewLoggerProviderWithOptions("my-service",
+    otel.WithLogLevel(otel.LogLevelDebug))
+if err != nil {
+    panic(err)
+}
 
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider).
-    WithLoggerProvider(loggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithLoggerProvider(loggerProvider))
 ```
 
 ### OTLP Logging with Flexible Options
 
-Create a logger provider with OTLP export and granular control:
+Console output is enabled by default; add an OTLP endpoint to also export logs to a collector:
 
 ```go
-import "github.com/jasoet/pkg/v2/otel"
-
-// Console-only logging (default, no OTLP)
-loggerProvider, err := otel.NewLoggerProviderWithOptions("my-service")
+import "github.com/jasoet/pkg/v3/otel"
 
 // OTLP logging with console output (local development)
 loggerProvider, err := otel.NewLoggerProviderWithOptions(
     "my-service",
-    otel.WithOTLPEndpoint("localhost:4318", true), // insecure for local
+    otel.WithOTLPEndpoint("https://localhost:4318", true), // insecure for local
     otel.WithConsoleOutput(true),
-    otel.WithLogLevel(logging.LogLevelInfo),
+    otel.WithLogLevel(otel.LogLevelInfo),
 )
 
 // OTLP-only logging (production)
-loggerProvider, err := otel.NewLoggerProviderWithOptions(
+loggerProvider, err = otel.NewLoggerProviderWithOptions(
     "my-service",
-    otel.WithOTLPEndpoint("otel-collector.prod:4318", false), // secure
+    otel.WithOTLPEndpoint("https://otel-collector.prod:4318", false), // secure
     otel.WithConsoleOutput(false), // disable console in prod
-    otel.WithLogLevel(logging.LogLevelWarn),
+    otel.WithLogLevel(otel.LogLevelWarn),
 )
-
-// Use with OTel config
-cfg := otel.NewConfig("my-service").
-    WithTracerProvider(tracerProvider).
-    WithLoggerProvider(loggerProvider)
 ```
+
+Note: this package uses `otlploghttp`. OTLP endpoints may be given as a full URL with scheme (e.g. `https://collector:4318`) or as a bare `host:port` (e.g. `collector:4318`); either form targets the standard `/v1/logs` path. Passing `WithOTLPEndpoint("")` is a configuration error rather than a silent no-op.
+
+## Global Logger Bootstrap
+
+For plain (non-OTel) logging, initialize the global zerolog logger once at startup (compile-checked: `ExampleInitialize`):
+
+```go
+import "github.com/jasoet/pkg/v3/otel"
+
+// Console-only global logger at info level (debug=true for debug level + caller)
+err := otel.Initialize("my-service", false)
+
+// Console + file output
+closer, err := otel.InitializeWithFile("my-service", true,
+    otel.OutputConsole|otel.OutputFile,
+    &otel.FileConfig{Path: "app.log"})
+if err != nil {
+    log.Fatal(err)
+}
+defer closer.Close()
+
+// Component-scoped logger derived from the global logger
+logger := otel.ContextLogger(ctx, "repository")
+```
+
+Global log records are written to stderr (console) and/or the configured file.
 
 ## Configuration API
 
-### Config Struct
+### Functional Options
 
-```go
-type Config struct {
-    TracerProvider trace.TracerProvider  // nil = no tracing
-    MeterProvider  metric.MeterProvider  // nil = no metrics
-    LoggerProvider log.LoggerProvider    // nil = no OTel logs
-    ServiceName    string
-    ServiceVersion string
-}
-```
-
-### Builder Methods
-
-| Method | Description |
+| Option | Description |
 |--------|-------------|
-| `NewConfig(name)` | Create config with service name and default logger |
+| `NewConfig(name, opts...)` | Create config with service name, default logger, and options |
 | `WithTracerProvider(tp)` | Enable distributed tracing |
 | `WithMeterProvider(mp)` | Enable metrics collection |
 | `WithLoggerProvider(lp)` | Set custom logger provider |
 | `WithServiceVersion(v)` | Set service version |
-| `WithoutLogging()` | Disable default stdout logging |
+| `WithoutTracing()` | Disable tracing |
+| `WithoutMetrics()` | Disable metrics |
+| `WithoutLogging()` | Disable default console (stderr) logging |
 
 ### Helper Methods
 
@@ -188,8 +184,8 @@ Create flexible logger providers with `NewLoggerProviderWithOptions`:
 
 | Option | Description |
 |--------|-------------|
-| `WithOTLPEndpoint(endpoint, insecure)` | Enable OTLP log export to collector |
-| `WithConsoleOutput(enabled)` | Enable/disable console logging (default: true) |
+| `WithOTLPEndpoint(endpoint, insecure)` | Enable OTLP log export to collector (full URL with scheme, or bare `host:port`) |
+| `WithConsoleOutput(enabled)` | Enable/disable console (stderr) logging (default: true). When disabled with no OTLP endpoint, the provider is silent (no processors). |
 | `WithLogLevel(level)` | Set log level: `LogLevelDebug`, `LogLevelInfo`, `LogLevelWarn`, `LogLevelError`, `LogLevelNone` |
 
 **Log Level Priority:**
@@ -199,46 +195,42 @@ Create flexible logger providers with `NewLoggerProviderWithOptions`:
 **Examples:**
 
 ```go
-import "github.com/jasoet/pkg/v2/logging"
+import "github.com/jasoet/pkg/v3/otel"
 
 // Default info level
 provider, _ := otel.NewLoggerProviderWithOptions("service")
 
 // Debug mode (all logs)
-provider, _ := otel.NewLoggerProviderWithOptions("service",
-    otel.WithLogLevel(logging.LogLevelDebug))
-
-// Specific log level
-provider, _ := otel.NewLoggerProviderWithOptions("service",
-    otel.WithLogLevel(logging.LogLevelWarn))
+provider, _ = otel.NewLoggerProviderWithOptions("service",
+    otel.WithLogLevel(otel.LogLevelDebug))
 
 // OTLP + console for development
-provider, _ := otel.NewLoggerProviderWithOptions("service",
-    otel.WithOTLPEndpoint("localhost:4318", true),
+provider, _ = otel.NewLoggerProviderWithOptions("service",
+    otel.WithOTLPEndpoint("https://localhost:4318", true),
     otel.WithConsoleOutput(true),
-    otel.WithLogLevel(logging.LogLevelDebug))
+    otel.WithLogLevel(otel.LogLevelDebug))
 
 // OTLP-only for production
-provider, _ := otel.NewLoggerProviderWithOptions("service",
-    otel.WithOTLPEndpoint("collector:4318", false),
+provider, _ = otel.NewLoggerProviderWithOptions("service",
+    otel.WithOTLPEndpoint("https://collector:4318", false),
     otel.WithConsoleOutput(false),
-    otel.WithLogLevel(logging.LogLevelInfo))
+    otel.WithLogLevel(otel.LogLevelInfo))
 ```
 
 ## Standard Logging Helper
 
-The `otel` package provides `LogHelper` for OTel-aware logging with automatic log-span correlation:
+The `otel` package provides `LogHelper` for OTel-aware logging with automatic log-span correlation (compile-checked: `Example_optionalFunctionParameter`):
 
 ```go
-import "github.com/jasoet/pkg/v2/otel"
+import "github.com/jasoet/pkg/v3/otel"
 
 // Create a logger (uses OTel when configured, falls back to zerolog otherwise)
-logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
+logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v3/mypackage", "mypackage.DoWork")
 
 // Log with automatic trace_id/span_id injection (when OTel is enabled)
-logger.Debug("Starting work", "workerId", 123)
-logger.Info("Work completed", "duration", elapsed)
-logger.Error(err, "Work failed", "workerId", 123)
+logger.Debug("Starting work", otel.F("workerId", 123))
+logger.Info("Work completed", otel.F("duration", elapsed))
+logger.Error(err, "Work failed", otel.F("workerId", 123))
 ```
 
 **Benefits:**
@@ -249,12 +241,32 @@ logger.Error(err, "Work failed", "workerId", 123)
 
 See [helper.go](./helper.go) for full documentation.
 
-## Context-Based Config Propagation
+## Layer Instrumentation
 
-The recommended pattern for passing OTel config through your application layers is to store it in the context once at the entry point:
+`otel.Layers` provides five starters — `StartHandler`, `StartMiddleware`, `StartOperations`, `StartService`, `StartRepository` — each returning a `LayerContext` with both a span and a correlated logger (compile-checked: `Example_layerContextIntegration`, `Example_middlewareLayer`):
 
 ```go
-import "github.com/jasoet/pkg/v2/otel"
+// Fields passed here are automatically included in all log calls
+lc := otel.Layers.StartService(ctx, "user", "CreateUser",
+    otel.F("user.id", "12345"))
+defer lc.End()
+
+lc.Logger.Info("Creating user", otel.F("email", "user@example.com"))
+
+if err := repo.Save(lc.Context(), data); err != nil {
+    return lc.Error(err, "save failed")
+}
+lc.Success("User created")
+```
+
+Note: `Success` sets the span status to `codes.Ok`; per the OTel specification the status description is dropped for `Ok`, so the message appears in the log but not on the span.
+
+## Context-Based Config Propagation
+
+The recommended pattern for passing OTel config through your application layers is to store it in the context once at the entry point (compile-checked: `Example_withOTelConfig`, `Example_layerPropagation`):
+
+```go
+import "github.com/jasoet/pkg/v3/otel"
 
 // At the HTTP handler entry point
 func (h *Handler) HandleRequest(c echo.Context) error {
@@ -267,30 +279,13 @@ func (h *Handler) HandleRequest(c echo.Context) error {
 
 // In service layer - no need to pass config explicitly
 func (s *Service) ProcessRequest(ctx context.Context, req Request) error {
-    // Config retrieved from context automatically
-    // Fields passed here are automatically included in all log calls
     lc := otel.Layers.StartService(ctx, "user", "ProcessRequest",
         otel.F("request.id", req.ID))
     defer lc.End()
 
-    // Logger is always available (zerolog fallback when no config)
-    // Fields "layer=service" and "request.id" are automatically included
     lc.Logger.Info("Processing request")
 
     return s.repo.Save(lc.Context(), data)
-}
-
-// In repository layer - config still available
-func (r *Repository) Save(ctx context.Context, data Data) error {
-    lc := otel.Layers.StartRepository(ctx, "user", "Save",
-        otel.F("data.id", data.ID))
-    defer lc.End()
-
-    // Fields "layer=repository" and "data.id" automatically in logs
-    lc.Logger.Debug("Saving to database")
-
-    lc.Success("Data saved")
-    return nil
 }
 ```
 
@@ -298,9 +293,10 @@ func (r *Repository) Save(ctx context.Context, data Data) error {
 - Set config once at entry point, available everywhere
 - No need to pass config as parameter through all layers
 - Natural propagation through context (like span data)
-- Clean API - fewer parameters
-- **Logger always available** (zerolog fallback when no config)
+- **Logger always available** (zerolog fallback when no config — see `Example_withoutOTelConfig`)
 - **Fields automatically included** in all log calls
+
+Config is optional but recommended for production; you can adopt it gradually (see `Example_gradualOTelAdoption`, `Example_configOptionalButRecommended`).
 
 **API Pattern:**
 ```go
@@ -308,104 +304,41 @@ func (r *Repository) Save(ctx context.Context, data Data) error {
 ctx = otel.ContextWithConfig(ctx, cfg)
 
 // Create layer contexts - all return both Span and Logger
-// Fields passed here are automatically included in all log calls
 lc := otel.Layers.StartHandler(ctx, "user", "GetUser", otel.F("http.method", "GET"))
+lc := otel.Layers.StartMiddleware(ctx, "auth", "ValidateToken", otel.F("token.type", "JWT"))
+lc := otel.Layers.StartOperations(ctx, "user", "ProcessQueue", otel.F("queue.name", queue))
 lc := otel.Layers.StartService(ctx, "user", "CreateUser", otel.F("user.email", email))
 lc := otel.Layers.StartRepository(ctx, "user", "FindByID", otel.F("user.id", id))
-lc := otel.Layers.StartOperations(ctx, "user", "ProcessQueue", otel.F("queue.name", queue))
-lc := otel.Layers.StartMiddleware(ctx, "auth", "ValidateToken", otel.F("token.type", "JWT"))
 
 // All log calls automatically include the fields
-lc.Logger.Info("Processing")           // Includes all fields
-lc.Logger.Debug("Details", F("extra", val)) // Adds extra field
-lc.Error(err, "Failed")               // Includes all fields
-lc.Success("Done")                    // Includes all fields
+lc.Logger.Info("Processing")                    // Includes all fields
+lc.Logger.Debug("Details", otel.F("extra", val)) // Adds extra field
+lc.Error(err, "Failed")                         // Includes all fields
+lc.Success("Done")                              // Includes all fields
 
 // Get logger from span (config retrieved automatically)
 span := otel.StartSpan(ctx, "service.user", "DoWork")
 logger := span.Logger("service.user") // No config parameter needed
 ```
 
-## Integration Examples
+## Using with Library Packages
 
-### HTTP Server
-
-```go
-import (
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/server"
-)
-
-otelConfig := otel.NewConfig("my-api").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
-
-server.Start(server.Config{
-    Port:       8080,
-    OTelConfig: otelConfig,
-})
-```
-
-### gRPC Server
+Create one `*otel.Config` and inject it into each package's configuration. Every instrumented package exposes either an `OTelConfig *otel.Config` config field or a `WithOTelConfig(cfg)` option:
 
 ```go
-import (
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/grpc"
-)
+import "github.com/jasoet/pkg/v3/otel"
 
-otelConfig := otel.NewConfig("my-grpc-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
+otelConfig := otel.NewConfig("my-app",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider))
 
-grpcServer := grpc.NewServer(
-    grpc.NewConfig("my-service", 9090).
-        WithOTelConfig(otelConfig),
-)
+// server.Config{OTelConfig: otelConfig, ...}
+// grpc.WithOTelConfig(otelConfig)
+// db config with OTelConfig field
+// rest.WithOTelConfig(otelConfig)
 ```
 
-### Database
-
-```go
-import (
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/db"
-)
-
-otelConfig := otel.NewConfig("my-db-service").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
-
-pool, _ := db.ConnectionConfig{
-    DBType:     db.Postgresql,
-    Host:       "localhost",
-    OTelConfig: otelConfig,
-}.Pool()
-
-// All queries are automatically traced
-pool.Find(&users)
-```
-
-### REST Client
-
-```go
-import (
-    "github.com/jasoet/pkg/v2/otel"
-    "github.com/jasoet/pkg/v2/rest"
-)
-
-otelConfig := otel.NewConfig("my-client").
-    WithTracerProvider(tracerProvider).
-    WithMeterProvider(meterProvider)
-
-client := rest.NewClient(rest.ClientConfig{
-    BaseURL:    "https://api.example.com",
-    OTelConfig: otelConfig,
-})
-
-// Requests are automatically traced
-client.Get("/users", &result)
-```
+See each package's README for its exact wiring (`server`, `grpc`, `db`, `rest`, `temporal`, `docker`, `argo`).
 
 ## Complete Example
 
@@ -413,10 +346,8 @@ See the [fullstack OTel example](../examples/fullstack-otel) for a complete appl
 
 ## Testing
 
-The package includes comprehensive tests with 97.1% coverage:
-
 ```bash
-# Run tests
+# Run tests (includes Output-verified examples)
 go test ./otel -v
 
 # With coverage
@@ -429,16 +360,16 @@ Use no-op providers for testing:
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v3/otel"
     noopm "go.opentelemetry.io/otel/metric/noop"
     noopt "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestMyCode(t *testing.T) {
-    cfg := otel.NewConfig("test-service").
-        WithTracerProvider(noopt.NewTracerProvider()).
-        WithMeterProvider(noopm.NewMeterProvider()).
-        WithoutLogging()
+    cfg := otel.NewConfig("test-service",
+        otel.WithTracerProvider(noopt.NewTracerProvider()),
+        otel.WithMeterProvider(noopm.NewMeterProvider()),
+        otel.WithoutLogging())
 
     // Test your code with cfg
 }
@@ -449,19 +380,16 @@ func TestMyCode(t *testing.T) {
 ### 1. Create Once, Share Everywhere
 
 ```go
-// ✅ Good: Single config shared across packages
-otelConfig := otel.NewConfig("my-service").
-    WithTracerProvider(tp).
-    WithMeterProvider(mp)
-
-serverCfg := server.Config{OTelConfig: otelConfig}
-dbCfg := db.Config{OTelConfig: otelConfig}
+// Good: Single config shared across packages
+otelConfig := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tp),
+    otel.WithMeterProvider(mp))
 ```
 
 ### 2. Always Shutdown
 
 ```go
-// ✅ Good: Graceful shutdown
+// Good: Graceful shutdown
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 
@@ -473,7 +401,7 @@ if err := otelConfig.Shutdown(ctx); err != nil {
 ### 3. Check Before Using
 
 ```go
-// ✅ Good: Check enablement
+// Good: Check enablement
 if cfg.IsTracingEnabled() {
     tracer := cfg.GetTracer("my-scope")
     // Use tracer
@@ -483,33 +411,39 @@ if cfg.IsTracingEnabled() {
 ### 4. Use LogHelper for Consistent Logging
 
 ```go
-// ✅ Good: Use otel.LogHelper for automatic log-span correlation
-logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v2/mypackage", "mypackage.DoWork")
-logger.Info("Work completed", "duration", elapsed)
+// Good: Use otel.LogHelper for automatic log-span correlation
+logger := otel.NewLogHelper(ctx, otelConfig, "github.com/jasoet/pkg/v3/mypackage", "mypackage.DoWork")
+logger.Info("Work completed", otel.F("duration", elapsed))
 ```
 
 ## Architecture
 
 ### Design Principles
 
-1. **Zero Dependencies**: Only depends on OTel SDK (no custom exporters)
+1. **Minimal Dependencies**: Depends on the OpenTelemetry SDK, `zerolog`, and the `otlploghttp` exporter. It ships a small zerolog-backed console exporter (`consoleExporter`) for human-readable local output.
 2. **No-op Safety**: Nil providers result in no-op implementations
-3. **Lazy Initialization**: Providers created only when needed
-4. **Immutable Config**: Thread-safe after creation
+3. **Lazy Initialization**: `NewConfig` applies options first and builds the default logger provider only when one was not supplied
+4. **Immutable Config**: Treat as read-only after construction
 
 ### Package Structure
 
 ```
 otel/
-├── config.go        # Config struct and builder methods
-├── config_test.go   # Config tests
-├── logging.go       # OTLP logger provider with flexible options
-├── logging_test.go  # Logger provider tests
-├── helper.go        # Standard logging helper with OTel integration
-├── helper_test.go   # LogHelper tests
-├── instrumentation.go        # Instrumentation utilities
-├── instrumentation_test.go   # Instrumentation tests
-└── doc.go          # Package documentation
+├── config.go                       # Config struct and functional options
+├── config_test.go                  # Config tests
+├── options_test.go                 # Functional options tests
+├── bootstrap.go                    # Global zerolog logger bootstrap (Initialize, ContextLogger)
+├── bootstrap_test.go               # Bootstrap tests
+├── logging.go                      # OTLP logger provider with flexible options
+├── logging_test.go                 # Logger provider tests
+├── helper.go                       # Standard logging helper with OTel integration
+├── helper_test.go                  # LogHelper tests
+├── instrumentation.go              # Span/layer instrumentation utilities
+├── instrumentation_test.go         # Instrumentation tests
+├── instrumentation_behavior_test.go # Behavioral tests with in-memory exporter
+├── examples_test.go                # Compile-checked, Output-verified examples
+├── instrumentation_example_test.go # Compile-checked, Output-verified examples
+└── doc.go                          # Package documentation
 ```
 
 ## Troubleshooting
@@ -536,16 +470,16 @@ defer cfg.Shutdown(context.Background())
 
 ### Default Logger Too Verbose
 
-**Problem**: Stdout logger creating too much output
+**Problem**: Console (stderr) logger creating too much output
 
 **Solution**:
 ```go
 // Disable default logger
-cfg := otel.NewConfig("my-service").WithoutLogging()
+cfg := otel.NewConfig("my-service", otel.WithoutLogging())
 
 // Or use custom logger
-cfg := otel.NewConfig("my-service").
-    WithLoggerProvider(myLoggerProvider)
+cfg := otel.NewConfig("my-service",
+    otel.WithLoggerProvider(myLoggerProvider))
 ```
 
 ### Provider Already Registered
@@ -557,29 +491,29 @@ cfg := otel.NewConfig("my-service").
 ## Version Compatibility
 
 - **OpenTelemetry**: v1.38.0+
-- **Go**: 1.25+
-- **pkg library**: v2.0.0+
+- **Go**: 1.26+
+- **pkg library**: v3.0.0+
 
-## Migration from v1
+## Migration from v2
 
-v2 uses OpenTelemetry v2 API:
+v3 absorbs the `logging` package into `otel` and switches `Config` construction to functional options:
 
 ```go
-// v1 (OTel v1)
-import "go.opentelemetry.io/otel"
-tracer := otel.Tracer("my-scope")
+// v2
+import "github.com/jasoet/pkg/v2/logging"
+err := logging.Initialize("my-service", false)
+cfg := otel.NewConfig("my-service").WithServiceVersion("1.0.0")
 
-// v2 (OTel v2)
-import "github.com/jasoet/pkg/v2/otel"
-cfg := otel.NewConfig("my-service").WithTracerProvider(tp)
-tracer := cfg.GetTracer("my-scope")
+// v3
+import "github.com/jasoet/pkg/v3/otel"
+err := otel.Initialize("my-service", false)
+cfg := otel.NewConfig("my-service", otel.WithServiceVersion("1.0.0"))
 ```
 
-See [VERSIONING_GUIDE.md](../VERSIONING_GUIDE.md) for complete migration guide.
+See the [v3 audit backlog](../docs/plans/2026-07-22-v3-audit-backlog.md) for the full list of changes; a complete migration guide ships with v3.0.0.
 
 ## Related Packages
 
-- **[logging](../logging/)** - Structured logging with OTel integration
 - **[server](../server/)** - HTTP server with automatic tracing
 - **[grpc](../grpc/)** - gRPC server with automatic instrumentation
 - **[db](../db/)** - Database with query tracing

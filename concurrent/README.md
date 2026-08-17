@@ -1,31 +1,25 @@
-# Concurrent Execution
+# Concurrent Package
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/concurrent.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/concurrent)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/concurrent.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/concurrent)
 
-Type-safe concurrent execution utilities with generics, error aggregation, and automatic cancellation.
-
-## Overview
-
-The `concurrent` package provides production-ready utilities for executing multiple operations concurrently with full type safety using Go generics. It handles error propagation, context cancellation, and result aggregation automatically.
+Type-safe fan-out execution of named functions with generics, error propagation, and automatic cancellation.
 
 ## Features
 
-- **Type-Safe Generics**: Full compile-time type safety
-- **Auto Cancellation**: Cancels remaining operations on first error
-- **Error Handling**: Returns first error encountered
-- **Context Support**: Respects context cancellation and timeouts
-- **Flexible Results**: Map-based or typed struct results
-- **Zero Dependencies**: Only uses Go standard library
+- **Type-safe generics**: compile-time type safety via `Func[T]`
+- **Fail-fast**: the first error or panic cancels the shared context, signaling the remaining functions to stop
+- **Panic recovery**: a panicking function is recovered and reported as an error instead of crashing the process
+- **Causal error priority**: the first causal (non-context) error is returned, not the resulting `context.Canceled`
+- **Typed results**: `ExecuteConcurrentlyTyped` builds a single typed value from the result map
+- **Standard library only** (testify for tests)
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/concurrent
+go get github.com/jasoet/pkg/v3/concurrent
 ```
 
 ## Quick Start
-
-### Basic Concurrent Execution
 
 ```go
 package main
@@ -33,7 +27,8 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/jasoet/pkg/v2/concurrent"
+
+    "github.com/jasoet/pkg/v3/concurrent"
 )
 
 func main() {
@@ -58,61 +53,17 @@ func main() {
 }
 ```
 
-### Type-Safe Results
-
-```go
-import "github.com/jasoet/pkg/v2/concurrent"
-
-type UserData struct {
-    Name  string
-    Email string
-}
-
-func main() {
-    ctx := context.Background()
-
-    funcs := map[string]concurrent.Func[string]{
-        "name":  fetchName,
-        "email": fetchEmail,
-    }
-
-    // Build typed result
-    userData, err := concurrent.ExecuteConcurrentlyTyped(
-        ctx,
-        func(results map[string]string) (UserData, error) {
-            return UserData{
-                Name:  results["name"],
-                Email: results["email"],
-            }, nil
-        },
-        funcs,
-    )
-
-    if err != nil {
-        panic(err)
-    }
-
-    fmt.Printf("%+v\n", userData)
-}
-```
-
 ## API Reference
 
 ### Types
-
-#### Func[T any]
-
-Generic function type for concurrent execution:
 
 ```go
 type Func[T any] func(ctx context.Context) (T, error)
 ```
 
-### Functions
+A named unit of work. All functions in one call share the same `T`.
 
-#### ExecuteConcurrently
-
-Execute multiple functions concurrently:
+### ExecuteConcurrently
 
 ```go
 func ExecuteConcurrently[T any](
@@ -121,394 +72,102 @@ func ExecuteConcurrently[T any](
 ) (map[string]T, error)
 ```
 
-**Parameters:**
-- `ctx`: Context for cancellation and timeouts
-- `funcs`: Map of named functions to execute
+Executes every function in its own goroutine and returns the results indexed by
+the map keys.
 
-**Returns:**
-- `map[string]T`: Results indexed by function names
-- `error`: First error encountered (if any)
+Behavior:
 
-**Behavior:**
-- Executes all functions concurrently
-- Returns first error and cancels remaining operations
-- Results are nil if any function errors
+- A nil function in the map is rejected up front with an error naming its key.
+- On the first error or panic, the shared context is canceled so the remaining
+  functions can stop early. Functions that ignore `ctx` still run to completion.
+- If any function fails, the returned map is nil and the error is the first
+  causal error (secondary errors are discarded; a causal error is preferred
+  over `context.Canceled`/`context.DeadlineExceeded` from siblings).
+- A panic is recovered and converted to an error of the form `panic in "key": ...`;
+  the error includes the panic value (wrapped with `%w` when it is an `error`, so
+  `errors.Is`/`errors.As` still match) and the captured goroutine stack trace.
 
-#### ExecuteConcurrentlyTyped
-
-Type-safe concurrent execution with result builder:
+### ExecuteConcurrentlyTyped
 
 ```go
-func ExecuteConcurrentlyTyped[T any, R any](
+func ExecuteConcurrentlyTyped[R any, T any](
     ctx context.Context,
     resultBuilder func(map[string]T) (R, error),
     funcs map[string]Func[T],
 ) (R, error)
 ```
 
-**Parameters:**
-- `ctx`: Context for cancellation
-- `resultBuilder`: Function to build typed result from map
-- `funcs`: Map of functions to execute
+Runs `ExecuteConcurrently` and, on success, folds the result map into a single
+typed value with `resultBuilder`.
 
-**Returns:**
-- `R`: Built result of type R
-- `error`: Error from execution or builder
-
-## Usage Examples
-
-### Database Queries
+Type parameters are **result-first** — instantiate as
+`ExecuteConcurrentlyTyped[Output, Input]`:
 
 ```go
-type Product struct {
-    ID    int
-    Name  string
-    Price float64
-}
-
-funcs := map[string]concurrent.Func[*Product]{
-    "product1": func(ctx context.Context) (*Product, error) {
-        return db.GetProduct(ctx, 1)
-    },
-    "product2": func(ctx context.Context) (*Product, error) {
-        return db.GetProduct(ctx, 2)
-    },
-    "product3": func(ctx context.Context) (*Product, error) {
-        return db.GetProduct(ctx, 3)
-    },
-}
-
-products, err := concurrent.ExecuteConcurrently(ctx, funcs)
-if err != nil {
-    log.Fatal(err)
-}
-
-for key, product := range products {
-    fmt.Printf("%s: %+v\n", key, product)
-}
-```
-
-### API Calls
-
-```go
-type APIResponse struct {
-    Data   string
-    Status int
-}
-
-funcs := map[string]concurrent.Func[*APIResponse]{
-    "api1": func(ctx context.Context) (*APIResponse, error) {
-        return callAPI(ctx, "https://api1.example.com")
-    },
-    "api2": func(ctx context.Context) (*APIResponse, error) {
-        return callAPI(ctx, "https://api2.example.com")
-    },
-}
-
-responses, err := concurrent.ExecuteConcurrently(ctx, funcs)
-```
-
-### File Processing
-
-```go
-funcs := map[string]concurrent.Func[[]byte]{
-    "file1.txt": func(ctx context.Context) ([]byte, error) {
-        return os.ReadFile("file1.txt")
-    },
-    "file2.txt": func(ctx context.Context) ([]byte, error) {
-        return os.ReadFile("file2.txt")
-    },
-}
-
-contents, err := concurrent.ExecuteConcurrently(ctx, funcs)
-```
-
-### Aggregated Results
-
-```go
-type DashboardData struct {
-    UserCount    int
-    OrderCount   int
-    RevenueTotal float64
-}
-
-funcs := map[string]concurrent.Func[float64]{
-    "users":   countUsers,
-    "orders":  countOrders,
-    "revenue": calculateRevenue,
-}
-
-dashboard, err := concurrent.ExecuteConcurrentlyTyped(
+summary, err := concurrent.ExecuteConcurrentlyTyped[string, int](
     ctx,
-    func(results map[string]float64) (DashboardData, error) {
-        return DashboardData{
-            UserCount:    int(results["users"]),
-            OrderCount:   int(results["orders"]),
-            RevenueTotal: results["revenue"],
-        }, nil
+    func(results map[string]int) (string, error) {
+        return fmt.Sprintf("total=%d", results["a"]+results["b"]), nil
     },
-    funcs,
+    funcs, // map[string]concurrent.Func[int]
 )
 ```
+
+A nil `resultBuilder` is rejected up front with an error, before any function
+runs. If execution fails, the builder is not called and the zero value of `R` is
+returned with the execution error. A builder error is returned as-is.
 
 ## Context Handling
 
-### Timeout
+Give the call a bounded context; check it inside long-running functions:
 
 ```go
-// Set timeout for all operations
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 
-results, err := concurrent.ExecuteConcurrently(ctx, funcs)
-if err != nil {
-    if errors.Is(err, context.DeadlineExceeded) {
-        log.Println("Operations timed out")
-    }
-}
-```
-
-### Cancellation
-
-```go
-// Manual cancellation
-ctx, cancel := context.WithCancel(context.Background())
-
-// Cancel after some condition
-go func() {
-    time.Sleep(2 * time.Second)
-    cancel() // Cancels all running operations
-}()
-
-results, err := concurrent.ExecuteConcurrently(ctx, funcs)
-```
-
-### Early Termination
-
-```go
-// Automatically cancels remaining operations on first error
 funcs := map[string]concurrent.Func[string]{
-    "fast": func(ctx context.Context) (string, error) {
-        return "done", nil
-    },
     "slow": func(ctx context.Context) (string, error) {
-        time.Sleep(10 * time.Second)
-        return "done", nil // Won't complete if "error" fails first
-    },
-    "error": func(ctx context.Context) (string, error) {
-        return "", errors.New("failed") // Cancels "slow"
+        select {
+        case <-time.After(10 * time.Second):
+            return "done", nil
+        case <-ctx.Done():
+            return "", ctx.Err()
+        }
     },
 }
 
 results, err := concurrent.ExecuteConcurrently(ctx, funcs)
-// err != nil, "slow" was cancelled
 ```
 
-## Error Handling
-
-### First Error Returns
-
-```go
-funcs := map[string]concurrent.Func[int]{
-    "success": func(ctx context.Context) (int, error) {
-        return 42, nil
-    },
-    "failure": func(ctx context.Context) (int, error) {
-        return 0, errors.New("operation failed")
-    },
-}
-
-results, err := concurrent.ExecuteConcurrently(ctx, funcs)
-if err != nil {
-    // err contains first error encountered
-    // results is nil
-    log.Printf("Concurrent execution failed: %v", err)
-}
-```
-
-### Builder Errors
-
-```go
-results, err := concurrent.ExecuteConcurrentlyTyped(
-    ctx,
-    func(results map[string]int) (MyStruct, error) {
-        // Validate results
-        if results["required"] == 0 {
-            return MyStruct{}, errors.New("required field missing")
-        }
-        return MyStruct{Value: results["required"]}, nil
-    },
-    funcs,
-)
-```
-
-## Best Practices
-
-### 1. Use Context Timeouts
-
-```go
-// ✅ Good: Always use context with timeout
-ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-defer cancel()
-
-results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
-
-// ❌ Bad: No timeout
-ctx := context.Background()
-results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
-```
-
-### 2. Handle Context in Functions
-
-```go
-// ✅ Good: Check context cancellation
-func fetchData(ctx context.Context) (string, error) {
-    select {
-    case <-ctx.Done():
-        return "", ctx.Err()
-    default:
-        // Do work
-        return "data", nil
-    }
-}
-
-// ❌ Bad: Ignore context
-func fetchData(ctx context.Context) (string, error) {
-    time.Sleep(10 * time.Second) // Doesn't respect cancellation
-    return "data", nil
-}
-```
-
-### 3. Keep Functions Independent
-
-```go
-// ✅ Good: Independent functions
-funcs := map[string]concurrent.Func[int]{
-    "task1": independentTask1,
-    "task2": independentTask2,
-}
-
-// ❌ Bad: Dependent functions (use sequential execution)
-funcs := map[string]concurrent.Func[int]{
-    "task1": func(ctx context.Context) (int, error) {
-        return 1, nil
-    },
-    "task2": func(ctx context.Context) (int, error) {
-        // Depends on task1 result - this won't work!
-        return task1Result + 1, nil
-    },
-}
-```
-
-### 4. Use Typed Builders
-
-```go
-// ✅ Good: Type-safe result building
-type Result struct {
-    Users  int
-    Orders int
-}
-
-concurrent.ExecuteConcurrentlyTyped(
-    ctx,
-    func(results map[string]int) (Result, error) {
-        return Result{
-            Users:  results["users"],
-            Orders: results["orders"],
-        }, nil
-    },
-    funcs,
-)
-
-// ❌ Bad: Manual type assertions
-results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
-users := results["users"]   // Requires type knowledge
-orders := results["orders"]
-```
-
-### 5. Check All Results
-
-```go
-// ✅ Good: Validate builder results
-concurrent.ExecuteConcurrentlyTyped(
-    ctx,
-    func(results map[string]Data) (Aggregate, error) {
-        if len(results) != expectedCount {
-            return Aggregate{}, errors.New("incomplete results")
-        }
-        // Build aggregate
-    },
-    funcs,
-)
-```
-
-## Testing
-
-The package includes comprehensive tests with 100% coverage:
-
-```bash
-# Run tests
-go test ./concurrent -v
-
-# With coverage
-go test ./concurrent -cover
-```
-
-### Test Examples
-
-```go
-func TestConcurrentExecution(t *testing.T) {
-    ctx := context.Background()
-
-    funcs := map[string]concurrent.Func[int]{
-        "double": func(ctx context.Context) (int, error) {
-            return 10, nil
-        },
-        "triple": func(ctx context.Context) (int, error) {
-            return 15, nil
-        },
-    }
-
-    results, err := concurrent.ExecuteConcurrently(ctx, funcs)
-
-    assert.NoError(t, err)
-    assert.Equal(t, 10, results["double"])
-    assert.Equal(t, 15, results["triple"])
-}
-```
-
-## Performance
-
-- **Goroutine Overhead**: ~2KB per goroutine
-- **Channel Overhead**: Minimal buffered channel
-- **Type Safety**: Zero runtime overhead (generics compile-time only)
-
-**Benchmark:**
-```
-BenchmarkExecuteConcurrently-8    10000    ~100µs/op (5 functions)
-BenchmarkTypedExecution-8         10000    ~105µs/op (includes builder)
-```
+Canceling `ctx` (or a sibling failing) propagates to every function through the
+shared context.
 
 ## Limitations
 
-1. **First Error Only**: Returns first error, others are lost
-2. **All-or-Nothing**: All results are nil if any function errors
-3. **Map Results**: Results are unordered (use keys to access)
-4. **Same Type**: All functions must return same type T
+1. **First causal error only** — secondary errors are discarded; partial results are not returned.
+2. **All-or-nothing** — the result map is nil if any function errors or panics.
+3. **Unordered map results** — access results by key, not iteration order.
+4. **Single element type** — all functions in one call return the same `T` (use `any` plus a builder for heterogeneous results).
 
 ## Examples
 
-See [examples/](.../examples/concurrent/concurrent/) directory for:
-- Basic concurrent execution
-- Typed result building
-- Context handling
-- Error handling
-- Real-world use cases
+Runnable examples live in [examples/concurrent/](../examples/concurrent/) and are
+behind the `example` build tag. From the repository root:
 
-## Related Packages
+```bash
+go run -tags=example ./examples/concurrent/
+```
 
-- **[db](../db/)** - Database operations
-- **[rest](../rest/)** - HTTP client
+Compile-checked godoc examples are in [example_test.go](example_test.go).
+
+## Testing
+
+```bash
+go test ./concurrent/ -count=1
+```
+
+The suite covers success, failure, cancellation, panic recovery, causal-error
+priority, and typed building (~95% statement coverage).
 
 ## License
 

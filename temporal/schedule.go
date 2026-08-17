@@ -2,13 +2,15 @@ package temporal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 type WorkflowScheduleOptions struct {
@@ -21,65 +23,40 @@ type WorkflowScheduleOptions struct {
 
 type ScheduleManager struct {
 	client           client.Client
-	ownsClient       bool
 	mu               sync.RWMutex
 	scheduleHandlers map[string]client.ScheduleHandle
 }
 
-func NewScheduleManager(clientOrConfig interface{}) (*ScheduleManager, error) {
+// NewScheduleManager creates a ScheduleManager using the provided client.
+// The caller retains ownership of the client and is responsible for closing
+// it; Close does not close the client.
+func NewScheduleManager(temporalClient client.Client) (*ScheduleManager, error) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "temporal.NewScheduleManager")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "temporal.NewScheduleManager")
 
-	var temporalClient client.Client
-	var ownsClient bool
-
-	switch v := clientOrConfig.(type) {
-	case client.Client:
-		// If passed a client directly, use it (caller retains ownership)
-		temporalClient = v
-		ownsClient = false
-		logger.Debug("Using provided Temporal client for Schedule Manager")
-	case *Config:
-		// If passed a config, create a new client (we own it)
-		logger.Debug("Creating new Schedule Manager with config",
-			otel.F("hostPort", v.HostPort),
-			otel.F("namespace", v.Namespace))
-
-		var err error
-		temporalClient, err = NewClient(v)
-		if err != nil {
-			logger.Error(err, "Failed to create Temporal client for Schedule Manager")
-			return nil, fmt.Errorf("failed to create Temporal client: %w", err)
-		}
-		ownsClient = true
-	default:
-		return nil, fmt.Errorf("invalid argument type: expected client.Client or *Config")
+	if temporalClient == nil {
+		return nil, fmt.Errorf("temporal client must not be nil")
 	}
 
 	logger.Debug("Schedule Manager created successfully")
 	return &ScheduleManager{
 		client:           temporalClient,
-		ownsClient:       ownsClient,
 		scheduleHandlers: make(map[string]client.ScheduleHandle),
 	}, nil
 }
 
-func (sm *ScheduleManager) Close() {
-	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.Close")
+// Close closes the ScheduleManager. It does not close the Temporal client;
+// the caller owns the client and must close it. The ctx parameter is used for
+// logging only.
+func (sm *ScheduleManager) Close(ctx context.Context) {
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.Close")
 
 	logger.Debug("Closing Schedule Manager")
-
-	if sm.ownsClient && sm.client != nil {
-		logger.Debug("Closing Temporal client")
-		sm.client.Close()
-	}
-
 	logger.Debug("Schedule Manager closed")
 }
 
 func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.CreateSchedule")
 
 	logger.Debug("Creating schedule", otel.F("scheduleID", scheduleID))
 
@@ -104,7 +81,7 @@ func (sm *ScheduleManager) CreateSchedule(ctx context.Context, scheduleID string
 }
 
 func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, options client.ScheduleOptions) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateScheduleWithOptions")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.CreateScheduleWithOptions")
 
 	logger.Debug("Creating schedule", otel.F("scheduleName", options.ID))
 
@@ -123,7 +100,7 @@ func (sm *ScheduleManager) CreateScheduleWithOptions(ctx context.Context, option
 }
 
 func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleName string, options WorkflowScheduleOptions) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.CreateWorkflowSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.CreateWorkflowSchedule")
 
 	logger.Debug("Creating workflow schedule",
 		otel.F("scheduleName", scheduleName),
@@ -162,39 +139,68 @@ func (sm *ScheduleManager) CreateWorkflowSchedule(ctx context.Context, scheduleN
 	return handle, nil
 }
 
+// DeleteSchedules deletes every schedule this manager is tracking. It is
+// convergent under partial failure: each schedule is deleted independently,
+// a NotFound response is treated as success (the schedule is already gone),
+// and every successfully-removed schedule is dropped from tracking so a retry
+// converges instead of re-deleting or re-hitting NotFound. Schedules whose
+// deletion genuinely failed are left in tracking and their errors are joined
+// and returned. RPCs are made without holding the manager lock.
 func (sm *ScheduleManager) DeleteSchedules(ctx context.Context) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.DeleteSchedules")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.DeleteSchedules")
 
+	// Snapshot the tracked handles under the lock, then release it before any
+	// network I/O so concurrent CreateSchedule calls are not blocked and are
+	// not silently discarded by a bulk map reset.
 	sm.mu.RLock()
-	scheduleCount := len(sm.scheduleHandlers)
+	snapshot := make(map[string]client.ScheduleHandle, len(sm.scheduleHandlers))
+	for name, handle := range sm.scheduleHandlers {
+		snapshot[name] = handle
+	}
 	sm.mu.RUnlock()
 
-	logger.Debug("Deleting all Temporal schedules", otel.F("scheduleCount", scheduleCount))
+	logger.Debug("Deleting all Temporal schedules", otel.F("scheduleCount", len(snapshot)))
 
-	if scheduleCount == 0 {
+	if len(snapshot) == 0 {
 		logger.Debug("No schedules to delete")
 		return nil
 	}
 
-	sm.mu.RLock()
-	for name, handle := range sm.scheduleHandlers {
+	var errs []error
+	deleted := 0
+	for name, handle := range snapshot {
 		logger.Debug("Deleting schedule", otel.F("scheduleName", name))
 		err := handle.Delete(ctx)
-		if err != nil {
-			sm.mu.RUnlock()
+		if err != nil && !isScheduleNotFound(err) {
 			logger.Error(err, "Failed to delete schedule", otel.F("scheduleName", name))
-			return fmt.Errorf("delete schedule %q: %w", name, err)
+			// Leave it in tracking so a subsequent retry can converge.
+			errs = append(errs, fmt.Errorf("delete schedule %q: %w", name, err))
+			continue
 		}
+
+		// Success or already-gone: drop it from tracking under the lock. Only
+		// delete the specific entry (never reset the whole map) so schedules
+		// created concurrently are preserved.
+		sm.mu.Lock()
+		delete(sm.scheduleHandlers, name)
+		sm.mu.Unlock()
+		deleted++
 		logger.Debug("Schedule deleted successfully", otel.F("scheduleName", name))
 	}
-	sm.mu.RUnlock()
 
-	sm.mu.Lock()
-	sm.scheduleHandlers = make(map[string]client.ScheduleHandle)
-	sm.mu.Unlock()
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
 
-	logger.Debug("All schedules deleted successfully", otel.F("deletedCount", scheduleCount))
+	logger.Debug("All schedules deleted successfully", otel.F("deletedCount", deleted))
 	return nil
+}
+
+// isScheduleNotFound reports whether err indicates the schedule no longer
+// exists, in which case deletion is already effectively complete.
+func isScheduleNotFound(err error) bool {
+	var notFound *serviceerror.NotFound
+	return errors.As(err, &notFound)
 }
 
 func (sm *ScheduleManager) GetClient() client.Client {
@@ -214,7 +220,7 @@ func (sm *ScheduleManager) GetScheduleHandlers() map[string]client.ScheduleHandl
 
 // GetSchedule retrieves a schedule handle by ID
 func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (client.ScheduleHandle, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.GetSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.GetSchedule")
 
 	logger.Debug("Getting schedule", otel.F("scheduleID", scheduleID))
 
@@ -233,7 +239,7 @@ func (sm *ScheduleManager) GetSchedule(ctx context.Context, scheduleID string) (
 
 // ListSchedules lists all schedules with a limit
 func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*client.ScheduleListEntry, error) {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.ListSchedules")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.ListSchedules")
 
 	logger.Debug("Listing schedules", otel.F("limit", limit))
 
@@ -267,7 +273,7 @@ func (sm *ScheduleManager) ListSchedules(ctx context.Context, limit int) ([]*cli
 
 // UpdateSchedule updates an existing schedule
 func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string, spec client.ScheduleSpec, action *client.ScheduleWorkflowAction) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.UpdateSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.UpdateSchedule")
 
 	logger.Debug("Updating schedule", otel.F("scheduleID", scheduleID))
 
@@ -302,7 +308,7 @@ func (sm *ScheduleManager) UpdateSchedule(ctx context.Context, scheduleID string
 
 // DeleteSchedule deletes a specific schedule by ID
 func (sm *ScheduleManager) DeleteSchedule(ctx context.Context, scheduleID string) error {
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/temporal", "ScheduleManager.DeleteSchedule")
+	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v3/temporal", "ScheduleManager.DeleteSchedule")
 
 	logger.Debug("Deleting schedule", otel.F("scheduleID", scheduleID))
 

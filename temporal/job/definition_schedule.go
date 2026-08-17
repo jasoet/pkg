@@ -24,34 +24,38 @@ func (d *Definition) ApplySchedule(ctx context.Context, c client.Client) error {
 	handle := sc.GetHandle(ctx, d.Name)
 	_, descErr := handle.Describe(ctx)
 	if descErr == nil {
-		// Update path
+		// Update path. Mutate the existing schedule from the server rather than
+		// replacing it wholesale, so fields we do not manage here (e.g.
+		// PauseOnFailure, typed search attributes) are preserved.
 		return translateSDKError("schedule-update", handle.Update(ctx, client.ScheduleUpdateOptions{
 			DoUpdate: func(input client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
-				return &client.ScheduleUpdate{
-					Schedule: &client.Schedule{
-						Spec:   &spec,
-						Action: scheduleAction(d),
-						Policy: &client.SchedulePolicies{
-							Overlap: d.Schedule.Overlap.ToSDK(),
-						},
-						State: &client.ScheduleState{
-							Paused: d.Schedule.Paused,
-							Note:   d.Schedule.Note,
-						},
-					},
-				}, nil
+				sched := input.Description.Schedule
+				sched.Spec = &spec
+				sched.Action = scheduleAction(d)
+				if sched.Policy == nil {
+					sched.Policy = &client.SchedulePolicies{}
+				}
+				sched.Policy.Overlap = d.Schedule.Overlap.ToSDK()
+				sched.Policy.CatchupWindow = d.Schedule.CatchupWindow
+				if sched.State == nil {
+					sched.State = &client.ScheduleState{}
+				}
+				sched.State.Paused = d.Schedule.Paused
+				sched.State.Note = d.Schedule.Note
+				return &client.ScheduleUpdate{Schedule: &sched}, nil
 			},
 		}))
 	}
 
 	// Create path
 	_, err = sc.Create(ctx, client.ScheduleOptions{
-		ID:      d.Name,
-		Spec:    spec,
-		Action:  scheduleAction(d),
-		Overlap: d.Schedule.Overlap.ToSDK(),
-		Paused:  d.Schedule.Paused,
-		Note:    d.Schedule.Note,
+		ID:            d.Name,
+		Spec:          spec,
+		Action:        scheduleAction(d),
+		Overlap:       d.Schedule.Overlap.ToSDK(),
+		CatchupWindow: d.Schedule.CatchupWindow,
+		Paused:        d.Schedule.Paused,
+		Note:          d.Schedule.Note,
 	})
 	return translateSDKError("schedule-create", err)
 }
@@ -61,6 +65,7 @@ func scheduleAction(d *Definition) *client.ScheduleWorkflowAction {
 		ID:        d.Name + "-scheduled",
 		Workflow:  d.Name,
 		TaskQueue: d.TaskQueue,
+		Args:      d.ScheduleArgs,
 	}
 }
 

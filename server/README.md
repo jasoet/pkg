@@ -1,9 +1,9 @@
-# HTTP Server Package (v2)
+# HTTP Server Package (v3)
 
-A clean, production-ready HTTP server implementation using the Echo framework with built-in health checks and graceful shutdown.
+A clean, production-ready HTTP server implementation using the Echo framework with built-in health checks, graceful shutdown, and optional OpenTelemetry instrumentation.
 
-> **Note:** `Start` and `StartWithConfig` return `error` instead of calling `os.Exit(1)`.
-> Callers must handle the returned error. See examples below.
+> **Note:** `srv.Start()` blocks until `srv.Shutdown(ctx)` is called (or serving fails),
+> returning `nil` on a clean shutdown. Signal handling is up to the caller. See examples below.
 
 ## Quick Start
 
@@ -13,7 +13,9 @@ Get your server up and running with minimal configuration:
 package main
 
 import (
-    "github.com/jasoet/pkg/v2/server"
+    "log"
+
+    "github.com/jasoet/pkg/v3/server"
     "github.com/labstack/echo/v4"
 )
 
@@ -31,33 +33,77 @@ func main() {
         // Cleanup resources here
     }
 
-    // Start server on port 8080
-    if err := server.Start(8080, operation, shutdown); err != nil {
-        log.Fatal().Err(err).Msg("server failed")
+    // Create the server, then start it (blocks until Shutdown is called)
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+    )
+    if err != nil {
+        log.Fatalf("invalid server config: %v", err)
+    }
+    if err := srv.Start(); err != nil {
+        log.Fatalf("server failed: %v", err)
     }
 }
 ```
 
 ## Configuration Options
 
-The server can be customized using the `Config` struct:
+The server is configured with functional options, which populate a `Config`:
 
-| Field | Type | Description | Default |
-|-------|------|-------------|---------|
-| Port | int | The port number to listen on | - |
-| Operation | func(e *echo.Echo) | Function to run when server starts | - |
-| Shutdown | func(e *echo.Echo) | Function to run when server stops | - |
-| Middleware | []echo.MiddlewareFunc | Custom middleware to apply | [] |
-| ShutdownTimeout | time.Duration | Timeout for graceful shutdown | 10s |
-| EchoConfigurer | func(e *echo.Echo) | Function to configure Echo instance | nil |
+| Field | Option | Type | Description | Default |
+|-------|--------|------|-------------|---------|
+| Port | `WithPort` | int | The port number to listen on (`0` = OS-assigned ephemeral port) | 0 |
+| BindAddress | `WithBindAddress` | string | Interface address to bind (e.g. `127.0.0.1` for loopback only); empty binds all interfaces | "" (all interfaces) |
+| Operation | `WithOperation` | func(e *echo.Echo) | Runs after Echo is configured, before listening | nil |
+| Shutdown | `WithShutdown` | func(e *echo.Echo) | Runs during graceful shutdown, before Echo drains | nil |
+| Middleware | `WithMiddleware` | ...echo.MiddlewareFunc | Custom middleware to apply | none |
+| ShutdownTimeout | `WithShutdownTimeout` | time.Duration | Deadline for graceful shutdown; `0` (or negative) disables the extra deadline and honors only the caller's context | 10s |
+| EchoConfigurer | `WithEchoConfigurer` | func(e *echo.Echo) | Customizes the Echo instance during setup | nil |
+| OTelConfig | `WithOTelConfig` | *otel.Config | OpenTelemetry configuration (see below) | nil |
+
+> **Config struct tags:** only `Port`, `BindAddress` and `ShutdownTimeout` are populated from a decoded YAML/config document. The function-typed fields (`Operation`, `Shutdown`, `Middleware`, `EchoConfigurer`, `OTelConfig`) carry `yaml:"-" mapstructure:"-"` and must be set programmatically via the `With*` options.
+
+### Built-in Limits & Timeouts
+
+`New` installs a small set of hardening defaults on every server. They are **not** configurable via `With*` options; override them through `WithEchoConfigurer` (which receives the underlying `*echo.Echo` and its `*http.Server`).
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| Request body limit (`BodyLimit`) | `4M` | Rejects request bodies larger than 4 MB with `413 Request Entity Too Large`. Uploads above this size fail unless raised. |
+| `ReadHeaderTimeout` | 5s | Slowloris defense — caps time spent reading request headers. |
+| `ReadTimeout` | 30s | Caps total time to read the request (headers + body). Long uploads may need a higher value. |
+| `WriteTimeout` | 30s | Caps time to write the response. Long-lived streams / SSE beyond 30s are terminated unless raised. |
+| `IdleTimeout` | 120s | Caps keep-alive idle time between requests. |
+
+Middleware order (outermost first): OTel instrumentation → `Recover` → `BodyLimit` → your `WithMiddleware` → routes. OTel is outermost so it observes 413s from `BodyLimit` and the 500s produced when `Recover` catches a panicking handler. `middleware.Recover()` is installed by default, so a panic in a handler becomes a `500` response (and a recorded error) rather than a dropped connection.
+
+Overriding the built-ins:
+
+```go
+server.WithEchoConfigurer(func(e *echo.Echo) {
+    // Raise the body limit and read timeout for a large-upload endpoint.
+    e.Use(middleware.BodyLimit("50M")) // last-registered limit wins
+    e.Server.ReadTimeout = 5 * time.Minute
+    e.Server.WriteTimeout = 5 * time.Minute
+})
+```
 
 Example with custom configuration:
 
 ```go
-config := server.DefaultConfig(8080, operation, shutdown)
-config.ShutdownTimeout = 30 * time.Second
-if err := server.StartWithConfig(config); err != nil {
-    log.Fatal().Err(err).Msg("server failed")
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithShutdownTimeout(30*time.Second),
+)
+if err != nil {
+    log.Fatalf("invalid server config: %v", err)
+}
+if err := srv.Start(); err != nil {
+    log.Fatalf("server failed: %v", err)
 }
 ```
 
@@ -66,24 +112,72 @@ if err := server.StartWithConfig(config); err != nil {
 The `EchoConfigurer` allows you to configure the Echo instance directly after it's created but before the server starts. This is useful for Echo-specific configurations like custom error handlers, validators, or other Echo settings.
 
 ```go
-config := server.DefaultConfig(8080, operation, shutdown)
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
 
-// Configure Echo instance
-config.EchoConfigurer = func(e *echo.Echo) {
-    // Custom error handler
-    e.HTTPErrorHandler = myCustomErrorHandler
+    // Configure Echo instance
+    server.WithEchoConfigurer(func(e *echo.Echo) {
+        // Custom error handler
+        e.HTTPErrorHandler = myCustomErrorHandler
 
-    // Custom validator
-    e.Validator = myValidator
+        // Custom validator
+        e.Validator = myValidator
 
-    // Other Echo-specific configurations
-    e.Debug = true
+        // Other Echo-specific configurations
+        e.Debug = true
+    }),
+)
+if err != nil {
+    log.Fatalf("invalid server config: %v", err)
 }
-
-if err := server.StartWithConfig(config); err != nil {
-    log.Fatal().Err(err).Msg("server failed")
+if err := srv.Start(); err != nil {
+    log.Fatalf("server failed: %v", err)
 }
 ```
+
+## OpenTelemetry Instrumentation
+
+Pass an `*otel.Config` via `WithOTelConfig` and the server auto-installs request instrumentation middleware (before your own middleware). All instrumentation uses the scope name `http.server`.
+
+### Tracing (when tracing is enabled on the config)
+
+One server span per request, named `{method} {route}` (e.g. `GET /users/:id`), with attributes:
+
+- `http.request.method`
+- `url.full` — the query string is included, but the values of sensitive parameters (e.g. `access_token`, `api_key`, `password`, `signature`) are replaced with `REDACTED` so secrets do not leak into traces.
+- `http.response.status_code`
+- `http.route` — the matched route pattern. For unmatched requests (404s) there is no route, so the span is named `{method} unmatched` and no `http.route` attribute is set.
+
+**Status codes reflect the real outcome.** The status is resolved *after* the handler chain returns, from the returned error (an `*echo.HTTPError` carries its code; any other error maps to `500`), so error responses and 404s record their true status rather than a premature `200`. Server spans are marked with an `Error` status only for `5xx` responses (a `4xx` is a client fault, not a server error).
+
+### Metrics (when metrics is enabled on the config)
+
+- `http.server.request.count` — counter of total HTTP requests, unit `{request}`
+- `http.server.request.duration` — histogram of request duration, unit `ms` (recorded as fractional milliseconds, so sub-millisecond handlers are not floored to `0`)
+
+Both are attributed by `http.request.method` and `http.response.status_code` (the same real status resolved for spans, above).
+
+```go
+import (
+    "github.com/jasoet/pkg/v3/otel"
+    "github.com/jasoet/pkg/v3/server"
+)
+
+otelCfg := otel.NewConfig("my-service",
+    otel.WithTracerProvider(tracerProvider),
+    otel.WithMeterProvider(meterProvider),
+)
+
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithOTelConfig(otelCfg),
+)
+```
+
+With no `OTelConfig` (the default), no spans or metrics are emitted.
 
 ## Middleware Examples
 
@@ -93,9 +187,11 @@ if err := server.StartWithConfig(config); err != nil {
 package main
 
 import (
+    "log"
+
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
 )
 
 func main() {
@@ -119,8 +215,17 @@ func main() {
     })
 
     // Start server with middleware
-    if err := server.Start(8080, operation, shutdown, corsMiddleware, rateLimiter); err != nil {
-        log.Fatal().Err(err).Msg("server failed")
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+        server.WithMiddleware(corsMiddleware, rateLimiter),
+    )
+    if err != nil {
+        log.Fatalf("invalid server config: %v", err)
+    }
+    if err := srv.Start(); err != nil {
+        log.Fatalf("server failed: %v", err)
     }
 }
 ```
@@ -132,9 +237,11 @@ package main
 
 import (
     "fmt"
-    "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/v2/server"
+    "log"
     "time"
+
+    "github.com/labstack/echo/v4"
+    "github.com/jasoet/pkg/v3/server"
 )
 
 func main() {
@@ -158,11 +265,15 @@ func main() {
     }
 
     // Start server with custom middleware
-    if err := server.Start(8080,
-        func(e *echo.Echo) {},
-        func(e *echo.Echo) {},
-        timingMiddleware); err != nil {
-        log.Fatal().Err(err).Msg("server failed")
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithMiddleware(timingMiddleware),
+    )
+    if err != nil {
+        log.Fatalf("invalid server config: %v", err)
+    }
+    if err := srv.Start(); err != nil {
+        log.Fatalf("server failed: %v", err)
     }
 }
 ```
@@ -177,24 +288,35 @@ The server includes built-in health check endpoints:
 | `/health/ready` | Readiness check | `{"status":"READY"}` |
 | `/health/live` | Liveness check | `{"status":"ALIVE"}` |
 
+> **Note:** Health routes are registered **after** user middleware, so any middleware you add via
+> `WithMiddleware` (including auth) also applies to them. If you need unauthenticated Kubernetes
+> probes, don't register global auth middleware, or exempt the health paths in your middleware
+> (e.g. with a skipper).
+
 ### Customizing Health Checks
 
-You can customize the health check endpoints in your operation function:
+You can replace the health check endpoints in your operation function:
 
 ```go
 operation := func(e *echo.Echo) {
     // Override the default health endpoint
     e.GET("/health", func(c echo.Context) error {
         // Check your application's health
-        dbHealthy := checkDatabaseConnection()
-        cacheHealthy := checkCacheConnection()
+        dbStatus := "UP"
+        if !checkDatabaseConnection() {
+            dbStatus = "DOWN"
+        }
+        cacheStatus := "UP"
+        if !checkCacheConnection() {
+            cacheStatus = "DOWN"
+        }
 
-        if !dbHealthy || !cacheHealthy {
+        if dbStatus != "UP" || cacheStatus != "UP" {
             return c.JSON(500, map[string]interface{}{
                 "status": "DOWN",
                 "components": map[string]string{
-                    "database": dbHealthy ? "UP" : "DOWN",
-                    "cache": cacheHealthy ? "UP" : "DOWN",
+                    "database": dbStatus,
+                    "cache":    cacheStatus,
                 },
             })
         }
@@ -203,7 +325,7 @@ operation := func(e *echo.Echo) {
             "status": "UP",
             "components": map[string]string{
                 "database": "UP",
-                "cache": "UP",
+                "cache":    "UP",
             },
         })
     })
@@ -212,7 +334,7 @@ operation := func(e *echo.Echo) {
 
 ## Graceful Shutdown
 
-The server supports graceful shutdown, allowing in-flight requests to complete before shutting down.
+The server supports graceful shutdown, allowing in-flight requests to complete before shutting down. Call `Shutdown(ctx)` from another goroutine — for example from your own signal handler — and `Start` returns `nil` once draining completes.
 
 ### Basic Shutdown Handler
 
@@ -236,9 +358,11 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/v2/server"
+    "log"
     "time"
+
+    "github.com/labstack/echo/v4"
+    "github.com/jasoet/pkg/v3/server"
 )
 
 func main() {
@@ -266,11 +390,24 @@ func main() {
     }
 
     // Configure server with longer shutdown timeout
-    config := server.DefaultConfig(8080, func(e *echo.Echo) {}, shutdown)
-    config.ShutdownTimeout = 30 * time.Second
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithShutdown(shutdown),
+        server.WithShutdownTimeout(30*time.Second),
+    )
+    if err != nil {
+        log.Fatalf("invalid server config: %v", err)
+    }
 
-    if err := server.StartWithConfig(config); err != nil {
-        log.Fatal().Err(err).Msg("server failed")
+    // Trigger shutdown however you like; Shutdown(ctx) drains in-flight
+    // requests within ShutdownTimeout.
+    go func() {
+        <-someShutdownSignal
+        _ = srv.Shutdown(context.Background())
+    }()
+
+    if err := srv.Start(); err != nil {
+        log.Fatalf("server failed: %v", err)
     }
 }
 ```
@@ -283,8 +420,10 @@ func main() {
 package main
 
 import (
+    "log"
+
     "github.com/labstack/echo/v4"
-    "github.com/jasoet/pkg/v2/server"
+    "github.com/jasoet/pkg/v3/server"
     "your-module/auth"
     "your-module/database"
 )
@@ -324,9 +463,17 @@ func main() {
         db.Close()
     }
 
-    // Start the server
-    if err := server.Start(8080, operation, shutdown); err != nil {
-        log.Fatal().Err(err).Msg("server failed")
+    // Start the server (blocks until Shutdown is called)
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
+    )
+    if err != nil {
+        log.Fatalf("invalid server config: %v", err)
+    }
+    if err := srv.Start(); err != nil {
+        log.Fatalf("server failed: %v", err)
     }
 }
 ```
@@ -340,10 +487,12 @@ package main
 
 import (
     "fmt"
-    "github.com/labstack/echo/v4"
+    "log"
     "net/http"
     "time"
-    "github.com/jasoet/pkg/v2/server"
+
+    "github.com/labstack/echo/v4"
+    "github.com/jasoet/pkg/v3/server"
 )
 
 func main() {
@@ -385,29 +534,36 @@ func main() {
         // Cleanup resources
     }
 
-    // Create config with EchoConfigurer
-    config := server.DefaultConfig(8080, operation, shutdown)
+    // Create the server with EchoConfigurer
+    srv, err := server.New(
+        server.WithPort(8080),
+        server.WithOperation(operation),
+        server.WithShutdown(shutdown),
 
-    // Set Echo-specific configurations
-    config.EchoConfigurer = func(e *echo.Echo) {
-        // Set custom error handler
-        e.HTTPErrorHandler = customErrorHandler
+        // Set Echo-specific configurations
+        server.WithEchoConfigurer(func(e *echo.Echo) {
+            // Set custom error handler
+            e.HTTPErrorHandler = customErrorHandler
 
-        // Other Echo configurations
-        e.Debug = true
-        e.Validator = myCustomValidator
+            // Other Echo configurations
+            e.Debug = true
+            e.Validator = myCustomValidator
+        }),
+    )
+    if err != nil {
+        log.Fatalf("invalid server config: %v", err)
     }
 
     // Start the server
-    if err := server.StartWithConfig(config); err != nil {
-        log.Fatal().Err(err).Msg("server failed")
+    if err := srv.Start(); err != nil {
+        log.Fatalf("server failed: %v", err)
     }
 }
 ```
 
 ## Examples
 
-For complete, runnable examples, see the [examples directory](../examples/server/).
+For complete, runnable examples, see the [examples/server directory](../examples/server/).
 
 The examples demonstrate:
 - Basic server setup
@@ -415,10 +571,9 @@ The examples demonstrate:
 - Health check implementations
 - Graceful shutdown patterns
 
-Run the examples:
+Run the examples from the repository root:
 ```bash
-cd examples
-go run -tags example example.go
+go run -tags=example ./examples/server
 ```
 
 ## Best Practices
@@ -437,8 +592,16 @@ shutdown := func(e *echo.Echo) {
     db.Close()
 }
 
-if err := server.Start(8080, operation, shutdown); err != nil {
-    log.Fatal().Err(err).Msg("server failed")
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+)
+if err != nil {
+    log.Fatalf("invalid server config: %v", err)
+}
+if err := srv.Start(); err != nil {
+    log.Fatalf("server failed: %v", err)
 }
 ```
 
@@ -449,8 +612,17 @@ if err := server.Start(8080, operation, shutdown); err != nil {
 authMiddleware := createAuthMiddleware()
 rateLimiter := middleware.RateLimiterWithConfig(...)
 
-if err := server.Start(8080, operation, shutdown, authMiddleware, rateLimiter); err != nil {
-    log.Fatal().Err(err).Msg("server failed")
+srv, err := server.New(
+    server.WithPort(8080),
+    server.WithOperation(operation),
+    server.WithShutdown(shutdown),
+    server.WithMiddleware(authMiddleware, rateLimiter),
+)
+if err != nil {
+    log.Fatalf("invalid server config: %v", err)
+}
+if err := srv.Start(); err != nil {
+    log.Fatalf("server failed: %v", err)
 }
 ```
 
@@ -475,14 +647,25 @@ operation := func(e *echo.Echo) {
 
 ### Functions
 
-#### `Start(port int, operation Operation, shutdown Shutdown, middleware ...echo.MiddlewareFunc) error`
-Starts the HTTP server with simplified configuration. Returns an error if the server fails to start or shut down.
+#### `New(opts ...Option) (*Server, error)`
+Creates a server from functional options (`WithPort`, `WithOperation`, `WithShutdown`, `WithMiddleware`, `WithShutdownTimeout`, `WithEchoConfigurer`, `WithOTelConfig`). Validates the configuration (port must be 0-65535) and prepares the Echo instance without binding or serving.
 
-#### `StartWithConfig(config Config) error`
-Starts the HTTP server with the given configuration. Returns an error if the server fails to start or shut down.
+#### `NewConfig(opts ...Option) Config`
+Builds a `Config` from functional options with sensible defaults (10s shutdown timeout).
 
-#### `DefaultConfig(port int, operation Operation, shutdown Shutdown) Config`
-Returns a default server configuration.
+### Methods
+
+#### `(s *Server) Start() error`
+Runs the `Operation` callback first, then binds the listener and serves, blocking until `Shutdown` is called or serving fails. Because `Operation` runs before binding, `Addr()` returns `""` inside `Operation` — with `Port: 0` the OS-assigned port is only known after binding. Returns `nil` on a clean shutdown (`http.ErrServerClosed` is filtered). Calling `Start` while already running returns an error. A stopped `Server` cannot be restarted — `Start` returns an error; create a new one with `New`.
+
+#### `(s *Server) Shutdown(ctx context.Context) error`
+Invokes the `Shutdown` callback and drains the Echo server, honoring `ShutdownTimeout` on top of the caller's context (whichever deadline is earlier). Idempotent: the callback and drain run exactly once.
+
+#### `(s *Server) Addr() string`
+Returns the bound listener address (e.g. `[::]:8080`), or `""` before the server is listening (and after shutdown). This is how callers discover the OS-assigned port when using `Port: 0`.
+
+#### `(s *Server) Echo() *echo.Echo`
+Returns the underlying Echo instance for route registration or customization before `Start`.
 
 ### Types
 
@@ -503,10 +686,10 @@ Function to configure the Echo instance directly.
 - Check for panics in route handlers
 
 ### Graceful shutdown timeout
-- Increase `ShutdownTimeout` in config
+- Increase `ShutdownTimeout` via `WithShutdownTimeout`
 - Check for long-running operations in handlers
-- Ensure Shutdown function completes quickly
+- Ensure the Shutdown function completes quickly
 
 ## License
 
-This package is part of github.com/jasoet/pkg and follows the repository's license.
+This package is part of github.com/jasoet/pkg/v3 and follows the repository's license.

@@ -1,0 +1,97 @@
+package docker
+
+import (
+	"context"
+	"fmt"
+	"io"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
+)
+
+// ContainerState is a snapshot of a container's runtime state,
+// projected from ContainerInspect into a library-owned type.
+type ContainerState struct {
+	Running      bool
+	HealthStatus string              // "" when no healthcheck is defined
+	Ports        map[string][]string // containerPort ("80/tcp") → hostPorts
+}
+
+// ContainerTarget is the runtime surface a WaitStrategy can inspect.
+// It wraps the Docker client and container ID internally so that
+// strategies never need to import the docker client.
+//
+// A ContainerTarget is only usable when constructed by the Executor
+// (as passed to WaitStrategy.WaitUntilReady). The zero value holds a nil client
+// and will panic on Logs and State.
+type ContainerTarget struct {
+	cli         *client.Client
+	containerID string
+}
+
+// newContainerTarget constructs a ContainerTarget for the given container.
+func newContainerTarget(cli *client.Client, containerID string) ContainerTarget {
+	return ContainerTarget{cli: cli, containerID: containerID}
+}
+
+// ID returns the container ID.
+func (t ContainerTarget) ID() string {
+	return t.containerID
+}
+
+// Host returns a reachable host for the container's published ports, derived
+// from the Docker daemon host. It is "localhost" for local transports (unix,
+// npipe) and the daemon hostname for remote transports (tcp://, ssh://), so
+// port/HTTP wait strategies probe the correct address against a remote daemon.
+func (t ContainerTarget) Host() string {
+	if t.cli == nil {
+		return defaultHost
+	}
+	return deriveHost(t.cli.DaemonHost())
+}
+
+// Logs streams the container's stdout and stderr (follow mode).
+// The caller is responsible for closing the returned reader.
+func (t ContainerTarget) Logs(ctx context.Context) (io.ReadCloser, error) {
+	return t.cli.ContainerLogs(ctx, t.containerID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+		Timestamps: false,
+	})
+}
+
+// State inspects the container and projects the result into a ContainerState.
+//
+// A nil inspect.State is treated as an error: it indicates an abnormal
+// inspect response, and strategies polling for Running/HealthStatus would
+// otherwise spin on a meaningless zero state until timeout. A nil
+// NetworkSettings is tolerated (e.g., containers without networking) and
+// yields an empty Ports map.
+func (t ContainerTarget) State(ctx context.Context) (ContainerState, error) {
+	inspect, err := t.cli.ContainerInspect(ctx, t.containerID)
+	if err != nil {
+		return ContainerState{}, fmt.Errorf("failed to inspect container: %w", err)
+	}
+	if inspect.State == nil {
+		return ContainerState{}, fmt.Errorf("container %s: inspect returned no state", t.containerID)
+	}
+
+	state := ContainerState{
+		Running: inspect.State.Running,
+		Ports:   make(map[string][]string),
+	}
+	if inspect.State.Health != nil {
+		state.HealthStatus = inspect.State.Health.Status
+	}
+	if inspect.NetworkSettings != nil {
+		for containerPort, bindings := range inspect.NetworkSettings.Ports {
+			hostPorts := make([]string, 0, len(bindings))
+			for _, binding := range bindings {
+				hostPorts = append(hostPorts, binding.HostPort)
+			}
+			state.Ports[string(containerPort)] = hostPorts
+		}
+	}
+	return state, nil
+}

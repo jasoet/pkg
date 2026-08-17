@@ -3,7 +3,9 @@ package otel
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -12,24 +14,32 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
-
-	"github.com/jasoet/pkg/v2/logging"
 )
 
-// LogLevel is an alias for logging.LogLevel for convenience.
-// Use logging.LogLevel constants directly (logging.LogLevelDebug, etc.)
-type LogLevel = logging.LogLevel
+// LogLevel represents the logging level for the console/OTel log pipeline.
+// Trace and Fatal levels are intentionally excluded: Trace is not supported by zerolog natively,
+// and Fatal triggers os.Exit which is unsuitable for library use.
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
+	LogLevelNone  LogLevel = "none"
+)
 
 // LoggerProviderOption configures LoggerProvider behavior
 type LoggerProviderOption func(*loggerProviderConfig)
 
 // loggerProviderConfig holds configuration for logger provider
 type loggerProviderConfig struct {
-	serviceName   string
-	consoleOutput bool
-	otlpEndpoint  string
-	otlpInsecure  bool
-	logLevel      LogLevel
+	serviceName     string
+	consoleOutput   bool
+	otlpEndpoint    string
+	otlpInsecure    bool
+	otlpEndpointSet bool // true once WithOTLPEndpoint has been applied
+	logLevel        LogLevel
 }
 
 // WithConsoleOutput enables console logging alongside OTLP
@@ -39,16 +49,24 @@ func WithConsoleOutput(enabled bool) LoggerProviderOption {
 	}
 }
 
-// WithOTLPEndpoint enables OTLP log export.
-// The endpoint format depends on the exporter protocol:
-//   - HTTP (otlploghttp): full URL, e.g. "https://collector.example.com:4318"
-//   - gRPC (otlploggrpc): host:port without scheme, e.g. "collector.example.com:4317"
+// WithOTLPEndpoint enables OTLP log export to the given endpoint.
 //
-// This package uses otlploghttp, so provide a full URL with scheme.
+// The endpoint may be provided in either form:
+//   - A full URL with scheme, e.g. "https://collector.example.com:4318".
+//     The scheme selects http/https and the path (if any) is honored.
+//   - A bare host:port without scheme, e.g. "collector.example.com:4318".
+//     The default OTLP logs path ("/v1/logs") is used.
+//
+// The insecure flag forces plaintext HTTP; it is redundant with (and overrides)
+// an "http://" scheme.
+//
+// Supplying an empty endpoint is treated as a configuration error by
+// NewLoggerProviderWithOptions rather than silently disabling OTLP export.
 func WithOTLPEndpoint(endpoint string, insecure bool) LoggerProviderOption {
 	return func(cfg *loggerProviderConfig) {
 		cfg.otlpEndpoint = endpoint
 		cfg.otlpInsecure = insecure
+		cfg.otlpEndpointSet = true
 	}
 }
 
@@ -80,7 +98,7 @@ func WithLogLevel(level LogLevel) LoggerProviderOption {
 // Example:
 //
 //	provider, err := otel.NewLoggerProviderWithOptions("my-service",
-//	    otel.WithLogLevel(logging.LogLevelDebug),
+//	    otel.WithLogLevel(otel.LogLevelDebug),
 //	    otel.WithOTLPEndpoint("https://localhost:4318", true),
 //	    otel.WithConsoleOutput(true))
 func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOption) (log.LoggerProvider, error) {
@@ -93,9 +111,13 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 		opt(cfg)
 	}
 
+	if cfg.otlpEndpointSet && cfg.otlpEndpoint == "" {
+		return nil, fmt.Errorf("otel: WithOTLPEndpoint enabled with an empty endpoint")
+	}
+
 	effectiveLevel := cfg.logLevel
 	if effectiveLevel == "" {
-		effectiveLevel = logging.LogLevelInfo
+		effectiveLevel = LogLevelInfo
 	}
 
 	ctx := context.Background()
@@ -117,8 +139,22 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 	}
 
 	if cfg.otlpEndpoint != "" {
-		exporterOpts := []otlploghttp.Option{
-			otlploghttp.WithEndpoint(cfg.otlpEndpoint),
+		var exporterOpts []otlploghttp.Option
+		if strings.Contains(cfg.otlpEndpoint, "://") {
+			// URL-shaped endpoint: honor scheme, host, and path. Passing this
+			// to WithEndpoint (host:port only) would embed the scheme in the
+			// host and silently break every export.
+			exporterOpts = append(exporterOpts, otlploghttp.WithEndpointURL(cfg.otlpEndpoint))
+			// WithEndpointURL uses the URL path verbatim; for a bare base URL
+			// (no path) it would POST to "/". Fall back to the standard OTLP
+			// logs path so "https://collector:4318" targets "/v1/logs".
+			if u, perr := url.Parse(cfg.otlpEndpoint); perr != nil || u.Path == "" || u.Path == "/" {
+				exporterOpts = append(exporterOpts, otlploghttp.WithURLPath("/v1/logs"))
+			}
+		} else {
+			// Bare host:port endpoint; WithEndpoint applies the default
+			// "/v1/logs" path automatically.
+			exporterOpts = append(exporterOpts, otlploghttp.WithEndpoint(cfg.otlpEndpoint))
 		}
 		if cfg.otlpInsecure {
 			exporterOpts = append(exporterOpts, otlploghttp.WithInsecure())
@@ -132,10 +168,10 @@ func NewLoggerProviderWithOptions(serviceName string, opts ...LoggerProviderOpti
 		processors = append(processors, sdklog.NewBatchProcessor(otlpExporter))
 	}
 
-	if len(processors) == 0 {
-		consoleExporter := newConsoleExporter(serviceName, effectiveLevel)
-		processors = append(processors, sdklog.NewSimpleProcessor(consoleExporter))
-	}
+	// When console output is explicitly disabled and no OTLP endpoint is set,
+	// the provider intentionally has no processors (a silent provider). We do
+	// not re-add a console exporter, which would contradict the explicit
+	// WithConsoleOutput(false).
 
 	providerOpts := []sdklog.LoggerProviderOption{
 		sdklog.WithResource(res),
@@ -227,15 +263,15 @@ func (e *consoleExporter) ForceFlush(ctx context.Context) error {
 // logLevelToZerolog converts LogLevel to zerolog.Level
 func logLevelToZerolog(level LogLevel) zerolog.Level {
 	switch level {
-	case logging.LogLevelDebug:
+	case LogLevelDebug:
 		return zerolog.DebugLevel
-	case logging.LogLevelInfo:
+	case LogLevelInfo:
 		return zerolog.InfoLevel
-	case logging.LogLevelWarn:
+	case LogLevelWarn:
 		return zerolog.WarnLevel
-	case logging.LogLevelError:
+	case LogLevelError:
 		return zerolog.ErrorLevel
-	case logging.LogLevelNone:
+	case LogLevelNone:
 		return zerolog.Disabled
 	default:
 		return zerolog.InfoLevel

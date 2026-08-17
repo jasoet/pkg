@@ -16,8 +16,8 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/jasoet/pkg/v2/logging"
-	"github.com/jasoet/pkg/v2/temporal/testcontainer"
+	"github.com/jasoet/pkg/v3/otel"
+	"github.com/jasoet/pkg/v3/temporal/testcontainer"
 )
 
 // E2E Test workflows and activities
@@ -256,7 +256,7 @@ type OrderResult struct {
 // E2E Integration Tests
 func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	// Initialize logging for integration tests
-	err := logging.Initialize("temporal-integration-test", true)
+	err := otel.Initialize("temporal-integration-test", true)
 	require.NoError(t, err, "Failed to initialize logging")
 
 	ctx := context.Background()
@@ -274,11 +274,15 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 	config := DefaultConfig()
 	config.HostPort = container.HostPort()
 
+	temporalClient, err := NewClient(WithConfig(*config))
+	require.NoError(t, err, "Failed to create Temporal client")
+	defer temporalClient.Close()
+
 	// wm is intentionally shared across subtests in this e2e suite. Each subtest
 	// registers its own task queue so there is no cross-subtest worker conflict.
-	wm, err := NewWorkerManager(config)
+	wm, err := NewWorkerManager(temporalClient)
 	require.NoError(t, err, "Failed to create WorkerManager")
-	defer wm.Close()
+	defer wm.Close(ctx)
 
 	taskQueue := "e2e-order-processing"
 
@@ -446,20 +450,24 @@ func TestE2EOrderProcessingWorkflow(t *testing.T) {
 			err := workflowRun.Get(workflowCtx, &result)
 			workflowCancel()
 
+			require.NoError(t, err, "parallel workflow %d must complete without error", i)
+			assert.Equal(t, "completed", result.Status, "parallel workflow %d must reach completed status", i)
 			if err == nil && result.Status == "completed" {
 				completedCount++
 				t.Logf("Parallel workflow %d completed successfully", i)
-			} else {
-				t.Logf("Parallel workflow %d failed: %v", i, err)
 			}
 		}
+
+		// Every started workflow must have completed; otherwise the subtest
+		// would previously have passed even if all 5 failed.
+		assert.Equal(t, orderCount, completedCount, "all parallel workflows must complete")
 
 		w.Stop()
 	})
 }
 
 func TestE2ETemporalIntegration(t *testing.T) {
-	err := logging.Initialize("temporal-full-integration", true)
+	err := otel.Initialize("temporal-full-integration", true)
 	require.NoError(t, err, "Failed to initialize logging")
 
 	ctx := context.Background()
@@ -481,14 +489,14 @@ func TestE2ETemporalIntegration(t *testing.T) {
 		// Test the full Temporal stack integration
 
 		// 1. Create client
-		temporalClient, err := NewClient(config)
+		temporalClient, err := NewClient(WithConfig(*config))
 		require.NoError(t, err, "Failed to create Temporal client")
 		defer temporalClient.Close()
 
 		// 2. Create worker manager
-		wm, err := NewWorkerManager(config)
+		wm, err := NewWorkerManager(temporalClient)
 		require.NoError(t, err, "Failed to create WorkerManager")
-		defer wm.Close()
+		defer wm.Close(ctx)
 
 		// 3. Create schedule manager
 		sm, err := NewScheduleManager(temporalClient)

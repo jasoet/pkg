@@ -2,16 +2,21 @@ package argo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/argoproj/argo-workflows/v3/pkg/apiclient"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
+
+// ErrNilConfig is returned by NewClient when the provided *Config is nil.
+var ErrNilConfig = errors.New("argo: config must not be nil")
 
 // NewClient creates a new Argo Workflows client from the given configuration.
 // It returns the updated context and client, or an error if the connection fails.
@@ -26,7 +31,6 @@ import (
 //	if err != nil {
 //	    return err
 //	}
-//	defer client.Close()
 //
 // Example (in-cluster):
 //
@@ -36,8 +40,18 @@ import (
 //
 //	cfg := argo.ServerConfig("https://argo-server:2746", "Bearer token")
 //	ctx, client, err := argo.NewClient(ctx, cfg)
+//
+// When config.OTelConfig is set, the returned context carries it (via
+// otel.ContextWithConfig), so package operations resolve instrumentation
+// automatically through otel.ConfigFromContext.
 func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.Client, error) {
-	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.NewClient")
+	// Guard against a nil config before dereferencing any of its fields, which would
+	// otherwise panic.
+	if config == nil {
+		return nil, nil, ErrNilConfig
+	}
+
+	logger := otel.NewLogHelper(ctx, config.OTelConfig, "github.com/jasoet/pkg/v3/argo", "argo.NewClient")
 
 	logger.Debug("Creating Argo Workflows client",
 		otel.F("inCluster", config.InCluster),
@@ -81,6 +95,13 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 	}
 
 	logger.Debug("Successfully created Argo Workflows client")
+
+	// Propagate the configured OTel config through the returned context so
+	// operations can resolve it via otel.ConfigFromContext.
+	if config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, config.OTelConfig)
+	}
+
 	return ctx, client, nil
 }
 
@@ -97,9 +118,7 @@ func NewClient(ctx context.Context, config *Config) (context.Context, apiclient.
 func NewClientWithOptions(ctx context.Context, opts ...Option) (context.Context, apiclient.Client, error) {
 	config := DefaultConfig()
 	for _, opt := range opts {
-		if err := opt(config); err != nil {
-			return nil, nil, fmt.Errorf("failed to apply option: %w", err)
-		}
+		opt(config)
 	}
 	return NewClient(ctx, config)
 }
@@ -112,7 +131,7 @@ func NewClientWithOptions(ctx context.Context, opts ...Option) (context.Context,
 func buildClientConfig(config *Config) clientcmd.ClientConfig {
 	// Note: context.Background() used here since we don't have access to the actual context
 	// This is acceptable as buildClientConfig is called from within NewClient which has the context
-	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v2/argo", "argo.buildClientConfig")
+	logger := otel.NewLogHelper(context.Background(), config.OTelConfig, "github.com/jasoet/pkg/v3/argo", "argo.buildClientConfig")
 
 	// For in-cluster mode, use in-cluster config
 	if config.InCluster {
@@ -145,15 +164,22 @@ func buildClientConfig(config *Config) clientcmd.ClientConfig {
 	)
 }
 
+// serviceAccountNamespaceFile is the standard location of the namespace file
+// mounted into Kubernetes pods.
+const serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
 // inClusterClientConfig implements clientcmd.ClientConfig for in-cluster usage.
-type inClusterClientConfig struct{}
+type inClusterClientConfig struct {
+	// namespaceFile overrides the service account namespace file location (test hook).
+	namespaceFile string
+}
 
 func (c *inClusterClientConfig) RawConfig() (clientcmdapi.Config, error) {
 	return clientcmdapi.Config{}, fmt.Errorf("RawConfig not supported for in-cluster config")
 }
 
 func (c *inClusterClientConfig) ClientConfig() (*rest.Config, error) {
-	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v2/argo", "inClusterClientConfig.ClientConfig")
+	logger := otel.NewLogHelper(context.Background(), nil, "github.com/jasoet/pkg/v3/argo", "inClusterClientConfig.ClientConfig")
 	logger.Debug("Loading in-cluster config")
 
 	config, err := rest.InClusterConfig()
@@ -168,11 +194,15 @@ func (c *inClusterClientConfig) ClientConfig() (*rest.Config, error) {
 
 func (c *inClusterClientConfig) Namespace() (string, bool, error) {
 	// Read namespace from the same location that Kubernetes uses
-	namespaceBytes, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	path := c.namespaceFile
+	if path == "" {
+		path = serviceAccountNamespaceFile
+	}
+	namespaceBytes, err := os.ReadFile(path)
 	if err != nil {
 		return "default", false, err
 	}
-	return string(namespaceBytes), true, nil
+	return strings.TrimSpace(string(namespaceBytes)), true, nil
 }
 
 func (c *inClusterClientConfig) ConfigAccess() clientcmd.ConfigAccess {

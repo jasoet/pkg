@@ -1,20 +1,38 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/stdcopy"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// stopTimeoutSeconds converts a stop/restart timeout into whole seconds for the
+// Docker API, rounding any positive sub-second duration up to 1s so a small
+// timeout never truncates to 0 (which Docker interprets as an immediate SIGKILL).
+func stopTimeoutSeconds(d time.Duration) int {
+	if d <= 0 {
+		return 0
+	}
+	secs := int(d / time.Second)
+	if d%time.Second != 0 {
+		secs++
+	}
+	return secs
+}
 
 // Executor manages a Docker container lifecycle.
 type Executor struct {
@@ -124,12 +142,14 @@ func (e *Executor) Start(ctx context.Context) error {
 		var span trace.Span
 		ctx, span = e.otel.startSpan(ctx, "docker.Start")
 		defer span.End()
+		e.otel.addSpanAttributes(ctx, attribute.String("docker.image", e.config.image))
 	}
 
 	// Pull image
 	if err := e.pullImage(ctx); err != nil {
 		if e.otel != nil {
 			e.otel.recordError(ctx, "pull_image_error", err)
+			e.otel.setSpanStatus(ctx, 1, "failed to pull image")
 		}
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
@@ -139,6 +159,7 @@ func (e *Executor) Start(ctx context.Context) error {
 	if err != nil {
 		if e.otel != nil {
 			e.otel.recordError(ctx, "create_container_error", err)
+			e.otel.setSpanStatus(ctx, 1, "failed to create container")
 		}
 		return fmt.Errorf("failed to create container: %w", err)
 	}
@@ -148,23 +169,33 @@ func (e *Executor) Start(ctx context.Context) error {
 	if err := e.client.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		if e.otel != nil {
 			e.otel.recordError(ctx, "start_container_error", err)
+			e.otel.setSpanStatus(ctx, 1, "failed to start container")
 		}
+		// The container was created but never started: remove it and clear the
+		// ID so the executor is reusable and no dangling container is leaked.
+		// Use a detached context so a canceled caller ctx still allows cleanup.
+		_ = e.terminate(context.WithoutCancel(ctx)) //nolint:errcheck // best effort cleanup
+		e.containerID = ""                          // reset unconditionally so a failed removal cannot wedge the executor
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	// Wait for readiness if strategy is configured
 	if e.config.waitStrategy != nil {
-		if err := e.config.waitStrategy.WaitUntilReady(ctx, e.client, containerID); err != nil {
+		if err := e.config.waitStrategy.WaitUntilReady(ctx, newContainerTarget(e.client, containerID)); err != nil {
 			if e.otel != nil {
 				e.otel.recordError(ctx, "wait_strategy_error", err)
+				e.otel.setSpanStatus(ctx, 1, "container failed to become ready")
 			}
-			// Container failed to become ready, clean up
-			_ = e.terminate(ctx) //nolint:errcheck // Best effort cleanup, original error is more important
+			// Container failed to become ready, clean up. Use a detached context so
+			// a canceled/expired caller ctx cannot leave the container running.
+			_ = e.terminate(context.WithoutCancel(ctx)) //nolint:errcheck // Best effort cleanup, original error is more important
 			return fmt.Errorf("container failed to become ready: %w", err)
 		}
 	}
 
 	if e.otel != nil {
+		e.otel.addSpanAttributes(ctx, attribute.String("docker.container.id", containerID))
+		e.otel.setSpanStatus(ctx, 0, "container started")
 		e.otel.incrementCounter(ctx, "containers_started", 1)
 	}
 
@@ -177,9 +208,13 @@ func (e *Executor) Start(ctx context.Context) error {
 // Concurrent Terminate() may cause a benign "container not found" error.
 func (e *Executor) Stop(ctx context.Context) error {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return fmt.Errorf("container not started")
 	}
@@ -191,19 +226,21 @@ func (e *Executor) Stop(ctx context.Context) error {
 		defer span.End()
 	}
 
-	timeout := int(e.config.timeout.Seconds())
+	timeout := stopTimeoutSeconds(e.config.timeout)
 	stopOptions := container.StopOptions{
 		Timeout: &timeout,
 	}
 
-	if err := e.client.ContainerStop(ctx, containerID, stopOptions); err != nil {
+	if err := cli.ContainerStop(ctx, containerID, stopOptions); err != nil {
 		if e.otel != nil {
 			e.otel.recordError(ctx, "stop_container_error", err)
+			e.otel.setSpanStatus(ctx, 1, "failed to stop container")
 		}
 		return fmt.Errorf("failed to stop container: %w", err)
 	}
 
 	if e.otel != nil {
+		e.otel.setSpanStatus(ctx, 0, "container stopped")
 		e.otel.incrementCounter(ctx, "containers_stopped", 1)
 	}
 
@@ -221,6 +258,9 @@ func (e *Executor) Terminate(ctx context.Context) error {
 
 // terminate is the internal implementation of Terminate (without locking).
 func (e *Executor) terminate(ctx context.Context) error {
+	if e.client == nil {
+		return fmt.Errorf("executor is closed")
+	}
 	if e.containerID == "" {
 		return fmt.Errorf("container not started")
 	}
@@ -238,14 +278,19 @@ func (e *Executor) terminate(ctx context.Context) error {
 		RemoveVolumes: true,
 	}
 
-	if err := e.client.ContainerRemove(ctx, e.containerID, removeOptions); err != nil {
+	// A container that is already gone (e.g. AutoRemove removed it on exit, or a
+	// concurrent Terminate won the race) is treated as success: the desired
+	// end-state — no such container — has been reached.
+	if err := e.client.ContainerRemove(ctx, e.containerID, removeOptions); err != nil && !cerrdefs.IsNotFound(err) {
 		if e.otel != nil {
 			e.otel.recordError(ctx, "terminate_container_error", err)
+			e.otel.setSpanStatus(ctx, 1, "failed to remove container")
 		}
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
 
 	if e.otel != nil {
+		e.otel.setSpanStatus(ctx, 0, "container terminated")
 		e.otel.incrementCounter(ctx, "containers_terminated", 1)
 	}
 
@@ -258,9 +303,13 @@ func (e *Executor) terminate(ctx context.Context) error {
 // Concurrent Terminate() may cause a benign "container not found" error.
 func (e *Executor) Restart(ctx context.Context) error {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return fmt.Errorf("container not started")
 	}
@@ -272,19 +321,21 @@ func (e *Executor) Restart(ctx context.Context) error {
 		defer span.End()
 	}
 
-	timeout := int(e.config.timeout.Seconds())
+	timeout := stopTimeoutSeconds(e.config.timeout)
 	restartOptions := container.StopOptions{
 		Timeout: &timeout,
 	}
 
-	if err := e.client.ContainerRestart(ctx, containerID, restartOptions); err != nil {
+	if err := cli.ContainerRestart(ctx, containerID, restartOptions); err != nil {
 		if e.otel != nil {
 			e.otel.recordError(ctx, "restart_container_error", err)
+			e.otel.setSpanStatus(ctx, 1, "failed to restart container")
 		}
 		return fmt.Errorf("failed to restart container: %w", err)
 	}
 
 	if e.otel != nil {
+		e.otel.setSpanStatus(ctx, 0, "container restarted")
 		e.otel.incrementCounter(ctx, "containers_restarted", 1)
 	}
 
@@ -294,9 +345,14 @@ func (e *Executor) Restart(ctx context.Context) error {
 // Wait blocks until the container stops and returns its exit code.
 func (e *Executor) Wait(ctx context.Context) (int64, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
+	autoRemove := e.config.autoRemove
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return 0, fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return 0, fmt.Errorf("container not started")
 	}
@@ -308,7 +364,15 @@ func (e *Executor) Wait(ctx context.Context) (int64, error) {
 		defer span.End()
 	}
 
-	statusCh, errCh := e.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
+	// With AutoRemove the daemon deletes the container as soon as it stops, which
+	// races WaitConditionNotRunning and yields a spurious "No such container".
+	// Waiting for removal instead observes the exit code before the container vanishes.
+	condition := container.WaitConditionNotRunning
+	if autoRemove {
+		condition = container.WaitConditionRemoved
+	}
+
+	statusCh, errCh := cli.ContainerWait(ctx, containerID, condition)
 	select {
 	case err := <-errCh:
 		if e.otel != nil {
@@ -361,9 +425,15 @@ func (e *Executor) pullImage(ctx context.Context) error {
 	}
 	defer func() { _ = reader.Close() }()
 
-	// Consume output to ensure pull completes
-	_, err = io.Copy(io.Discard, reader)
-	return err
+	// Docker streams pull progress as newline-delimited JSON on a 200 response and
+	// reports failures (auth, missing manifest, etc.) as an "errorDetail" message
+	// inside that stream rather than via the initial error. Decoding the stream
+	// surfaces those in-band errors instead of silently discarding them, which
+	// would otherwise only manifest later as a confusing "No such image".
+	if err := jsonmessage.DisplayJSONMessagesStream(reader, io.Discard, 0, false, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 // createContainer creates the container with configured options.
@@ -435,9 +505,13 @@ func (e *Executor) createContainer(ctx context.Context) (string, error) {
 // Use LogOptions for more control.
 func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) {
 	e.mu.RLock()
+	cli := e.client
 	containerID := e.containerID
 	e.mu.RUnlock()
 
+	if cli == nil {
+		return "", fmt.Errorf("executor is closed")
+	}
 	if containerID == "" {
 		return "", fmt.Errorf("container not started")
 	}
@@ -457,7 +531,7 @@ func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) 
 		Until:      logOpts.until,
 	}
 
-	logs, err := e.client.ContainerLogs(ctx, containerID, options)
+	logs, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
 		return "", fmt.Errorf("failed to get logs: %w", err)
 	}
@@ -473,9 +547,66 @@ func (e *Executor) Logs(ctx context.Context, opts ...LogOption) (string, error) 
 	return buf.String(), nil
 }
 
+// logChanWriter is an io.Writer that turns Docker's demultiplexed log bytes into
+// line-oriented LogEntry values on a channel. It buffers partial lines across
+// writes and emits one entry per complete line. Sends respect ctx cancellation so
+// an abandoned consumer cannot wedge the writer.
+type logChanWriter struct {
+	ctx    context.Context
+	ch     chan<- LogEntry
+	stream string
+	buf    bytes.Buffer
+}
+
+func (w *logChanWriter) Write(p []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	w.buf.Write(p)
+	for {
+		line, err := w.buf.ReadString('\n')
+		if err != nil {
+			// No newline yet: retain the partial line for the next write.
+			w.buf.Reset()
+			w.buf.WriteString(line)
+			break
+		}
+		if err := w.emit(strings.TrimRight(line, "\n")); err != nil {
+			return 0, err
+		}
+	}
+	return len(p), nil
+}
+
+// flush emits any buffered trailing content that was not newline-terminated.
+func (w *logChanWriter) flush() {
+	if w.buf.Len() == 0 {
+		return
+	}
+	_ = w.emit(strings.TrimRight(w.buf.String(), "\n"))
+	w.buf.Reset()
+}
+
+func (w *logChanWriter) emit(content string) error {
+	select {
+	case w.ch <- LogEntry{Stream: w.stream, Content: content}:
+		return nil
+	case <-w.ctx.Done():
+		return w.ctx.Err()
+	}
+}
+
 // StreamLogs streams container logs to a channel.
-// The channel is closed when streaming completes or context is canceled.
-// Docker multiplexed stream headers are parsed to correctly identify stdout vs stderr.
+//
+// The context MUST be cancelable: streaming (especially with WithFollow) blocks
+// until the container's log stream ends or ctx is canceled. Cancel ctx when done
+// to release the background goroutine and underlying connection; abandoning the
+// returned channels without canceling ctx leaks both. The error channel is
+// buffered and closed alongside the log channel, so it is safe to ignore.
+//
+// Docker's multiplexed stream is demultiplexed with stdcopy, so stdout and stderr
+// frames are labeled correctly and malformed frame sizes cannot trigger huge
+// allocations.
 func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan LogEntry, <-chan error) {
 	logCh := make(chan LogEntry, 100)
 	errCh := make(chan error, 1)
@@ -485,9 +616,14 @@ func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan Lo
 		defer close(errCh)
 
 		e.mu.RLock()
+		cli := e.client
 		containerID := e.containerID
 		e.mu.RUnlock()
 
+		if cli == nil {
+			errCh <- fmt.Errorf("executor is closed")
+			return
+		}
 		if containerID == "" {
 			errCh <- fmt.Errorf("container not started")
 			return
@@ -508,55 +644,20 @@ func (e *Executor) StreamLogs(ctx context.Context, opts ...LogOption) (<-chan Lo
 			Until:      logOpts.until,
 		}
 
-		logs, err := e.client.ContainerLogs(ctx, containerID, options)
+		logs, err := cli.ContainerLogs(ctx, containerID, options)
 		if err != nil {
 			errCh <- fmt.Errorf("failed to get logs: %w", err)
 			return
 		}
 		defer func() { _ = logs.Close() }()
 
-		// Demux Docker multiplexed stream.
-		// Each frame has an 8-byte header: [stream_type, 0, 0, 0, size_be32...]
-		// stream_type: 1 = stdout, 2 = stderr
-		hdr := make([]byte, 8)
-		for {
-			_, err := io.ReadFull(logs, hdr)
-			if err != nil {
-				if err != io.EOF && err != io.ErrUnexpectedEOF && ctx.Err() == nil {
-					errCh <- fmt.Errorf("error reading log header: %w", err)
-				}
-				return
-			}
-
-			stream := "stdout"
-			if hdr[0] == 2 {
-				stream = "stderr"
-			}
-
-			// Frame payload size (big-endian uint32)
-			size := int(hdr[4])<<24 | int(hdr[5])<<16 | int(hdr[6])<<8 | int(hdr[7])
-			if size == 0 {
-				continue
-			}
-
-			payload := make([]byte, size)
-			_, err = io.ReadFull(logs, payload)
-			if err != nil {
-				if err != io.EOF && err != io.ErrUnexpectedEOF && ctx.Err() == nil {
-					errCh <- fmt.Errorf("error reading log payload: %w", err)
-				}
-				return
-			}
-
-			entry := LogEntry{
-				Stream:  stream,
-				Content: string(payload),
-			}
-			select {
-			case logCh <- entry:
-			case <-ctx.Done():
-				return
-			}
+		stdoutW := &logChanWriter{ctx: ctx, ch: logCh, stream: "stdout"}
+		stderrW := &logChanWriter{ctx: ctx, ch: logCh, stream: "stderr"}
+		_, err = stdcopy.StdCopy(stdoutW, stderrW, logs)
+		stdoutW.flush()
+		stderrW.flush()
+		if err != nil && ctx.Err() == nil {
+			errCh <- fmt.Errorf("error streaming logs: %w", err)
 		}
 	}()
 

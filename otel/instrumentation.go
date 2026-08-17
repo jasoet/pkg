@@ -25,7 +25,8 @@ import (
 //	        return span.Error(err, "failed to save data")
 //	    }
 //
-//	    return span.Success()
+//	    span.Success("work complete")
+//	    return nil
 //	}
 type SpanHelper struct {
 	ctx  context.Context
@@ -222,6 +223,8 @@ func (h *SpanHelper) Error(err error, message string) error {
 
 // Success marks the span as successful with an optional message.
 // This is optional but provides explicit success signaling.
+// Note: per the OTel specification, the status description is dropped for
+// codes.Ok, so the message is not retained on the span.
 //
 // Example:
 //
@@ -297,8 +300,14 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 	if len(fields) > 0 {
 		lc.Span.AddAttributes(fields...)
 	}
+	// The span must be touched exactly once. LogHelper.Error already records
+	// the exception and sets the error status on the active span (the same
+	// span as lc.Span, since the logger is derived from the span's context).
+	// Calling lc.Span.Error in addition would emit a second identical
+	// "exception" event and double-count the error in every backend.
 	if lc.Logger != nil {
 		lc.Logger.Error(err, msg, fields...)
+		return err
 	}
 	return lc.Span.Error(err, msg)
 }
@@ -306,7 +315,8 @@ func (lc *LayerContext) Error(err error, msg string, fields ...Field) error {
 // Success marks the operation as successful in both span and logs.
 // Base fields from StartX are automatically included in the log via the Logger.
 // Additional fields are also added as span attributes for correlation.
-// The message is used as the span status message for consistency with Error().
+// The span status is set to codes.Ok; per the OTel specification the status
+// description is dropped for Ok, so the message appears only in the log.
 //
 // Example:
 //
@@ -341,7 +351,8 @@ type LayeredSpanHelper struct{}
 //	    if err := h.service.Create(lc.Context(), req); err != nil {
 //	        return lc.Error(err, "failed to create event")
 //	    }
-//	    return lc.Success("Event created")
+//	    lc.Success("Event created")
+//	    return nil
 //	}
 func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "handler." + component
@@ -375,7 +386,8 @@ func (l *LayeredSpanHelper) StartHandler(ctx context.Context, component, operati
 //	    if err := s.repo.Update(lc.Context(), data); err != nil {
 //	        return lc.Error(err, "failed to update event")
 //	    }
-//	    return lc.Success("Event canceled")
+//	    lc.Success("Event canceled")
+//	    return nil
 //	}
 func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "service." + component
@@ -409,7 +421,8 @@ func (l *LayeredSpanHelper) StartService(ctx context.Context, component, operati
 //	    if err := o.service.Process(lc.Context()); err != nil {
 //	        return lc.Error(err, "failed to process queue")
 //	    }
-//	    return lc.Success("Queue processed")
+//	    lc.Success("Queue processed")
+//	    return nil
 //	}
 func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, operation string, fields ...Field) *LayerContext {
 	tracerName := "operations." + component
@@ -452,7 +465,8 @@ func (l *LayeredSpanHelper) StartOperations(ctx context.Context, component, oper
 //	        if err := next(c); err != nil {
 //	            return lc.Error(err, "request failed")
 //	        }
-//	        return lc.Success("Request processed successfully")
+//	        lc.Success("Request processed successfully")
+//	        return nil
 //	    }
 //	}
 func (l *LayeredSpanHelper) StartMiddleware(ctx context.Context, component, operation string, fields ...Field) *LayerContext {

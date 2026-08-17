@@ -1,6 +1,6 @@
 # Docker Executor
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v2/docker.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v2/docker)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jasoet/pkg/v3/docker.svg)](https://pkg.go.dev/github.com/jasoet/pkg/v3/docker)
 
 Simple, flexible Docker container executor inspired by testcontainers API. Run Docker containers with maximum configurability and easy log/status gathering.
 
@@ -14,19 +14,45 @@ The `docker` package provides production-ready Docker container management with 
 
 - **Dual API Design**: Choose between functional options or struct-based configuration
 - **Lifecycle Management**: Start, Stop, Restart, Terminate, Wait
-- **Wait Strategies**: Log patterns, port listening, HTTP health checks, custom functions
+- **Wait Strategies**: Log patterns, port listening, HTTP health checks, custom functions — all against a library-owned `ContainerTarget`, no Docker client import needed
 - **Log Streaming**: Real-time log access with filtering and following
 - **Status Monitoring**: Container state, health checks, resource stats
 - **Network Helpers**: Easy access to host, ports, endpoints
-- **OpenTelemetry v2**: Built-in observability with traces and metrics
-- **Production Ready**: 83.9% test coverage, zero lint issues
+- **OpenTelemetry**: Built-in observability with traces and metrics (v3 instrumentation)
 - **Simple & Powerful**: Easy for simple cases, flexible for complex scenarios
 
 ## Installation
 
 ```bash
-go get github.com/jasoet/pkg/v2/docker
+go get github.com/jasoet/pkg/v3/docker
 ```
+
+## Docker & Podman (Local and Remote Daemons)
+
+The executor talks to any Docker-API-compatible daemon through the standard Docker
+Go client, so it works with **Docker** and **Podman** interchangeably. The daemon
+is selected from the environment (`client.FromEnv`), primarily via `DOCKER_HOST`:
+
+```bash
+# Docker (default): unix socket, nothing to set
+# unix:///var/run/docker.sock
+
+# Podman (rootless) — point DOCKER_HOST at the Podman socket
+export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+# or, if you started the API service explicitly:
+#   podman system service --time=0 unix://$XDG_RUNTIME_DIR/podman/podman.sock &
+
+# Remote daemon over TCP or SSH (Docker or podman-remote)
+export DOCKER_HOST="tcp://192.168.1.10:2375"
+export DOCKER_HOST="ssh://user@remote-host"
+```
+
+`Host()`, `Endpoint()`, and `ConnectionString()` derive the reachable host from the
+daemon URL: local transports (`unix://`, `npipe://`) resolve to `localhost`, while
+remote transports (`tcp://`, `ssh://`) resolve to the daemon's hostname — so a
+published port is reachable at the address these helpers return even against a
+remote engine. TLS-verified remote daemons additionally honor `DOCKER_TLS_VERIFY`
+and `DOCKER_CERT_PATH`.
 
 ## Quick Start
 
@@ -37,7 +63,8 @@ package main
 
 import (
     "context"
-    "github.com/jasoet/pkg/v2/docker"
+
+    "github.com/jasoet/pkg/v3/docker"
 )
 
 func main() {
@@ -57,6 +84,7 @@ func main() {
     // Get endpoint
     endpoint, _ := exec.Endpoint(ctx, "80/tcp")
     // Use: http://localhost:8080
+    _ = endpoint
 }
 ```
 
@@ -67,8 +95,9 @@ package main
 
 import (
     "context"
-    "github.com/jasoet/pkg/v2/docker"
     "time"
+
+    "github.com/jasoet/pkg/v3/docker"
 )
 
 func main() {
@@ -76,12 +105,16 @@ func main() {
     req := docker.ContainerRequest{
         Image:        "postgres:18-alpine",
         ExposedPorts: []string{"5432/tcp"},
+        // Publish to an auto-assigned host port so Endpoint/ConnectionString work
+        PortBindings: map[string]string{"5432/tcp": ""},
         Env: map[string]string{
             "POSTGRES_PASSWORD": "secret",
             "POSTGRES_USER":     "testuser",
             "POSTGRES_DB":       "testdb",
         },
-        WaitingFor: docker.WaitForLog("ready to accept connections").
+        // Postgres logs "ready to accept connections" twice (init server, then
+        // the real one); "listening on IPv4" only appears once TCP is bound.
+        WaitingFor: docker.WaitForLog(`listening on IPv4`).
             WithStartupTimeout(60 * time.Second),
     }
 
@@ -91,15 +124,16 @@ func main() {
     exec.Start(ctx)
     defer exec.Terminate(ctx)
 
-    // Connection string helper
+    // Connection string helper — note the {{endpoint}} placeholder
     connStr, _ := exec.ConnectionString(ctx, "5432/tcp",
-        "postgres://testuser:secret@%s/testdb")
+        "postgres://testuser:secret@{{endpoint}}/testdb")
+    _ = connStr
 }
 ```
 
 ### Hybrid Style (Mix Both)
 
-You can combine both styles in two ways:
+`NewFromRequest(req, opts...)` is sugar over `New(WithRequest(req), opts...)`: it prepends the struct as the first option so that any additional options override or extend the struct fields.
 
 **1. Struct within options:**
 ```go
@@ -115,7 +149,7 @@ exec, _ := docker.New(
 )
 ```
 
-**2. Options after struct (NEW):**
+**2. Options after struct:**
 ```go
 req := docker.ContainerRequest{
     Image: "postgres:18-alpine",
@@ -284,12 +318,22 @@ docker.WithWaitStrategy(
 )
 
 docker.WithWaitStrategy(
-    docker.WaitForFunc(func(ctx context.Context, cli *client.Client, id string) error {
+    docker.WaitForFunc(func(ctx context.Context, target docker.ContainerTarget) error {
         // Custom readiness check
         return nil
     }),
 )
+
+// Combine several strategies (ALL must pass)
+docker.WithWaitStrategy(
+    docker.WaitForAll(
+        docker.WaitForPort("5432/tcp"),
+        docker.WaitForLog("ready to accept connections"),
+    ),
+)
 ```
+
+Every strategy exposes `WithStartupTimeout(d)` (default 60s; 120s for `WaitForAll`).
 
 ### Observability
 
@@ -297,6 +341,53 @@ docker.WithWaitStrategy(
 docker.WithOTelConfig(otelCfg)                // OpenTelemetry
 docker.WithTimeout(30 * time.Second)          // Operation timeout
 ```
+
+## Wait Strategies and ContainerTarget
+
+A wait strategy decides when a started container is *ready*; `Start` blocks until it passes (or its timeout fires, in which case the container is cleaned up and `Start` fails).
+
+The strategy contract is:
+
+```go
+type WaitStrategy interface {
+    WaitUntilReady(ctx context.Context, target ContainerTarget) error
+}
+```
+
+Strategies never touch the Docker client. Instead they receive a `ContainerTarget` — a library-owned, value-type view of the running container:
+
+```go
+target.ID()                  // container ID
+target.Logs(ctx)             // io.ReadCloser streaming stdout+stderr (follow mode)
+target.State(ctx)            // ContainerState{Running, HealthStatus, Ports}
+```
+
+`ContainerState` is projected from Docker inspect into plain Go types:
+
+```go
+type ContainerState struct {
+    Running      bool
+    HealthStatus string              // "" when no healthcheck is defined
+    Ports        map[string][]string // container port ("80/tcp") → host ports
+}
+```
+
+Custom strategies implement `WaitUntilReady` directly, or use `WaitForFunc` for one-off checks:
+
+```go
+docker.WaitForFunc(func(ctx context.Context, target docker.ContainerTarget) error {
+    state, err := target.State(ctx)
+    if err != nil {
+        return err
+    }
+    if !state.Running {
+        return fmt.Errorf("container %s not running", target.ID())
+    }
+    return nil
+})
+```
+
+A `ContainerTarget` is only usable when constructed by the Executor during `Start`; the zero value holds a nil client and will panic on `Logs` and `State`.
 
 ## Lifecycle Methods
 
@@ -343,6 +434,14 @@ exitCode, err := exec.Wait(ctx)
 // - Returns exit code
 ```
 
+### Close
+
+```go
+err := exec.Close()
+// - Closes the Docker client connection
+// - Does NOT terminate the container — call Terminate() first if needed
+```
+
 ## Logs
 
 ### Get All Logs
@@ -353,12 +452,29 @@ logs, err := exec.Logs(ctx)
 
 ### Stream Logs
 
+Use a **cancelable** context and cancel it when you stop reading — especially with
+`WithFollow()`, streaming blocks until the log stream ends or the context is
+canceled. Abandoning the channels without canceling `ctx` leaks the background
+goroutine and its connection. The error channel is buffered and closed alongside
+the log channel, so it is safe to drain or ignore.
+
 ```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel() // releases the streaming goroutine
+
 logCh, errCh := exec.StreamLogs(ctx, docker.WithFollow())
 for log := range logCh {
-    fmt.Println(log.Content)
+    fmt.Printf("[%s] %s\n", log.Stream, log.Content) // LogEntry{Stream, Content}
+}
+if err := <-errCh; err != nil {
+    fmt.Println("stream error:", err)
 }
 ```
+
+`LogEntry` carries the stream name (`stdout`/`stderr`) and the log line. Docker's
+multiplexed stream is demultiplexed with `stdcopy`, so `stdout` and `stderr` are
+labeled correctly. To get timestamps, enable `WithTimestamps()` — they are embedded
+as a prefix in `Content`.
 
 ### Follow Logs to Writer
 
@@ -437,8 +553,10 @@ stats, err := exec.GetStats(ctx)
 
 ```go
 err := exec.WaitForState(ctx, "running", 30*time.Second)
-err := exec.WaitForHealthy(ctx, 60*time.Second)
+err := exec.WaitHealthy(ctx, 60*time.Second)
 ```
+
+Note: the executor method is `WaitHealthy` (verb phrase); the wait *strategy* constructor remains `docker.WaitForHealthy()`.
 
 ## Network Helpers
 
@@ -446,7 +564,8 @@ err := exec.WaitForHealthy(ctx, 60*time.Second)
 
 ```go
 host, err := exec.Host(ctx)
-// Returns "localhost" for local Docker
+// "localhost" for a local daemon (unix/npipe socket);
+// the daemon hostname for a remote daemon (DOCKER_HOST=tcp://... or ssh://...).
 ```
 
 ### Get Mapped Port
@@ -494,9 +613,11 @@ ip, err := exec.GetIPAddress(ctx, "bridge")
 
 ```go
 connStr, err := exec.ConnectionString(ctx, "5432/tcp",
-    "postgres://user:pass@%s/db")
+    "postgres://user:pass@{{endpoint}}/db")
 // "postgres://user:pass@localhost:15432/db"
 ```
+
+The template placeholder is `{{endpoint}}`, substituted via plain string replacement — **not** a `fmt.Sprintf` verb. `%s` in the template is left untouched (and would break the DSN), and passwords containing `%` are safe.
 
 ## Use Cases
 
@@ -506,12 +627,13 @@ connStr, err := exec.ConnectionString(ctx, "5432/tcp",
 req := docker.ContainerRequest{
     Image: "postgres:18-alpine",
     ExposedPorts: []string{"5432/tcp"},
+    PortBindings: map[string]string{"5432/tcp": ""}, // auto-assigned host port
     Env: map[string]string{
         "POSTGRES_PASSWORD": "test",
         "POSTGRES_USER":     "test",
         "POSTGRES_DB":       "test",
     },
-    WaitingFor: docker.WaitForLog("ready to accept connections"),
+    WaitingFor: docker.WaitForLog(`listening on IPv4`), // see note below
 }
 
 exec, _ := docker.NewFromRequest(req)
@@ -521,6 +643,12 @@ defer exec.Terminate(ctx)
 endpoint, _ := exec.Endpoint(ctx, "5432/tcp")
 db, _ := sql.Open("postgres", "postgres://test:test@"+endpoint+"/test")
 ```
+
+> **Postgres wait pattern:** the official image logs `database system is ready
+> to accept connections` twice — first for the temporary init server (Unix
+> socket only), then for the real server. Waiting on that line can return
+> before TCP 5432 is bound. `listening on IPv4` appears only when the real
+> server binds TCP, so it is the safer pattern.
 
 ### Web Service Testing
 
@@ -641,11 +769,31 @@ docker.WithAutoRemove(true) // Clean up automatically
 
 ### 5. Handle Errors
 
+`Start` cleans up after itself: if the image pull, container start, or wait
+strategy fails, the container it created is removed before `Start` returns and the
+executor is left with no container. The returned error wraps the root cause
+(including the wait-strategy failure), so log it directly — calling `GetStderr` or
+`Status` afterwards only reports `container not started`.
+
 ```go
 if err := exec.Start(ctx); err != nil {
-    logs, _ := exec.GetStderr(ctx)
-    log.Fatalf("Failed to start: %v\nLogs: %s", err, logs)
+    log.Fatalf("failed to start container: %v", err)
 }
+```
+
+To inspect the logs of a container that fails its readiness check, start it
+*without* a wait strategy so `Start` does not auto-remove it, then read the logs
+while it is up:
+
+```go
+exec, _ := docker.New(docker.WithImage("myimage")) // no WithWaitStrategy
+if err := exec.Start(ctx); err != nil {
+    log.Fatalf("failed to start container: %v", err)
+}
+defer exec.Terminate(ctx)
+
+logs, _ := exec.GetStderr(ctx)
+log.Printf("container logs:\n%s", logs)
 ```
 
 ### 6. Use Context for Cancellation
@@ -672,11 +820,12 @@ if !running {
 
 ## OpenTelemetry Integration
 
-The docker package includes full OpenTelemetry v2 instrumentation for observability.
+The docker package includes full OpenTelemetry instrumentation for observability
+(instrumentation version `v3.0.0`, tracking the module major version).
 
 ```go
 import (
-    "github.com/jasoet/pkg/v2/otel"
+    "github.com/jasoet/pkg/v3/otel"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -690,11 +839,16 @@ otelCfg := &otel.Config{
     MeterProvider:  mp,
 }
 
-// Use with executor
+// Use with executor (functional option or struct field — both work)
 exec, _ := docker.New(
     docker.WithImage("nginx:latest"),
     docker.WithOTelConfig(otelCfg),
 )
+
+req := docker.ContainerRequest{
+    Image:      "nginx:latest",
+    OTelConfig: otelCfg, // excluded from yaml/mapstructure decoding
+}
 
 // Automatic instrumentation:
 // - Traces: docker.Start, docker.Stop, docker.Terminate, docker.Restart, docker.Wait
@@ -707,28 +861,52 @@ exec, _ := docker.New(
 // - Error tracking: Errors recorded in both traces and metrics with attributes
 ```
 
+## Migrating from v2
+
+Breaking changes in v3:
+
+- **Import path**: `github.com/jasoet/pkg/v3/docker` (was `/v2/docker`).
+- **`WaitStrategy` contract**: `WaitUntilReady(ctx, target ContainerTarget)` — strategies no longer receive the Docker `*client.Client` and container ID. Use `ContainerTarget.ID()`, `.Logs(ctx)`, and `.State(ctx)` instead. `WaitForFunc` signatures change accordingly.
+- **`Executor.WaitForHealthy` → `Executor.WaitHealthy`**: the method was renamed; the strategy constructor `docker.WaitForHealthy()` is unchanged.
+- **Removed helpers**: `NatPort`, `PortBindings`, and `ExposedPorts` (thin wrappers over `github.com/docker/go-connections/nat`) are gone; port strings like `"8080/tcp"` are parsed internally.
+- **`LogEntry.Timestamp` removed**: the field was never populated. Enable `WithTimestamps()` and read the prefix from `Content` instead.
+- **`ConnectionString` placeholder**: templates use `{{endpoint}}`, not `%s` (plain string replacement, safe for passwords containing `%`).
+
 ## Testing
 
-The package has comprehensive test coverage (83.9%) with both unit and integration tests.
+The package splits its tests in two: fast **unit tests** (pure configuration,
+host derivation, timeout rounding, closed-executor guards, OTel) that need no
+container runtime, and **integration tests** that spin up real containers and are
+gated behind the `integration` build tag.
 
 ```bash
-# Run all tests (requires Docker)
-go test ./docker -v
+# Unit tests only — no Docker/Podman required, runs fast
+go test ./docker
 
-# With coverage
-go test ./docker -cover
+# Unit tests under the race detector (closed-executor guards, etc.)
+go test -race ./docker
 
-# Run specific test
-go test ./docker -run TestExecutor_FunctionalOptions -v
+# Integration tests — requires a running Docker or Podman daemon
+go test -tags integration ./docker -v
 
-# Run benchmarks
-go test ./docker -bench=. -benchmem
+# With coverage (integration)
+go test -tags integration ./docker -cover
+
+# Run a specific integration test
+go test -tags integration ./docker -run TestExecutor_FunctionalOptions -v
+
+# Benchmarks (integration)
+go test -tags integration ./docker -bench=. -benchmem
 ```
 
-**Test Requirements:**
-- Docker daemon running
+**Integration test requirements:**
+- Docker or Podman daemon running (set `DOCKER_HOST` for Podman/remote)
 - Docker API accessible
 - Internet access (for pulling images)
+
+Integration tests publish to auto-assigned host ports (`WithPorts("80:0")` +
+`MappedPort`) and use unique container names, so repeated or parallel runs do not
+collide on fixed ports or names.
 
 ## Examples
 
@@ -755,9 +933,7 @@ go run -tags=example ./examples/docker/multi_container
 | Simplicity | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
 | Flexibility | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 | Dependencies | Minimal | Many |
-| OTel Support | Built-in v2 | No |
-| Test Coverage | 83.9% | N/A |
-| Code Quality | Zero lint issues | N/A |
+| OTel Support | Built-in v3 | No |
 | Learning Curve | Low | Medium |
 | Use Case | General purpose | Testing focus |
 
@@ -767,34 +943,52 @@ go run -tags=example ./examples/docker/multi_container
 
 - **Executor** - Main container lifecycle manager
 - **Config** - Container configuration with functional options
-- **Wait Strategies** - Readiness checking mechanisms
+- **Wait Strategies** - Readiness checking against a `ContainerTarget`
 - **Network** - Port mapping and endpoint resolution
 - **Logs** - Log streaming and filtering
 - **Status** - Container state monitoring
-- **OTel** - OpenTelemetry v2 instrumentation
+- **OTel** - OpenTelemetry instrumentation (v3)
 
 ### Design Principles
 
 1. **Simple by default, powerful when needed** - Easy basic usage, advanced features available
 2. **Two API styles** - Functional options for Go idioms, structs for testcontainers compatibility
-3. **Context-aware** - All operations respect context cancellation and timeouts
-4. **Observable** - Built-in OpenTelemetry v2 support for production monitoring
-5. **Well-tested** - 83.9% coverage with comprehensive integration tests
+3. **No client leakage** - Public API never exposes the Docker client; strategies work against `ContainerTarget`
+4. **Context-aware** - All operations respect context cancellation and timeouts
+5. **Observable** - Built-in OpenTelemetry support for production monitoring
 
 ## Troubleshooting
 
 ### Container fails to start
 
+On failure `Start` removes the container it created and clears its ID, so the
+executor holds no container afterwards — `GetStderr`/`Status` would return
+`container not started`. The error returned by `Start` already wraps the root
+cause, so inspect it first:
+
 ```go
 if err := exec.Start(ctx); err != nil {
-    // Check logs for startup errors
-    logs, _ := exec.GetStderr(ctx)
-    fmt.Println("Error logs:", logs)
-
-    // Check container status
-    status, _ := exec.Status(ctx)
-    fmt.Printf("State: %s, Error: %s\n", status.State, status.Error)
+    fmt.Println("start failed:", err) // wraps the pull / start / wait error
 }
+```
+
+To keep the container around for inspection, omit the wait strategy so `Start`
+does not auto-clean on a readiness failure, then read logs and status while it is
+still present:
+
+```go
+exec, _ := docker.New(docker.WithImage("myimage")) // no WithWaitStrategy
+if err := exec.Start(ctx); err != nil {
+    fmt.Println("start failed:", err)
+    return
+}
+defer exec.Terminate(ctx)
+
+logs, _ := exec.GetStderr(ctx)
+fmt.Println("error logs:", logs)
+
+status, _ := exec.Status(ctx)
+fmt.Printf("state: %s, error: %s\n", status.State, status.Error)
 ```
 
 ### Port already in use
@@ -814,6 +1008,8 @@ docker.WithWaitStrategy(
 )
 ```
 
+If a log-based wait never succeeds, check that the pattern is a *regex* that matches a single log line as the container actually prints it — `docker logs <container>` shows the ground truth.
+
 ### Image pull fails
 
 ```go
@@ -830,6 +1026,5 @@ if err := exec.Start(ctx); err != nil {
 
 ## Related Packages
 
-- **[otel](../otel/)** - OpenTelemetry v2 configuration and utilities
+- **[otel](../otel/)** - OpenTelemetry configuration, utilities, and structured logging
 - **[config](../config/)** - Configuration management with validation
-- **[logging](../logging/)** - Structured logging with context

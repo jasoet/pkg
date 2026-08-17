@@ -2,16 +2,16 @@ package grpc
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 )
 
@@ -23,87 +23,18 @@ func TestMountGatewayOnEcho(t *testing.T) {
 
 	// Verify that routes were registered
 	routes := e.Routes()
-	found := false
+	foundWildcard := false
+	foundBare := false
 	for _, route := range routes {
 		if route.Path == "/api/v1/*" {
-			found = true
-			break
+			foundWildcard = true
+		}
+		if route.Path == "/api/v1" {
+			foundBare = true
 		}
 	}
-	assert.True(t, found, "Expected gateway route to be registered")
-}
-
-func TestMountGatewayWithStripPrefix(t *testing.T) {
-	e := echo.New()
-	mux := runtime.NewServeMux()
-
-	MountGatewayWithStripPrefix(e, mux, "/api/*", "/api")
-
-	// Verify that routes were registered
-	routes := e.Routes()
-	found := false
-	for _, route := range routes {
-		if route.Path == "/api/*" {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "Expected gateway route with strip prefix to be registered")
-}
-
-func TestSetupGatewayForH2C(t *testing.T) {
-	ctx := context.Background()
-	mux := runtime.NewServeMux()
-	grpcServer := grpc.NewServer()
-	defer grpcServer.Stop()
-
-	serviceRegistrar := func(s *grpc.Server) {}
-
-	err := SetupGatewayForH2C(ctx, mux, serviceRegistrar, grpcServer)
-	require.NoError(t, err)
-}
-
-func TestSetupGatewayForSeparate(t *testing.T) {
-	t.Run("server available", func(t *testing.T) {
-		// Start a real gRPC server
-		lis, err := net.Listen("tcp", "localhost:0")
-		require.NoError(t, err)
-
-		grpcServer := grpc.NewServer()
-		go func() {
-			_ = grpcServer.Serve(lis)
-		}()
-		defer grpcServer.Stop()
-
-		// Wait a bit for server to start
-		time.Sleep(100 * time.Millisecond)
-
-		ctx := context.Background()
-		mux := runtime.NewServeMux()
-
-		err = SetupGatewayForSeparate(ctx, mux, lis.Addr().String())
-		assert.NoError(t, err)
-	})
-}
-
-func TestWaitForGRPCServer(t *testing.T) {
-	t.Run("server becomes available", func(t *testing.T) {
-		// Start a real gRPC server
-		lis, err := net.Listen("tcp", "localhost:0")
-		require.NoError(t, err)
-
-		grpcServer := grpc.NewServer()
-		go func() {
-			_ = grpcServer.Serve(lis)
-		}()
-		defer grpcServer.Stop()
-
-		// Wait a bit for server to start
-		time.Sleep(100 * time.Millisecond)
-
-		err = waitForGRPCServer(context.Background(), lis.Addr().String(), 10)
-		assert.NoError(t, err)
-	})
+	assert.True(t, foundWildcard, "Expected gateway wildcard route to be registered")
+	assert.True(t, foundBare, "Expected bare base-path route to be registered")
 }
 
 func TestCreateGatewayMux(t *testing.T) {
@@ -122,42 +53,114 @@ func TestCreateGatewayMuxMetadata(t *testing.T) {
 	assert.NotNil(t, mux)
 }
 
-func TestGatewayHealthMiddleware(t *testing.T) {
-	e := echo.New()
+// TestGatewayMetadataAnnotatorForwardsTraceparentHeader verifies that an inbound
+// W3C traceparent header is forwarded as gRPC metadata so the backend keeps the
+// trace instead of starting a new root.
+func TestGatewayMetadataAnnotatorForwardsTraceparentHeader(t *testing.T) {
+	const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
-	// Add the middleware
-	middleware := GatewayHealthMiddleware()
-	e.Use(middleware)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/thing", nil)
+	req.Header.Set("traceparent", traceparent)
+	req.Header.Set("User-Agent", "test-agent")
 
-	// Create a test handler
-	e.GET("/test", func(c echo.Context) error {
-		return c.String(http.StatusOK, "test")
+	md := gatewayMetadataAnnotator(context.Background(), req)
+
+	require.Equal(t, []string{traceparent}, md.Get("traceparent"),
+		"annotator must forward the inbound traceparent header")
+	assert.Equal(t, []string{"test-agent"}, md.Get("user-agent"))
+}
+
+// TestGatewayMetadataAnnotatorInjectsActiveSpan verifies that when a span is
+// active in the request context (as after the Echo tracing middleware), the
+// annotator injects a traceparent for it, linking the HTTP and gRPC spans.
+func TestGatewayMetadataAnnotatorInjectsActiveSpan(t *testing.T) {
+	traceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	require.NoError(t, err)
+	spanID, err := trace.SpanIDFromHex("00f067aa0ba902b7")
+	require.NoError(t, err)
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
 	})
 
-	// Make a request
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/thing", nil)
+	req = req.WithContext(trace.ContextWithSpanContext(req.Context(), sc))
+
+	md := gatewayMetadataAnnotator(context.Background(), req)
+
+	// The injected traceparent must carry the active span's trace/span ids.
+	extracted := propagation.TraceContext{}.Extract(context.Background(), metadataCarrier(md))
+	got := trace.SpanContextFromContext(extracted)
+	assert.Equal(t, traceID, got.TraceID(), "annotator must inject the active span's trace id")
+	assert.Equal(t, spanID, got.SpanID(), "annotator must inject the active span's span id")
+}
+
+// TestWithGatewayRegistrar verifies that the function passed via
+// WithGatewayRegistrar is invoked with the server's gateway mux during setup,
+// and that routes registered through it are served under the gateway base path.
+// The mount strips the base path, so mux patterns are proto http-rule style
+// (e.g. "/ping"), while clients GET "/api/v1/ping".
+func TestWithGatewayRegistrar(t *testing.T) {
+	registrarCalled := false
+	var gotMux *runtime.ServeMux
+
+	server, err := New(
+		WithServiceRegistrar(func(s *grpc.Server) {}),
+		WithGatewayRegistrar(func(mux *runtime.ServeMux) {
+			registrarCalled = true
+			gotMux = mux
+			err := mux.HandlePath(http.MethodGet, "/ping", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("pong"))
+			})
+			assert.NoError(t, err)
+		}),
+	)
+	require.NoError(t, err)
+
+	// setupEchoServer runs the gateway integration, same as Start does.
+	require.NoError(t, server.setupEchoServer())
+
+	assert.True(t, registrarCalled, "expected gateway registrar to be invoked during gateway setup")
+	assert.Same(t, server.gatewayMux, gotMux, "registrar must receive the server's gateway mux")
+
+	// The registered route must be reachable through Echo under the gateway base path.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ping", nil)
 	rec := httptest.NewRecorder()
+	server.echo.ServeHTTP(rec, req)
 
-	e.ServeHTTP(rec, req)
-
-	// Verify headers were added (X-Gateway-Version was removed per M9)
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Empty(t, rec.Header().Get("X-Gateway-Version"))
-	assert.Equal(t, "grpc-gateway", rec.Header().Get("X-Server-Type"))
+	assert.Equal(t, "pong", rec.Body.String())
 }
 
-func TestLogGatewayRoutes(t *testing.T) {
-	// This function just logs, so we just verify it doesn't panic
-	services := []string{"UserService", "ProductService", "OrderService"}
+// TestWithGatewayRegistrarInvokedWithoutServiceRegistrar verifies that the
+// gateway is mounted and the gateway registrar is invoked even when no
+// service registrar is configured.
+func TestWithGatewayRegistrarInvokedWithoutServiceRegistrar(t *testing.T) {
+	called := false
+	server, err := New(
+		WithGatewayRegistrar(func(mux *runtime.ServeMux) {
+			called = true
+			err := mux.HandlePath(http.MethodGet, "/ping", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+				_, _ = w.Write([]byte("pong"))
+			})
+			assert.NoError(t, err)
+		}),
+	)
+	require.NoError(t, err)
 
-	LogGatewayRoutes("/api/v1", services)
+	require.NoError(t, server.setupEchoServer())
 
-	// If we get here without panic, the function works
-}
+	assert.True(t, called, "gateway registrar must be invoked even without a service registrar")
+	assert.NotNil(t, server.gatewayMux, "gateway mux must be set up even without a service registrar")
 
-func TestLogGatewayRoutesEmpty(t *testing.T) {
-	// Test with empty services list
-	LogGatewayRoutes("/api/v1", []string{})
+	// The gateway is mounted: the route registered on the mux is reachable
+	// through Echo under the gateway base path.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ping", nil)
+	rec := httptest.NewRecorder()
+	server.echo.ServeHTTP(rec, req)
 
-	// If we get here without panic, the function works
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "pong", rec.Body.String())
 }

@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 func TestNewClientWithOptions_AppliesOptions(t *testing.T) {
@@ -124,5 +126,32 @@ func TestNewClient_OptionErrors(t *testing.T) {
 			KubeConfigPath: "/definitely/does/not/exist/kubeconfig",
 		})
 		require.Error(t, err)
+	})
+}
+
+func TestNewClientWithOptions_InjectsOTelConfigIntoContext(t *testing.T) {
+	otelCfg := otel.NewConfig("test")
+
+	t.Run("with OTel config", func(t *testing.T) {
+		ctx, client, err := NewClientWithOptions(context.Background(),
+			WithArgoServer("http://nonexistent:2746", "Bearer token"),
+			WithArgoServerInsecure(true),
+			WithOTelConfig(otelCfg),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		assert.Same(t, otelCfg, otel.ConfigFromContext(ctx),
+			"returned ctx should carry the configured OTelConfig")
+	})
+
+	t.Run("without OTel config", func(t *testing.T) {
+		ctx, client, err := NewClientWithOptions(context.Background(),
+			WithArgoServer("http://nonexistent:2746", "Bearer token"),
+			WithArgoServerInsecure(true),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		assert.Nil(t, otel.ConfigFromContext(ctx),
+			"returned ctx should not carry an OTelConfig when none is configured")
 	})
 }

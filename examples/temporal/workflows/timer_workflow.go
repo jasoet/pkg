@@ -3,9 +3,10 @@
 package workflows
 
 import (
+	"strconv"
 	"time"
 
-	"github.com/jasoet/pkg/v2/examples/temporal/activities"
+	"github.com/jasoet/pkg/v3/examples/temporal/activities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -80,7 +81,7 @@ func TimerWorkflow(ctx workflow.Context, duration time.Duration) (string, error)
 			"time", currentTime.Format(time.RFC3339))
 
 		// Add a timestamp to our results
-		results = append(results, "Iteration "+string('A'+i)+": "+currentTime.Format(time.RFC3339))
+		results = append(results, "Iteration "+strconv.Itoa(i+1)+": "+currentTime.Format(time.RFC3339))
 	}
 
 	// Step 4: Implement a timer-based selector
@@ -134,7 +135,7 @@ func TimerWorkflow(ctx workflow.Context, duration time.Duration) (string, error)
 	// Step 5: Combine results and return
 	result := "Timer Workflow Results:\n"
 	for i, r := range results {
-		result += "- Result " + string('0'+i) + ": " + r + "\n"
+		result += "- Result " + strconv.Itoa(i) + ": " + r + "\n"
 	}
 
 	logger.Info("Workflow completed successfully", "result", result)
@@ -203,14 +204,14 @@ func ScheduledWorkflow(ctx workflow.Context) (string, error) {
 //     "context"
 //     "time"
 //     "github.com/rs/zerolog/log"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal"
-//     "github.com/amanata-dev/twc-report-backend/pkg/temporal/examples/activities"
+//     "github.com/jasoet/pkg/v3/temporal"
+//     "github.com/jasoet/pkg/v3/temporal"
 //     "go.temporal.io/sdk/client"
 // )
 //
 // func main() {
 //     // Create a Temporal client
-//     client, err := temporal.NewClient(temporal.DefaultConfig())
+//     client, err := temporal.NewClient()
 //     if err != nil {
 //         log.Fatal().Err(err).Msg("Failed to create Temporal client")
 //     }

@@ -12,7 +12,7 @@ import (
 	noopt "go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 
-	pkgotel "github.com/jasoet/pkg/v2/otel"
+	pkgotel "github.com/jasoet/pkg/v3/otel"
 )
 
 func TestNewConfigDefaults(t *testing.T) {
@@ -147,6 +147,25 @@ func TestWithRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.enableRateLimit)
 	assert.Equal(t, 250.0, cfg.rateLimit)
+}
+
+func TestWithRateLimitNonPositiveRejected(t *testing.T) {
+	// A zero or negative rate would make Echo's limiter reject every request;
+	// validation must reject it rather than silently produce a 429-everything
+	// server.
+	for _, rps := range []float64{0, -1, -100} {
+		_, err := newConfig(WithRateLimit(rps))
+		assert.Error(t, err, "WithRateLimit(%v) must be rejected", rps)
+		if err != nil {
+			assert.Contains(t, err.Error(), "rate limit must be positive")
+		}
+	}
+
+	// A positive rate remains valid.
+	cfg, err := newConfig(WithRateLimit(0.5))
+	require.NoError(t, err)
+	assert.True(t, cfg.enableRateLimit)
+	assert.Equal(t, 0.5, cfg.rateLimit)
 }
 
 func TestWithHealthPath(t *testing.T) {
@@ -353,22 +372,6 @@ func TestConfigAddresses(t *testing.T) {
 	}
 }
 
-func TestConfigModeChecks(t *testing.T) {
-	t.Run("H2C mode", func(t *testing.T) {
-		cfg, err := newConfig(WithH2CMode())
-		require.NoError(t, err)
-		assert.True(t, cfg.isH2CMode())
-		assert.False(t, cfg.isSeparateMode())
-	})
-
-	t.Run("Separate mode", func(t *testing.T) {
-		cfg, err := newConfig(WithSeparateMode("9090", "9091"))
-		require.NoError(t, err)
-		assert.False(t, cfg.isH2CMode())
-		assert.True(t, cfg.isSeparateMode())
-	})
-}
-
 func TestMultipleOptions(t *testing.T) {
 	cfg, err := newConfig(
 		WithGRPCPort("9000"),
@@ -397,10 +400,10 @@ func TestMultipleOptions(t *testing.T) {
 
 func TestWithOTelConfig(t *testing.T) {
 	t.Run("WithOTelConfig sets config", func(t *testing.T) {
-		otelConfig := pkgotel.NewConfig("grpc-test").
-			WithTracerProvider(noopt.NewTracerProvider()).
-			WithMeterProvider(noopm.NewMeterProvider()).
-			WithLoggerProvider(noopl.NewLoggerProvider())
+		otelConfig := pkgotel.NewConfig("grpc-test",
+			pkgotel.WithTracerProvider(noopt.NewTracerProvider()),
+			pkgotel.WithMeterProvider(noopm.NewMeterProvider()),
+			pkgotel.WithLoggerProvider(noopl.NewLoggerProvider()))
 
 		cfg, err := newConfig(WithOTelConfig(otelConfig))
 		require.NoError(t, err)

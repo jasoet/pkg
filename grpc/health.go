@@ -1,7 +1,6 @@
 package grpc
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -10,6 +9,11 @@ import (
 
 	"github.com/labstack/echo/v4"
 )
+
+// defaultHealthCheckTimeout bounds how long a single health checker may run
+// before it is reported as DOWN. Without a bound, one hung checker would stall
+// every health/readiness response and flap the whole probe.
+const defaultHealthCheckTimeout = 5 * time.Second
 
 // HealthStatus represents the status of a health check
 type HealthStatus string
@@ -37,16 +41,18 @@ type HealthChecker func() HealthCheckResult
 
 // HealthManager manages health checks for the server
 type HealthManager struct {
-	mu      sync.RWMutex
-	checks  map[string]HealthChecker
-	enabled bool
+	mu           sync.RWMutex
+	checks       map[string]HealthChecker
+	enabled      bool
+	checkTimeout time.Duration // per-check upper bound; see defaultHealthCheckTimeout
 }
 
 // NewHealthManager creates a new health manager
 func NewHealthManager() *HealthManager {
 	return &HealthManager{
-		checks:  make(map[string]HealthChecker),
-		enabled: true,
+		checks:       make(map[string]HealthChecker),
+		enabled:      true,
+		checkTimeout: defaultHealthCheckTimeout,
 	}
 }
 
@@ -75,6 +81,7 @@ func (h *HealthManager) SetEnabled(enabled bool) {
 func (h *HealthManager) CheckHealth() map[string]HealthCheckResult {
 	h.mu.RLock()
 	enabled := h.enabled
+	timeout := h.checkTimeout
 	checkers := make(map[string]HealthChecker, len(h.checks))
 	for k, v := range h.checks {
 		checkers[k] = v
@@ -91,17 +98,63 @@ func (h *HealthManager) CheckHealth() map[string]HealthCheckResult {
 		}
 	}
 
-	results := make(map[string]HealthCheckResult, len(checkers))
-
-	for name, checker := range checkers {
-		start := time.Now()
-		result := checker()
-		result.Duration = time.Since(start)
-		result.Timestamp = time.Now()
-		results[name] = result
+	if timeout <= 0 {
+		timeout = defaultHealthCheckTimeout
 	}
 
+	// Run checks concurrently, each bounded by timeout, so a single slow or hung
+	// checker cannot stall the aggregate result or delay it past `timeout`.
+	results := make(map[string]HealthCheckResult, len(checkers))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for name, checker := range checkers {
+		wg.Add(1)
+		go func(name string, checker HealthChecker) {
+			defer wg.Done()
+			result := runHealthCheckBounded(checker, timeout)
+			mu.Lock()
+			results[name] = result
+			mu.Unlock()
+		}(name, checker)
+	}
+	wg.Wait()
+
 	return results
+}
+
+// runHealthCheckBounded runs a single checker with an upper time bound. If the
+// checker does not return within timeout it is reported as DOWN; the checker
+// signature has no context, so the underlying goroutine may keep running, but
+// it can no longer block the health response. A panic in the checker is
+// recovered and reported as DOWN rather than crashing the server.
+func runHealthCheckBounded(checker HealthChecker, timeout time.Duration) HealthCheckResult {
+	start := time.Now()
+	done := make(chan HealthCheckResult, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- HealthCheckResult{
+					Status: HealthStatusDown,
+					Error:  fmt.Sprintf("health check panicked: %v", r),
+				}
+			}
+		}()
+		done <- checker()
+	}()
+
+	select {
+	case result := <-done:
+		result.Duration = time.Since(start)
+		result.Timestamp = time.Now()
+		return result
+	case <-time.After(timeout):
+		return HealthCheckResult{
+			Status:    HealthStatusDown,
+			Error:     fmt.Sprintf("health check timed out after %s", timeout),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}
+	}
 }
 
 // overallStatusFromResults derives the aggregate status from a set of results.
@@ -122,59 +175,6 @@ func overallStatusFromResults(results map[string]HealthCheckResult) HealthStatus
 // GetOverallStatus returns the overall health status.
 func (h *HealthManager) GetOverallStatus() HealthStatus {
 	return overallStatusFromResults(h.CheckHealth())
-}
-
-// CreateHealthHandlers creates HTTP handlers for health check endpoints
-func (h *HealthManager) CreateHealthHandlers(basePath string) map[string]http.HandlerFunc {
-	handlers := make(map[string]http.HandlerFunc)
-
-	// Main health endpoint - returns detailed health information
-	handlers[basePath] = func(w http.ResponseWriter, r *http.Request) {
-		results := h.CheckHealth()
-		overallStatus := overallStatusFromResults(results)
-
-		response := map[string]interface{}{
-			"status":    overallStatus,
-			"timestamp": time.Now(),
-			"checks":    results,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-
-		if overallStatus == HealthStatusDown {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
-
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, "Failed to encode health check response", http.StatusInternalServerError)
-		}
-	}
-
-	// Readiness endpoint - simple ready check
-	handlers[basePath+"/ready"] = func(w http.ResponseWriter, r *http.Request) {
-		status := h.GetOverallStatus()
-
-		w.Header().Set("Content-Type", "application/json")
-
-		if status == HealthStatusUp {
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprintf(w, `{"status":"ready","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = fmt.Fprintf(w, `{"status":"not_ready","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
-		}
-	}
-
-	// Liveness endpoint - simple alive check
-	handlers[basePath+"/live"] = func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, `{"status":"alive","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
-	}
-
-	return handlers
 }
 
 // DefaultHealthCheckers returns a set of default health checkers
@@ -244,83 +244,4 @@ func (h *HealthManager) RegisterEchoHealthChecks(e *echo.Echo, basePath string) 
 			"timestamp": time.Now(),
 		})
 	})
-}
-
-// EchoHealthCheckMiddleware adds health check headers to responses.
-// Health status is cached for 5 seconds to avoid running all health checks
-// on every HTTP request.
-func (h *HealthManager) EchoHealthCheckMiddleware() echo.MiddlewareFunc {
-	var (
-		cacheMu     sync.RWMutex
-		cachedAt    time.Time
-		cachedValue HealthStatus
-	)
-	const cacheTTL = 5 * time.Second
-
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			cacheMu.RLock()
-			status := cachedValue
-			valid := time.Since(cachedAt) < cacheTTL
-			cacheMu.RUnlock()
-
-			if !valid {
-				cacheMu.Lock()
-				// Double-check: another goroutine may have refreshed while we waited
-				if time.Since(cachedAt) < cacheTTL {
-					status = cachedValue
-					cacheMu.Unlock()
-				} else {
-					status = h.GetOverallStatus()
-					cachedValue = status
-					cachedAt = time.Now()
-					cacheMu.Unlock()
-				}
-			}
-
-			c.Response().Header().Set("X-Health-Status", string(status))
-			return next(c)
-		}
-	}
-}
-
-// CreateEchoHealthHandler creates a health check handler for specific checks
-func (h *HealthManager) CreateEchoHealthHandler(checkName string) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		h.mu.RLock()
-		checker, exists := h.checks[checkName]
-		h.mu.RUnlock()
-
-		if !exists {
-			return c.JSON(http.StatusNotFound, map[string]string{
-				"error": "health check not found",
-				"check": checkName,
-			})
-		}
-
-		result := checker()
-		code := http.StatusOK
-		if result.Status != HealthStatusUp {
-			code = http.StatusServiceUnavailable
-		}
-
-		return c.JSON(code, map[string]interface{}{
-			"check":     checkName,
-			"status":    result.Status,
-			"timestamp": result.Timestamp,
-			"duration":  result.Duration,
-			"details":   result.Details,
-		})
-	}
-}
-
-// RegisterEchoIndividualHealthChecks registers individual health check endpoints
-func (h *HealthManager) RegisterEchoIndividualHealthChecks(e *echo.Echo, basePath string) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for name := range h.checks {
-		endpoint := basePath + "/check/" + name
-		e.GET(endpoint, h.CreateEchoHealthHandler(name))
-	}
 }

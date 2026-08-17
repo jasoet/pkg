@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -32,9 +33,7 @@ func setupPostgresContainer(t *testing.T) (*postgres.PostgresContainer, *Connect
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 
@@ -69,15 +68,14 @@ func setupMySQLContainer(t *testing.T) (*mysql.MySQLContainer, *ConnectionConfig
 		mysql.WithUsername("testuser"),
 		mysql.WithPassword("testpass"),
 		mysql.WithScripts(filepath.Join("..", "scripts", "compose", "mariadb", "backup", "default.sql")),
+		// Wait until the server actually answers a query, rather than a fixed sleep.
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("port: 3306  MySQL Community Server").
-				WithStartupTimeout(90*time.Second),
+			wait.ForSQL("3306/tcp", "mysql", func(host string, port nat.Port) string {
+				return fmt.Sprintf("testuser:testpass@tcp(%s:%s)/testdb", host, port.Port())
+			}).WithStartupTimeout(90*time.Second),
 		),
 	)
 	require.NoError(t, err, "Failed to start MySQL container")
-
-	// Wait a bit more for MySQL to be fully ready
-	time.Sleep(3 * time.Second)
 
 	host, err := mysqlContainer.Host(ctx)
 	require.NoError(t, err, "Failed to get host")
@@ -116,15 +114,14 @@ func setupMSSQLContainer(t *testing.T) (*mssql.MSSQLServerContainer, *Connection
 		image,
 		mssql.WithAcceptEULA(),
 		mssql.WithPassword("StrongPass123!"),
+		// Wait until the server actually answers a query, rather than a fixed sleep.
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("SQL Server is now ready for client connections").
-				WithStartupTimeout(90*time.Second),
+			wait.ForSQL("1433/tcp", "sqlserver", func(host string, port nat.Port) string {
+				return fmt.Sprintf("sqlserver://sa:StrongPass123!@%s:%s?database=master&encrypt=disable", host, port.Port())
+			}).WithStartupTimeout(120*time.Second),
 		),
 	)
 	require.NoError(t, err, "Failed to start MSSQL container")
-
-	// Wait a bit more for SQL Server to be fully ready
-	time.Sleep(5 * time.Second)
 
 	host, err := mssqlContainer.Host(ctx)
 	require.NoError(t, err, "Failed to get host")
@@ -156,16 +153,16 @@ func TestPostgresPoolWithTestcontainers(t *testing.T) {
 		}
 	}()
 
-	// Test the DSN generation
+	// Test the DSN generation (values are single-quoted for safe escaping)
 	dsn := config.dsn()
-	assert.Contains(t, dsn, "user=testuser")
-	assert.Contains(t, dsn, "password=testpass")
-	assert.Contains(t, dsn, "dbname=testdb")
+	assert.Contains(t, dsn, "user='testuser'")
+	assert.Contains(t, dsn, "password='testpass'")
+	assert.Contains(t, dsn, "dbname='testdb'")
 	assert.Contains(t, dsn, "sslmode=disable")
 
-	// Test connection to the database using Pool()
-	db, err := config.Pool()
-	require.NoError(t, err, "Failed to connect to database using Pool()")
+	// Test connection to the database using NewPool()
+	db, err := NewPool(WithConnectionConfig(*config))
+	require.NoError(t, err, "Failed to connect to database using NewPool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
 	// Test basic query using GORM
@@ -225,9 +222,9 @@ func TestMySQLPoolWithTestcontainers(t *testing.T) {
 	assert.Contains(t, dsn, fmt.Sprintf("testuser:testpass@tcp(%s:%d)/testdb", config.Host, config.Port))
 	assert.Contains(t, dsn, "parseTime=true")
 
-	// Test connection to the database using Pool()
-	db, err := config.Pool()
-	require.NoError(t, err, "Failed to connect to database using Pool()")
+	// Test connection to the database using NewPool()
+	db, err := NewPool(WithConnectionConfig(*config))
+	require.NoError(t, err, "Failed to connect to database using NewPool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
 	// Test basic query using GORM
@@ -282,15 +279,15 @@ func TestMSSQLPoolWithTestcontainers(t *testing.T) {
 		}
 	}()
 
-	// Test the DSN generation
+	// Test the DSN generation (userinfo is percent-encoded: "!" -> "%21")
 	dsn := config.dsn()
-	assert.Contains(t, dsn, fmt.Sprintf("sqlserver://sa:StrongPass123!@%s:%d", config.Host, config.Port))
+	assert.Contains(t, dsn, fmt.Sprintf("sqlserver://sa:StrongPass123%%21@%s:%d", config.Host, config.Port))
 	assert.Contains(t, dsn, "database=master")
 	assert.Contains(t, dsn, "encrypt=disable")
 
-	// Test connection to the database using Pool()
-	db, err := config.Pool()
-	require.NoError(t, err, "Failed to connect to database using Pool()")
+	// Test connection to the database using NewPool()
+	db, err := NewPool(WithConnectionConfig(*config))
+	require.NoError(t, err, "Failed to connect to database using NewPool()")
 	require.NotNil(t, db, "Database connection should not be nil")
 
 	// Test basic connectivity with a simple query
@@ -332,7 +329,7 @@ func TestPostgresPoolTransactionsWithTestcontainers(t *testing.T) {
 	}()
 
 	// Connect to the database
-	db, err := config.Pool()
+	db, err := NewPool(WithConnectionConfig(*config))
 	require.NoError(t, err, "Failed to connect to database")
 
 	// Test transaction with commit

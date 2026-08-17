@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,7 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/jasoet/pkg/v2/otel"
+	"github.com/jasoet/pkg/v3/otel"
 )
 
 // Config holds the configuration for an SSH tunnel
@@ -43,6 +44,17 @@ type Config struct {
 
 	// Optional flag to disable host key checking (NOT recommended for production)
 	InsecureIgnoreHostKey bool `yaml:"insecureIgnoreHostKey" mapstructure:"insecureIgnoreHostKey"`
+
+	// OTelConfig enables OpenTelemetry instrumentation (optional)
+	OTelConfig *otel.Config `yaml:"-" mapstructure:"-"`
+}
+
+// Option configures a Config during construction.
+type Option func(*Config)
+
+// WithOTelConfig sets the OpenTelemetry configuration.
+func WithOTelConfig(cfg *otel.Config) Option {
+	return func(c *Config) { c.OTelConfig = cfg }
 }
 
 // Tunnel represents an SSH tunnel that forwards traffic from a local port to a remote endpoint
@@ -51,15 +63,23 @@ type Tunnel struct {
 	client   *ssh.Client
 	listener net.Listener
 	mu       sync.Mutex
+	// starting is set under mu at the very start of Start, before the (unlocked)
+	// dial/listen, so two concurrent Start calls cannot both pass the
+	// already-started guard. It is cleared on success and on any failure.
+	starting bool
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
 }
 
 // New creates a new SSH tunnel with the given configuration
-func New(config Config) *Tunnel {
+func New(config Config, opts ...Option) *Tunnel {
 	// Set default timeout if not specified
 	if config.Timeout == 0 {
 		config.Timeout = 5 * time.Second
+	}
+
+	for _, opt := range opts {
+		opt(&config)
 	}
 
 	return &Tunnel{
@@ -125,43 +145,66 @@ func (t *Tunnel) getAuthMethods() ([]ssh.AuthMethod, error) {
 }
 
 // Start establishes the SSH connection and begins forwarding traffic.
-// The provided ctx is used for logger creation and SSH dial operations.
+//
+// The provided ctx is used for logger creation, the local listener, and the
+// SSH dial: canceling ctx aborts the TCP connect. The SSH handshake itself is
+// bounded by Config.Timeout. Canceling ctx does not stop an already-running
+// tunnel — call Close for that. Start is not reentrant; a second concurrent
+// Start returns "tunnel already started".
 func (t *Tunnel) Start(ctx context.Context) error {
-	t.mu.Lock()
-	if t.client != nil {
-		t.mu.Unlock()
-		return fmt.Errorf("tunnel already started")
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
 	}
+	lc := otel.Layers.StartOperations(ctx, "ssh", "Start")
+	defer lc.End()
+
+	t.mu.Lock()
+	if t.client != nil || t.starting {
+		t.mu.Unlock()
+		return lc.Error(fmt.Errorf("tunnel already started"), "tunnel already started")
+	}
+	// Reserve the "starting" state under the lock up front so a second
+	// concurrent Start is rejected before this one has dialed/listened.
+	t.starting = true
 	t.stopCh = make(chan struct{})
 	t.mu.Unlock()
 
+	// Roll back the reservation unless Start reaches its successful commit, so a
+	// failed Start never permanently blocks a subsequent Start.
+	success := false
+	defer func() {
+		if !success {
+			t.mu.Lock()
+			t.starting = false
+			t.mu.Unlock()
+		}
+	}()
+
 	// Input validation
 	if t.config.Host == "" {
-		return fmt.Errorf("SSH host is required")
+		return lc.Error(fmt.Errorf("SSH host is required"), "invalid configuration")
 	}
 	if t.config.Port <= 0 || t.config.Port > 65535 {
-		return fmt.Errorf("invalid SSH port: %d", t.config.Port)
+		return lc.Error(fmt.Errorf("invalid SSH port: %d", t.config.Port), "invalid configuration")
 	}
 	if t.config.User == "" {
-		return fmt.Errorf("SSH user is required")
+		return lc.Error(fmt.Errorf("SSH user is required"), "invalid configuration")
 	}
 	if t.config.RemoteHost == "" {
-		return fmt.Errorf("remote host is required")
+		return lc.Error(fmt.Errorf("remote host is required"), "invalid configuration")
 	}
 	if t.config.RemotePort <= 0 || t.config.RemotePort > 65535 {
-		return fmt.Errorf("invalid remote port: %d", t.config.RemotePort)
+		return lc.Error(fmt.Errorf("invalid remote port: %d", t.config.RemotePort), "invalid configuration")
 	}
-
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.Start")
 
 	hostKeyCallback, err := t.getHostKeyCallback()
 	if err != nil {
-		return fmt.Errorf("host key callback error: %w", err)
+		return lc.Error(fmt.Errorf("host key callback error: %w", err), "host key callback failed")
 	}
 
 	authMethods, err := t.getAuthMethods()
 	if err != nil {
-		return fmt.Errorf("authentication error: %w", err)
+		return lc.Error(fmt.Errorf("authentication error: %w", err), "authentication setup failed")
 	}
 
 	sshConfig := &ssh.ClientConfig{
@@ -172,16 +215,33 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	}
 
 	if t.config.InsecureIgnoreHostKey {
-		logger.Warn("InsecureIgnoreHostKey is enabled - SSH host key verification is disabled")
+		lc.Logger.Warn("InsecureIgnoreHostKey is enabled - SSH host key verification is disabled")
 	}
 
 	serverEndpoint := fmt.Sprintf("%s:%d", t.config.Host, t.config.Port)
-	logger.Debug("Connecting to SSH server", otel.F("endpoint", serverEndpoint))
+	lc.Logger.Debug("Connecting to SSH server", otel.F("endpoint", serverEndpoint))
 
-	client, err := ssh.Dial("tcp", serverEndpoint, sshConfig)
+	// Dial with the caller's context so cancellation aborts the TCP connect;
+	// ssh.Dial would ignore ctx entirely. The SSH handshake is then bounded by
+	// Config.Timeout via a read deadline, mirroring what ssh.Dial does
+	// internally.
+	dialer := net.Dialer{Timeout: t.config.Timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", serverEndpoint)
 	if err != nil {
-		return fmt.Errorf("SSH dial error: %w", err)
+		return lc.Error(fmt.Errorf("SSH dial error: %w", err), "SSH dial failed")
 	}
+	if t.config.Timeout > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(t.config.Timeout))
+	}
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, serverEndpoint, sshConfig)
+	if err != nil {
+		_ = conn.Close()
+		return lc.Error(fmt.Errorf("SSH dial error: %w", err), "SSH dial failed")
+	}
+	if t.config.Timeout > 0 {
+		_ = conn.SetReadDeadline(time.Time{}) // clear the handshake deadline
+	}
+	client := ssh.NewClient(sshConn, chans, reqs)
 
 	t.mu.Lock()
 	t.client = client
@@ -196,37 +256,89 @@ func (t *Tunnel) Start(ctx context.Context) error {
 		t.client = nil
 		t.mu.Unlock()
 		_ = client.Close()
-		return fmt.Errorf("local listen error: %w", err)
+		return lc.Error(fmt.Errorf("local listen error: %w", err), "local listen failed")
 	}
 
+	// Successful commit: publish the listener and release the "starting"
+	// reservation atomically so the double-start guard now keys off t.client.
 	t.mu.Lock()
 	t.listener = listener
+	t.starting = false
+	success = true
 	t.mu.Unlock()
 
-	logger.Debug("SSH tunnel listening",
+	lc.Logger.Debug("SSH tunnel listening",
 		otel.F("local", localEndpoint),
 		otel.F("remote", remoteEndpoint))
 
-	go func() {
-		for {
-			localConn, err := listener.Accept()
-			if err != nil {
-				select {
-				case <-t.stopCh:
-					return
-				default:
-					continue
-				}
-			}
-			t.wg.Add(1)
-			go func() {
-				defer t.wg.Done()
-				t.forward(localConn, remoteEndpoint)
-			}()
-		}
-	}()
+	go t.acceptLoop(listener, remoteEndpoint)
 
+	lc.Success("SSH tunnel ready",
+		otel.F("local", listener.Addr().String()),
+		otel.F("remote", remoteEndpoint))
 	return nil
+}
+
+// acceptLoop accepts inbound local connections and forwards each through the
+// SSH tunnel until the tunnel is closed or the listener fails permanently.
+//
+// On Accept errors it never busy-spins: a normal shutdown (stopCh closed) or a
+// permanently closed listener (net.ErrClosed) exits the loop, while transient
+// errors (e.g. EMFILE) are retried with a capped exponential backoff, mirroring
+// net/http.Server.Serve.
+func (t *Tunnel) acceptLoop(listener net.Listener, remoteEndpoint string) {
+	ctx := context.Background()
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	logger := otel.NewLogHelper(ctx, t.config.OTelConfig, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.acceptLoop")
+
+	var backoff time.Duration
+	for {
+		localConn, err := listener.Accept()
+		if err != nil {
+			// Normal shutdown via Close.
+			select {
+			case <-t.stopCh:
+				return
+			default:
+			}
+
+			// Listener permanently closed out-of-band: stop instead of spinning.
+			if errors.Is(err, net.ErrClosed) {
+				logger.Warn("accept loop stopping: listener closed", otel.F("err", err.Error()))
+				return
+			}
+
+			// Transient error (e.g. too many open files): back off and retry with
+			// a cap so we never consume 100% CPU.
+			if backoff == 0 {
+				backoff = 5 * time.Millisecond
+			} else {
+				backoff *= 2
+			}
+			if maxBackoff := time.Second; backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			logger.Warn("accept error, backing off",
+				otel.F("err", err.Error()),
+				otel.F("backoff", backoff.String()))
+			timer := time.NewTimer(backoff)
+			select {
+			case <-t.stopCh:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			continue
+		}
+		backoff = 0
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
+			t.forward(localConn, remoteEndpoint)
+		}()
+	}
 }
 
 // LocalAddr returns the local address the tunnel listener is bound to.
@@ -242,12 +354,17 @@ func (t *Tunnel) LocalAddr() string {
 
 // forward handles the forwarding of data between the local and remote connections.
 //
-// Note: half-close (CloseWrite) is not implemented here. Both directions are
-// copied concurrently and both connections are closed once both copies finish.
-// This may affect streaming protocols that rely on half-close semantics.
+// Both directions are copied concurrently. When one direction's copy completes
+// (EOF or error), the close is propagated to the other direction's write side
+// via CloseWrite (when supported), so the peer sees EOF promptly instead of
+// waiting for an idle timeout. Both connections are closed once both copies
+// finish.
 func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	ctx := context.Background()
-	logger := otel.NewLogHelper(ctx, nil, "github.com/jasoet/pkg/v2/ssh", "ssh.Tunnel.forward")
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	logger := otel.NewLogHelper(ctx, t.config.OTelConfig, "github.com/jasoet/pkg/v3/ssh", "ssh.Tunnel.forward")
 
 	t.mu.Lock()
 	client := t.client
@@ -273,6 +390,9 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 		if _, err := io.Copy(remoteConn, localConn); err != nil {
 			logger.Debug("copy local->remote ended", otel.F("err", err.Error()))
 		}
+		// Local side is done sending; propagate EOF to the remote so it can
+		// finish its response instead of waiting for an idle timeout.
+		closeWrite(remoteConn)
 	}()
 
 	go func() {
@@ -280,6 +400,8 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 		if _, err := io.Copy(localConn, remoteConn); err != nil {
 			logger.Debug("copy remote->local ended", otel.F("err", err.Error()))
 		}
+		// Remote side is done sending; propagate EOF to the local client.
+		closeWrite(localConn)
 	}()
 
 	wg.Wait()
@@ -287,11 +409,28 @@ func (t *Tunnel) forward(localConn net.Conn, remoteAddr string) {
 	_ = remoteConn.Close()
 }
 
+// closeWrite half-closes the write side of conn when the connection supports
+// it (e.g. *net.TCPConn, ssh.Channel), signaling EOF to the peer while leaving
+// the read side open.
+func closeWrite(conn net.Conn) {
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+	}
+}
+
 // Close terminates the SSH connection and stops the tunnel
 func (t *Tunnel) Close() error {
+	ctx := context.Background()
+	if t.config.OTelConfig != nil {
+		ctx = otel.ContextWithConfig(ctx, t.config.OTelConfig)
+	}
+	lc := otel.Layers.StartOperations(ctx, "ssh", "Close")
+	defer lc.End()
+
 	t.mu.Lock()
 	if t.client == nil {
 		t.mu.Unlock()
+		lc.Success("no active connection")
 		return nil
 	}
 
@@ -312,6 +451,16 @@ func (t *Tunnel) Close() error {
 	t.client = nil
 	t.mu.Unlock()
 
+	// Close the SSH client before waiting: this tears down in-flight
+	// forwarded channels, and forward's half-close propagation then unblocks
+	// the local side, so wg.Wait returns promptly instead of waiting for the
+	// peer's idle timeout.
+	err := client.Close()
 	t.wg.Wait()
-	return client.Close()
+	if err != nil {
+		return lc.Error(fmt.Errorf("SSH client close error: %w", err), "failed to close SSH client")
+	}
+
+	lc.Success("SSH tunnel closed")
+	return nil
 }
