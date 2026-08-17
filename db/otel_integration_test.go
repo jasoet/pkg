@@ -12,9 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 	noopl "go.opentelemetry.io/otel/log/noop"
 	noopm "go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -36,9 +34,7 @@ func TestPostgresPoolWithOTelTracing(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -209,9 +205,7 @@ func TestPostgresPoolWithOTelMetrics(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -287,9 +281,7 @@ func TestPostgresPoolMetricsWithoutTracing(t *testing.T) {
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -369,9 +361,7 @@ func TestPostgresPoolWithOTelDisabled(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -539,9 +529,7 @@ func TestOTelCallbacksWithoutContext(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {
@@ -682,9 +670,7 @@ func TestOTelCallbacksTableAndRowsAffected(t *testing.T) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	defer func() {

@@ -13,9 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 //go:embed migrations_test
@@ -30,9 +28,7 @@ func startPostgresForMigrations(t *testing.T) *postgres.PostgresContainer {
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 	return container

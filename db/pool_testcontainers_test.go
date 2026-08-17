@@ -33,9 +33,7 @@ func setupPostgresContainer(t *testing.T) (*postgres.PostgresContainer, *Connect
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		postgres.WithInitScripts(filepath.Join("..", "scripts", "compose", "pg", "backup", "default.sql")),
-		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
-		),
+		postgresReady(),
 	)
 	require.NoError(t, err, "Failed to start PostgreSQL container")
 
