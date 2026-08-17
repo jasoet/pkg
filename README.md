@@ -14,9 +14,9 @@ Production-ready Go utility packages with **OpenTelemetry** instrumentation, com
 **Status:** v3 in active development
 **Test Coverage:** Reported per package below; regenerate with `task test:complete`.
 
-> **v3 Highlights:** OpenTelemetry instrumentation across all packages (the former `logging` package merged into `otel`), unified `WithOTelConfig` injection, modernized dependencies.
+> **v3 Highlights:** OpenTelemetry instrumentation across all packages (the former `logging` package merged into `otel`), unified `WithOTelConfig` injection, functional options everywhere, third-party types de-leaked from public signatures, modernized dependencies.
 >
-> **Breaking Change:** v1 does not include OpenTelemetry. v2/v3 add optional OTel support with minimal API changes.
+> **v3 is a breaking release.** It is a single big-bang major rather than a series of them ([ADR 0001](./docs/adr/0001-freeze-v2-and-ship-v3-as-one-big-bang.md)). Read **[MIGRATION.md](./MIGRATION.md)** before upgrading — it covers every break, including several that do not appear in the generated release notes. Because the module path changed, `/v2` and `/v3` can be imported side by side while you migrate.
 
 ### v1 Availability
 
