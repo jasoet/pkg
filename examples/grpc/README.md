@@ -348,4 +348,4 @@ GRPC_GO_LOG_VERBOSITY_LEVEL=2 GRPC_GO_LOG_SEVERITY_LEVEL=info \
 - [gRPC Go Documentation](https://grpc.io/docs/languages/go/)
 - [Protocol Buffers Guide](https://developers.google.com/protocol-buffers)
 - [gRPC Streaming Guide](https://grpc.io/docs/what-is-grpc/core-concepts/#server-streaming-rpc)
-- [pkg/grpc Package](../README.md) - Our reusable gRPC component
+- [pkg/grpc Package](../../grpc/README.md) - Our reusable gRPC component

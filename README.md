@@ -131,7 +131,9 @@ Examples for all packages live in the top-level `examples/` directory (e.g. `./e
 
 ## Test Coverage
 
-Coverage combines the unit and integration suites (Argo tests require a k8s cluster and are not included). Per-package figures are shown next to each package in the [Packages](#packages) section above; regenerate the full report with `task test:complete` (writes `output/coverage-all.html`).
+Per-package figures are shown next to each package in the [Packages](#packages) section above. They come from the unit **and** integration suites — regenerate with `task test:integration` (needs Docker or Podman; writes `output/coverage-integration.html`).
+
+Argo tests are excluded from those figures because they need a live k8s cluster with Argo Workflows. To include them, run `task test:complete` (writes `output/coverage-complete.html`).
 
 ### Run Tests
 
@@ -144,7 +146,7 @@ task test:integration
 
 # Complete test suite with coverage report
 task test:complete
-open output/coverage-all.html
+open output/coverage-complete.html
 ```
 
 ## Key Features
@@ -237,7 +239,7 @@ logger := config.GetLogger("my-service")
 ```
 
 **Features:** Automatic instrumentation, context propagation, graceful shutdown
-**Coverage:** 84.8% | **[Examples](./examples/otel/)** | **[Documentation](./otel/README.md)**
+**Coverage:** 89.5% | **[Examples](./examples/otel/)** | **[Documentation](./otel/README.md)**
 
 #### [config](./config/) - Configuration Management
 Type-safe YAML configuration with environment variable overrides.
@@ -254,7 +256,7 @@ cfg, _ := config.LoadString[AppConfig](yamlContent, "APP")
 ```
 
 **Features:** Environment variable overrides, nested env vars, generics-based loading
-**Coverage:** 97.6% | **[Examples](./examples/config/)** | **[Documentation](./config/README.md)**
+**Coverage:** 96.4% | **[Examples](./examples/config/)** | **[Documentation](./config/README.md)**
 
 ### Data Access
 
@@ -279,7 +281,7 @@ pool.Find(&users)
 ```
 
 **Features:** Connection pooling, migrations, OTel tracing, health monitoring
-**Coverage:** 76.7% | **[Examples](./examples/db/)** | **[Documentation](./db/README.md)**
+**Coverage:** 83.5% | **[Examples](./examples/db/)** | **[Documentation](./db/README.md)**
 
 #### [docker](./docker/) - Docker Container Executor
 Production-ready Docker container management with dual API styles.
@@ -313,7 +315,7 @@ exec, _ := docker.NewFromRequest(req)
 ```
 
 **Features:** Lifecycle management, wait strategies, log streaming, dual API (functional + struct)
-**Coverage:** 83.1% | **[Examples](./examples/docker/)** | **[Documentation](./docker/README.md)**
+**Coverage:** 84.1% | **[Examples](./examples/docker/)** | **[Documentation](./docker/README.md)**
 
 #### [argo](./argo/) - Argo Workflows Client
 Production-ready Argo Workflows client with flexible configuration.
@@ -343,7 +345,7 @@ ctx, client, err := argo.NewClientWithOptions(ctx,
 ```
 
 **Features:** Multiple connection modes, functional options, OTel support, proper error handling
-**[Examples](./examples/argo/)** | **[Documentation](./argo/README.md)**
+**Coverage:** 94.8% | **[Examples](./examples/argo/)** | **[Documentation](./argo/README.md)**
 
 #### [retry](./retry/) - Retry with Exponential Backoff
 Production-ready retry mechanism using `cenkalti/backoff/v4` with OTel instrumentation.
@@ -364,7 +366,7 @@ return retry.Permanent(fmt.Errorf("invalid config"))
 ```
 
 **Features:** Exponential backoff, context-aware, OTel tracing, permanent error marking
-**[Documentation](./retry/README.md)**
+**Coverage:** 100.0% | **[Examples](./examples/retry/)** | **[Documentation](./retry/README.md)**
 
 #### [base32](./base32/) - Crockford Base32 Encoding
 Crockford Base32 encoding with CRC-10 checksums for human-readable, error-correcting identifiers.
@@ -386,7 +388,7 @@ normalized := base32.NormalizeBase32("ab-CD iL o9") // "ABCD1109"
 ```
 
 **Features:** URL-safe alphabet, automatic error correction, CRC-10 checksums, compact encoding
-**[Examples](./examples/base32/)** | **[Documentation](./base32/README.md)**
+**Coverage:** 100.0% | **[Examples](./examples/base32/)** | **[Documentation](./base32/README.md)**
 
 ### HTTP & gRPC
 
@@ -416,7 +418,7 @@ if err := srv.Start(); err != nil { // blocks until srv.Shutdown(ctx)
 ```
 
 **Features:** Health checks, graceful shutdown, middleware
-**Coverage:** 77.1% | **[Examples](./examples/server/)** | **[Documentation](./server/README.md)**
+**Coverage:** 97.0% | **[Examples](./examples/server/)** | **[Documentation](./server/README.md)**
 
 #### [grpc](./grpc/) - gRPC Server
 Production-ready gRPC with Echo gateway integration.
@@ -435,7 +437,7 @@ server.Start()
 ```
 
 **Features:** H2C mode, dual HTTP/gRPC, gateway, observability
-**Coverage:** 71.2% | **[Examples](./examples/grpc/)** | **[Documentation](./grpc/README.md)**
+**Coverage:** 82.0% | **[Examples](./examples/grpc/)** | **[Documentation](./grpc/README.md)**
 
 #### [rest](./rest/) - HTTP Client
 Resilient REST client with OTel tracing.
@@ -457,7 +459,7 @@ response, _ := client.MakeRequestWithTrace(ctx, "GET", url, "", headers)
 ```
 
 **Features:** Retries, tracing, middleware support
-**Coverage:** 92.9% | **[Examples](./examples/rest/)** | **[Documentation](./rest/README.md)**
+**Coverage:** 93.0% | **[Examples](./examples/rest/)** | **[Documentation](./rest/README.md)**
 
 ### Utilities
 
@@ -478,7 +480,7 @@ results, _ := concurrent.ExecuteConcurrently(ctx, funcs)
 ```
 
 **Features:** Go 1.26+ generics, error aggregation, context support
-**Coverage:** 95.1% | **[Examples](./examples/concurrent/)** | **[Documentation](./concurrent/README.md)**
+**Coverage:** 100.0% | **[Examples](./examples/concurrent/)** | **[Documentation](./concurrent/README.md)**
 
 #### [temporal](./temporal/) - Workflow Orchestration
 Temporal workflow integration with observability.
@@ -501,7 +503,7 @@ handle, _ := manager.CreateWorkflowSchedule(ctx, "daily-job", temporal.WorkflowS
 ```
 
 **Features:** Schedule management, workers, job definitions, monitoring
-**Coverage:** 81.2% | **[Examples](./examples/temporal/)** | **[Documentation](./temporal/README.md)**
+**Coverage:** 84.5% | **[Examples](./examples/temporal/)** | **[Documentation](./temporal/README.md)**
 
 #### [ssh](./ssh/) - SSH Tunneling
 Secure SSH tunneling and port forwarding.
@@ -523,7 +525,7 @@ defer tunnel.Close()
 ```
 
 **Features:** Port forwarding, connection pooling, error handling
-**Coverage:** 78.2% | **[Examples](./examples/ssh/)** | **[Documentation](./ssh/README.md)**
+**Coverage:** 85.6% | **[Examples](./examples/ssh/)** | **[Documentation](./ssh/README.md)**
 
 #### [compress](./compress/) - File Compression
 Secure file compression with validation.
@@ -540,7 +542,7 @@ compress.TarGz("/path/to/directory", outputFile)
 ```
 
 **Features:** gzip, tar.gz, security validation, path traversal protection
-**Coverage:** 82.4% | **[Examples](./examples/compress/)** | **[Documentation](./compress/README.md)**
+**Coverage:** 85.3% | **[Examples](./examples/compress/)** | **[Documentation](./compress/README.md)**
 
 ## Contributing
 
