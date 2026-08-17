@@ -1,4 +1,4 @@
-# golangci-lint configuration for github.com/jasoet/pkg/v2
+# golangci-lint configuration for github.com/jasoet/pkg/v3
 # Go utility library with focus on reliability, security, and performance
 
 version: "2"
