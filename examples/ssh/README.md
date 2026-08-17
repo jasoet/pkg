@@ -4,7 +4,7 @@ This directory contains examples demonstrating how to use the `ssh` package for 
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/ssh/examples/example.go](https://github.com/jasoet/pkg/blob/main/ssh/examples/example.go)
+**Full example implementation:** [`example.go`](./example.go)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
@@ -49,17 +49,18 @@ The `ssh` package provides utilities for:
 
 ## Running the Examples
 
-To run the examples, use the following command from the `ssh/examples` directory:
+Run from the repository root. The `example` build tag is required — without it the
+file is excluded from the build:
 
 ```bash
-go run example.go
+go run -tags=example ./examples/ssh
 ```
 
 **Note**: The examples require a working SSH server and appropriate credentials. Update the configuration in the examples to match your environment.
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/ssh/examples/example.go) file demonstrates several use cases:
+The [example.go](./example.go) file demonstrates several use cases:
 
 ### 1. Basic SSH Tunnel
 

@@ -8,7 +8,7 @@
 //   - No-op vs active provider configurations
 //   - Integration patterns
 //
-// Run with: go run ./examples/otel
+// Run with: go run -tags=example ./examples/otel
 package main
 
 import (
@@ -50,13 +50,12 @@ func basicConfiguration() {
 	loggerProvider := log.NewLoggerProvider()
 
 	// Create OTel configuration
-	cfg := &otel.Config{
-		TracerProvider: tracerProvider,
-		MeterProvider:  meterProvider,
-		LoggerProvider: loggerProvider,
-		ServiceName:    "example-service",
-		ServiceVersion: "1.0.0",
-	}
+	cfg := otel.NewConfig("example-service",
+		otel.WithServiceVersion("1.0.0"),
+		otel.WithTracerProvider(tracerProvider),
+		otel.WithMeterProvider(meterProvider),
+		otel.WithLoggerProvider(loggerProvider),
+	)
 
 	fmt.Printf("Service Name:    %s\n", cfg.ServiceName)
 	fmt.Printf("Service Version: %s\n", cfg.ServiceVersion)
@@ -74,11 +73,13 @@ func basicConfiguration() {
 func noopConfiguration() {
 	fmt.Println("--- Example 2: No-op Configuration (Telemetry Disabled) ---")
 
-	// Configuration with nil providers - no overhead
-	cfg := &otel.Config{
-		ServiceName:    "example-service",
-		ServiceVersion: "1.0.0",
-	}
+	// No providers configured - no overhead.
+	// NewConfig installs a default zerolog-backed logger provider unless you
+	// opt out, so WithoutLogging is what makes all three pillars no-ops.
+	cfg := otel.NewConfig("example-service",
+		otel.WithServiceVersion("1.0.0"),
+		otel.WithoutLogging(),
+	)
 
 	fmt.Printf("Service Name:    %s\n", cfg.ServiceName)
 	fmt.Printf("Service Version: %s\n", cfg.ServiceVersion)
@@ -106,11 +107,10 @@ func logHelperUsage() {
 	// Scenario 2: With OTel configured
 	fmt.Println("\n2. With OTel configured:")
 	loggerProvider := log.NewLoggerProvider()
-	cfg := &otel.Config{
-		LoggerProvider: loggerProvider,
-		ServiceName:    "example-service",
-		ServiceVersion: "1.0.0",
-	}
+	cfg := otel.NewConfig("example-service",
+		otel.WithServiceVersion("1.0.0"),
+		otel.WithLoggerProvider(loggerProvider),
+	)
 
 	logger2 := otel.NewLogHelper(ctx, cfg, "github.com/jasoet/pkg/v3/example", "example.processData")
 	logger2.Info("Data processed successfully",
@@ -139,10 +139,10 @@ func telemetryPillars() {
 	// Scenario 1: Traces only
 	fmt.Println("1. Traces Only:")
 	tracerProvider := trace.NewTracerProvider()
-	cfg1 := &otel.Config{
-		TracerProvider: tracerProvider,
-		ServiceName:    "tracing-service",
-	}
+	cfg1 := otel.NewConfig("tracing-service",
+		otel.WithTracerProvider(tracerProvider),
+		otel.WithoutLogging(),
+	)
 	fmt.Printf("   Tracing: %v, Metrics: %v, Logging: %v\n",
 		cfg1.IsTracingEnabled(),
 		cfg1.IsMetricsEnabled(),
@@ -152,10 +152,10 @@ func telemetryPillars() {
 	// Scenario 2: Metrics only
 	fmt.Println("\n2. Metrics Only:")
 	meterProvider := metric.NewMeterProvider()
-	cfg2 := &otel.Config{
-		MeterProvider: meterProvider,
-		ServiceName:   "metrics-service",
-	}
+	cfg2 := otel.NewConfig("metrics-service",
+		otel.WithMeterProvider(meterProvider),
+		otel.WithoutLogging(),
+	)
 	fmt.Printf("   Tracing: %v, Metrics: %v, Logging: %v\n",
 		cfg2.IsTracingEnabled(),
 		cfg2.IsMetricsEnabled(),
@@ -167,12 +167,11 @@ func telemetryPillars() {
 	tracerProvider3 := trace.NewTracerProvider()
 	meterProvider3 := metric.NewMeterProvider()
 	loggerProvider3 := log.NewLoggerProvider()
-	cfg3 := &otel.Config{
-		TracerProvider: tracerProvider3,
-		MeterProvider:  meterProvider3,
-		LoggerProvider: loggerProvider3,
-		ServiceName:    "full-telemetry-service",
-	}
+	cfg3 := otel.NewConfig("full-telemetry-service",
+		otel.WithTracerProvider(tracerProvider3),
+		otel.WithMeterProvider(meterProvider3),
+		otel.WithLoggerProvider(loggerProvider3),
+	)
 	fmt.Printf("   Tracing: %v, Metrics: %v, Logging: %v\n",
 		cfg3.IsTracingEnabled(),
 		cfg3.IsMetricsEnabled(),
@@ -191,11 +190,10 @@ func configurationValidation() {
 
 	// Check what's enabled
 	tracerProvider := trace.NewTracerProvider()
-	cfg := &otel.Config{
-		TracerProvider: tracerProvider,
-		ServiceName:    "validation-example",
-		ServiceVersion: "2.0.0",
-	}
+	cfg := otel.NewConfig("validation-example",
+		otel.WithServiceVersion("2.0.0"),
+		otel.WithTracerProvider(tracerProvider),
+	)
 
 	fmt.Println("Checking configuration state:")
 	fmt.Printf("  Service Name:    %s\n", cfg.ServiceName)

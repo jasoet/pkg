@@ -4,7 +4,7 @@ This directory contains examples demonstrating how to use the `compress` package
 
 ## 📍 Example Code Location
 
-**Full example implementation:** [/compress/examples/example.go](https://github.com/jasoet/pkg/blob/main/compress/examples/example.go)
+**Full example implementation:** [`example.go`](./example.go)
 
 ## 🚀 Quick Reference for LLMs/Coding Agents
 
@@ -50,10 +50,11 @@ The `compress` package provides utilities for:
 
 ## Running the Examples
 
-To run the examples, use the following command from the `compress/examples` directory:
+Run from the repository root. The `example` build tag is required — without it the
+file is excluded from the build:
 
 ```bash
-go run example.go
+go run -tags=example ./examples/compress
 ```
 
 This will:
@@ -63,7 +64,7 @@ This will:
 
 ## Example Descriptions
 
-The [example.go](https://github.com/jasoet/pkg/blob/main/compress/examples/example.go) file demonstrates several use cases:
+The [example.go](./example.go) file demonstrates several use cases:
 
 ### 1. Creating a tar archive
 

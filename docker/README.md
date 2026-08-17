@@ -1026,6 +1026,5 @@ if err := exec.Start(ctx); err != nil {
 
 ## Related Packages
 
-- **[otel](../otel/)** - OpenTelemetry v2 configuration and utilities
+- **[otel](../otel/)** - OpenTelemetry configuration, utilities, and structured logging
 - **[config](../config/)** - Configuration management with validation
-- **[logging](../logging/)** - Structured logging with context
