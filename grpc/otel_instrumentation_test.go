@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/log/noop"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -451,6 +453,71 @@ func TestCreateHTTPGatewayTracingMiddleware(t *testing.T) {
 		err := wrapped(c)
 
 		assert.Error(t, err)
+	})
+
+	t.Run("continues inbound W3C trace context", func(t *testing.T) {
+		exporter := tracetest.NewInMemoryExporter()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+		t.Cleanup(func() {
+			assert.NoError(t, tp.Shutdown(context.Background()))
+		})
+
+		config := pkgotel.NewConfig("test-service", pkgotel.WithTracerProvider(tp))
+		middleware := createHTTPGatewayTracingMiddleware(config)
+
+		// A caller's W3C trace context. The gateway span must join this trace
+		// rather than rooting a new one, so a REST hop through the gateway
+		// stays connected to the upstream caller.
+		const (
+			callerTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+			callerSpanID  = "00f067aa0ba902b7"
+		)
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+		req.Header.Set("traceparent", "00-"+callerTraceID+"-"+callerSpanID+"-01")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/users")
+
+		wrapped := middleware(func(c echo.Context) error {
+			return c.String(http.StatusOK, "OK")
+		})
+		require.NoError(t, wrapped(c))
+
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		assert.Equal(t, callerTraceID, spans[0].SpanContext.TraceID().String(),
+			"gateway span must continue the caller's trace")
+		assert.Equal(t, callerSpanID, spans[0].Parent.SpanID().String(),
+			"gateway span must be a child of the caller's span")
+		assert.True(t, spans[0].Parent.IsRemote(), "parent must be marked remote")
+	})
+
+	t.Run("starts a root span without inbound trace context", func(t *testing.T) {
+		exporter := tracetest.NewInMemoryExporter()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+		t.Cleanup(func() {
+			assert.NoError(t, tp.Shutdown(context.Background()))
+		})
+
+		config := pkgotel.NewConfig("test-service", pkgotel.WithTracerProvider(tp))
+		middleware := createHTTPGatewayTracingMiddleware(config)
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/users")
+
+		wrapped := middleware(func(c echo.Context) error {
+			return c.String(http.StatusOK, "OK")
+		})
+		require.NoError(t, wrapped(c))
+
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		assert.False(t, spans[0].Parent.IsValid())
 	})
 }
 
