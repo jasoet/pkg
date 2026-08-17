@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.opentelemetry.io/otel/trace"
 
@@ -17,6 +18,16 @@ import (
 
 // otelScope is the instrumentation scope name for server tracing and metrics.
 const otelScope = "http.server"
+
+// serverPropagator extracts inbound W3C trace context and baggage from request
+// headers so server spans continue the caller's trace instead of starting a new
+// root. It mirrors the propagator used by the grpc package's interceptors and
+// the rest client's outbound injection, so a rest -> server hop stays a single
+// trace end to end.
+var serverPropagator = propagation.NewCompositeTextMapPropagator(
+	propagation.TraceContext{},
+	propagation.Baggage{},
+)
 
 // unmatchedRouteName is used as the span name for requests that do not match any
 // registered route (e.g. 404s), where echo.Context.Path() is empty.
@@ -115,7 +126,12 @@ func otelTracingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc {
 			}
 			fullURL := redactedURLFull(scheme, req)
 
-			ctx, span := tracer.Start(req.Context(), req.Method,
+			// Join the caller's trace when the request carries W3C trace
+			// context; with no inbound headers this is a no-op and the span
+			// below becomes a root as before.
+			parentCtx := serverPropagator.Extract(req.Context(), propagation.HeaderCarrier(req.Header))
+
+			ctx, span := tracer.Start(parentCtx, req.Method,
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
 					semconv.HTTPRequestMethodKey.String(req.Method),

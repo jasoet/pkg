@@ -89,6 +89,63 @@ func TestOTelTracingMiddleware(t *testing.T) {
 	assert.Equal(t, "/health", route.AsString())
 }
 
+func TestOTelTracingMiddlewareExtractsInboundTraceContext(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() {
+		assert.NoError(t, tp.Shutdown(context.Background()))
+	})
+
+	cfg := pkgotel.NewConfig("test-service", pkgotel.WithTracerProvider(tp))
+
+	srv, err := New(WithPort(0), WithOTelConfig(cfg))
+	require.NoError(t, err)
+
+	// A caller's W3C trace context. The server span must join this trace
+	// instead of starting a new root, otherwise a client->server hop shows up
+	// as two disconnected traces in the backend.
+	const (
+		callerTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+		callerSpanID  = "00f067aa0ba902b7"
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("traceparent", "00-"+callerTraceID+"-"+callerSpanID+"-01")
+	rec := httptest.NewRecorder()
+	srv.Echo().ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1, "expected exactly one span for one request")
+	span := spans[0]
+
+	assert.Equal(t, callerTraceID, span.SpanContext.TraceID().String(),
+		"server span must continue the caller's trace")
+	assert.Equal(t, callerSpanID, span.Parent.SpanID().String(),
+		"server span must be a child of the caller's span")
+	assert.True(t, span.Parent.IsRemote(), "parent must be marked remote")
+}
+
+func TestOTelTracingMiddlewareStartsRootWithoutInboundContext(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() {
+		assert.NoError(t, tp.Shutdown(context.Background()))
+	})
+
+	cfg := pkgotel.NewConfig("test-service", pkgotel.WithTracerProvider(tp))
+
+	srv, err := New(WithPort(0), WithOTelConfig(cfg))
+	require.NoError(t, err)
+
+	serveHealth(t, srv)
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	assert.False(t, spans[0].Parent.IsValid(),
+		"a request without traceparent must still start a root span")
+}
+
 // scopeMetricsByName collects from the reader and indexes instruments by name
 // for the given instrumentation scope.
 func scopeMetricsByName(t *testing.T, reader *sdkmetric.ManualReader, scopeName string) map[string]metricdata.Metrics {

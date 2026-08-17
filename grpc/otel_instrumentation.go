@@ -504,7 +504,12 @@ func createHTTPGatewayTracingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			req := c.Request()
-			ctx := req.Context()
+
+			// Join the caller's trace when the request carries W3C trace
+			// context. Without this the gateway roots a new trace and a REST
+			// hop through it is disconnected from its caller. No inbound
+			// headers means this is a no-op and the span below is a root.
+			ctx := grpcPropagator.Extract(req.Context(), propagation.HeaderCarrier(req.Header))
 
 			// Start span
 			ctx, span := tracer.Start(ctx, fmt.Sprintf("%s %s", req.Method, c.Path()),
