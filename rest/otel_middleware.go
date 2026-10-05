@@ -283,24 +283,24 @@ func (m *OTelLoggingMiddleware) AfterRequest(ctx context.Context, info RequestIn
 	}
 
 	// Create log attributes
-	attrs := []otellog.KeyValue{
-		otellog.String("http.request.method", info.Method),
-		otellog.String("http.url", info.URL),
-		otellog.Int("http.response.status_code", info.StatusCode),
-		otellog.Int64("http.request.duration_ms", info.Duration.Milliseconds()),
-		otellog.Int("http.request.body.size", len(info.Body)),
-		otellog.Int("http.response.body.size", len(info.Response)),
+	attrs := []attribute.KeyValue{
+		attribute.String("http.request.method", info.Method),
+		attribute.String("http.url", info.URL),
+		attribute.Int("http.response.status_code", info.StatusCode),
+		attribute.Int64("http.request.duration_ms", info.Duration.Milliseconds()),
+		attribute.Int("http.request.body.size", len(info.Body)),
+		attribute.Int("http.response.body.size", len(info.Response)),
 	}
 
 	if info.Error != nil {
-		attrs = append(attrs, otellog.String("error", info.Error.Error()))
+		attrs = append(attrs, attribute.String("error", info.Error.Error()))
 	}
 
 	// Emit log record (trace context will be automatically added by LoggerProvider)
 	var logRecord otellog.Record
 	logRecord.SetTimestamp(info.StartTime)
 	logRecord.SetSeverity(severity)
-	logRecord.SetBody(otellog.StringValue(fmt.Sprintf("%s %s %d", info.Method, info.URL, info.StatusCode)))
+	logRecord.SetBody(attribute.StringValue(fmt.Sprintf("%s %s %d", info.Method, info.URL, info.StatusCode)))
 	logRecord.AddAttributes(attrs...)
 
 	m.logger.Emit(ctx, logRecord)

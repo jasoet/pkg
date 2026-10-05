@@ -16,9 +16,10 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"golang.org/x/net/http2/h2c" //nolint:staticcheck // deprecated in x/net v0.57; http.Server.Protocols drops the HTTP/1.1 Upgrade path, so replacing it is a separate change
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -68,7 +69,7 @@ func (s *Server) logInfo(msg string) {
 		logger := s.config.otelConfig.GetLogger("grpc.server")
 		var rec otellog.Record
 		rec.SetSeverity(otellog.SeverityInfo)
-		rec.SetBody(otellog.StringValue(msg))
+		rec.SetBody(attribute.StringValue(msg))
 		logger.Emit(context.Background(), rec)
 		return
 	}
@@ -285,7 +286,7 @@ func (s *Server) startH2CMode() error {
 	// Create HTTP server with H2C support
 	s.httpServer = &http.Server{
 		Addr:              s.config.getGRPCAddress(),
-		Handler:           h2c.NewHandler(mixedHandler, &http2.Server{}),
+		Handler:           h2c.NewHandler(mixedHandler, &http2.Server{}), //nolint:staticcheck // see the h2c import
 		ReadTimeout:       s.config.readTimeout,
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      s.config.writeTimeout,
