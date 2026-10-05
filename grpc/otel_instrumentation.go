@@ -212,23 +212,23 @@ func createGRPCLoggingInterceptor(cfg *pkgotel.Config) grpc.UnaryServerIntercept
 		st, _ := status.FromError(err)
 
 		// Create log attributes
-		attrs := []otellog.KeyValue{
-			otellog.String("rpc.system", "grpc"),
-			otellog.String("rpc.method", info.FullMethod),
-			otellog.String("rpc.service", extractServiceName(info.FullMethod)),
-			otellog.Int("rpc.grpc.status_code", int(st.Code())),
-			otellog.Int64("rpc.duration_ms", duration.Milliseconds()),
+		attrs := []attribute.KeyValue{
+			attribute.String("rpc.system", "grpc"),
+			attribute.String("rpc.method", info.FullMethod),
+			attribute.String("rpc.service", extractServiceName(info.FullMethod)),
+			attribute.Int("rpc.grpc.status_code", int(st.Code())),
+			attribute.Int64("rpc.duration_ms", duration.Milliseconds()),
 		}
 
 		if err != nil {
-			attrs = append(attrs, otellog.String("error", err.Error()))
+			attrs = append(attrs, attribute.String("error", err.Error()))
 		}
 
 		// Emit log record
 		var logRecord otellog.Record
 		logRecord.SetTimestamp(start)
 		logRecord.SetSeverity(severity)
-		logRecord.SetBody(otellog.StringValue(fmt.Sprintf("gRPC %s", info.FullMethod)))
+		logRecord.SetBody(attribute.StringValue(fmt.Sprintf("gRPC %s", info.FullMethod)))
 		logRecord.AddAttributes(attrs...)
 
 		logger.Emit(ctx, logRecord)
@@ -264,24 +264,24 @@ func createGRPCStreamLoggingInterceptor(cfg *pkgotel.Config) grpc.StreamServerIn
 
 		st, _ := status.FromError(err)
 
-		attrs := []otellog.KeyValue{
-			otellog.String("rpc.system", "grpc"),
-			otellog.String("rpc.method", info.FullMethod),
-			otellog.String("rpc.service", extractServiceName(info.FullMethod)),
-			otellog.Int("rpc.grpc.status_code", int(st.Code())),
-			otellog.Int64("rpc.duration_ms", duration.Milliseconds()),
-			otellog.Bool("rpc.is_client_stream", info.IsClientStream),
-			otellog.Bool("rpc.is_server_stream", info.IsServerStream),
+		attrs := []attribute.KeyValue{
+			attribute.String("rpc.system", "grpc"),
+			attribute.String("rpc.method", info.FullMethod),
+			attribute.String("rpc.service", extractServiceName(info.FullMethod)),
+			attribute.Int("rpc.grpc.status_code", int(st.Code())),
+			attribute.Int64("rpc.duration_ms", duration.Milliseconds()),
+			attribute.Bool("rpc.is_client_stream", info.IsClientStream),
+			attribute.Bool("rpc.is_server_stream", info.IsServerStream),
 		}
 
 		if err != nil {
-			attrs = append(attrs, otellog.String("error", err.Error()))
+			attrs = append(attrs, attribute.String("error", err.Error()))
 		}
 
 		var logRecord otellog.Record
 		logRecord.SetTimestamp(start)
 		logRecord.SetSeverity(severity)
-		logRecord.SetBody(otellog.StringValue(fmt.Sprintf("gRPC stream %s", info.FullMethod)))
+		logRecord.SetBody(attribute.StringValue(fmt.Sprintf("gRPC stream %s", info.FullMethod)))
 		logRecord.AddAttributes(attrs...)
 
 		logger.Emit(ss.Context(), logRecord)
@@ -495,25 +495,25 @@ func createHTTPGatewayLoggingMiddleware(cfg *pkgotel.Config) echo.MiddlewareFunc
 			}
 
 			// Create log attributes
-			attrs := []otellog.KeyValue{
-				otellog.String("http.method", req.Method),
-				otellog.String("http.route", c.Path()),
-				otellog.String("http.url", req.RequestURI),
-				otellog.Int("http.status_code", c.Response().Status),
-				otellog.Int64("http.request_size", req.ContentLength),
-				otellog.Int64("http.response_size", c.Response().Size),
-				otellog.Int64("http.duration_ms", duration.Milliseconds()),
+			attrs := []attribute.KeyValue{
+				attribute.String("http.method", req.Method),
+				attribute.String("http.route", c.Path()),
+				attribute.String("http.url", req.RequestURI),
+				attribute.Int("http.status_code", c.Response().Status),
+				attribute.Int64("http.request_size", req.ContentLength),
+				attribute.Int64("http.response_size", c.Response().Size),
+				attribute.Int64("http.duration_ms", duration.Milliseconds()),
 			}
 
 			if err != nil {
-				attrs = append(attrs, otellog.String("error", err.Error()))
+				attrs = append(attrs, attribute.String("error", err.Error()))
 			}
 
 			// Emit log record
 			var logRecord otellog.Record
 			logRecord.SetTimestamp(start)
 			logRecord.SetSeverity(severity)
-			logRecord.SetBody(otellog.StringValue(fmt.Sprintf("%s %s", req.Method, req.RequestURI)))
+			logRecord.SetBody(attribute.StringValue(fmt.Sprintf("%s %s", req.Method, req.RequestURI)))
 			logRecord.AddAttributes(attrs...)
 
 			logger.Emit(req.Context(), logRecord)

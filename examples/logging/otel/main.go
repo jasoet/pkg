@@ -9,6 +9,7 @@ import (
 
 	"github.com/jasoet/pkg/v2/logging"
 	"github.com/jasoet/pkg/v2/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -57,7 +58,7 @@ func basicLoggerProviderExample() {
 
 	// Create a log record
 	var record log.Record
-	record.SetBody(log.StringValue("Application started"))
+	record.SetBody(attribute.StringValue("Application started"))
 	record.SetSeverity(log.SeverityInfo)
 	record.SetTimestamp(time.Now())
 
@@ -86,12 +87,12 @@ func otelConfigExample() {
 
 	// Create and emit a log record
 	var record log.Record
-	record.SetBody(log.StringValue("Processing business logic"))
+	record.SetBody(attribute.StringValue("Processing business logic"))
 	record.SetSeverity(log.SeverityInfo)
 	record.AddAttributes(
-		log.String("operation", "calculate"),
-		log.Int64("input", 42),
-		log.Bool("cached", false),
+		attribute.String("operation", "calculate"),
+		attribute.Int64("input", 42),
+		attribute.Bool("cached", false),
 	)
 
 	logger.Emit(context.Background(), record)
@@ -119,12 +120,12 @@ func traceCorrelationExample() {
 
 	// Create log record
 	var record log.Record
-	record.SetBody(log.StringValue("Processing order with trace context"))
+	record.SetBody(attribute.StringValue("Processing order with trace context"))
 	record.SetSeverity(log.SeverityInfo)
 	record.SetTimestamp(time.Now())
 	record.AddAttributes(
-		log.String("order_id", "ORDER-12345"),
-		log.Float64("amount", 99.99),
+		attribute.String("order_id", "ORDER-12345"),
+		attribute.Float64("amount", 99.99),
 	)
 
 	// Emit log - this will automatically include trace_id and span_id
@@ -150,29 +151,29 @@ func multipleScopesExample() {
 
 	// Log from auth scope
 	var authRecord log.Record
-	authRecord.SetBody(log.StringValue("User authentication successful"))
+	authRecord.SetBody(attribute.StringValue("User authentication successful"))
 	authRecord.SetSeverity(log.SeverityInfo)
-	authRecord.AddAttributes(log.String("user_id", "12345"))
+	authRecord.AddAttributes(attribute.String("user_id", "12345"))
 	authLogger.Emit(context.Background(), authRecord)
 
 	// Log from database scope
 	var dbRecord log.Record
-	dbRecord.SetBody(log.StringValue("Query executed"))
+	dbRecord.SetBody(attribute.StringValue("Query executed"))
 	dbRecord.SetSeverity(log.SeverityDebug)
 	dbRecord.AddAttributes(
-		log.String("query", "SELECT * FROM users"),
-		log.Int64("duration_ms", 45),
+		attribute.String("query", "SELECT * FROM users"),
+		attribute.Int64("duration_ms", 45),
 	)
 	dbLogger.Emit(context.Background(), dbRecord)
 
 	// Log from API scope
 	var apiRecord log.Record
-	apiRecord.SetBody(log.StringValue("Request completed"))
+	apiRecord.SetBody(attribute.StringValue("Request completed"))
 	apiRecord.SetSeverity(log.SeverityInfo)
 	apiRecord.AddAttributes(
-		log.String("method", "GET"),
-		log.String("path", "/api/users"),
-		log.Int64("status", 200),
+		attribute.String("method", "GET"),
+		attribute.String("path", "/api/users"),
+		attribute.Int64("status", 200),
 	)
 	apiLogger.Emit(context.Background(), apiRecord)
 
@@ -202,7 +203,7 @@ func severityLevelsExample() {
 
 	for _, s := range severities {
 		var record log.Record
-		record.SetBody(log.StringValue(s.message))
+		record.SetBody(attribute.StringValue(s.message))
 		record.SetSeverity(s.severity)
 		record.SetTimestamp(time.Now())
 
@@ -243,12 +244,12 @@ func otlpLogExportExample() {
 	// Create and emit log records
 	for i := 0; i < 3; i++ {
 		var record log.Record
-		record.SetBody(log.StringValue(fmt.Sprintf("Log entry %d exported to OTLP", i+1)))
+		record.SetBody(attribute.StringValue(fmt.Sprintf("Log entry %d exported to OTLP", i+1)))
 		record.SetSeverity(log.SeverityInfo)
 		record.SetTimestamp(time.Now())
 		record.AddAttributes(
-			log.Int64("iteration", int64(i+1)),
-			log.String("destination", "otlp-collector"),
+			attribute.Int64("iteration", int64(i+1)),
+			attribute.String("destination", "otlp-collector"),
 		)
 
 		logger.Emit(context.Background(), record)

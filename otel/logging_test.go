@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/noop"
 
@@ -514,7 +515,7 @@ func TestLoggerProvider_NoopComparison(t *testing.T) {
 		// Both should accept Emit calls without panicking
 		ctx := context.Background()
 		record := log.Record{}
-		record.SetBody(log.StringValue("test message"))
+		record.SetBody(attribute.StringValue("test message"))
 
 		// Should not panic
 		ourLogger.Emit(ctx, record)

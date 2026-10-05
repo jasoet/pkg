@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/trace"
@@ -222,29 +223,29 @@ func (h *LogHelper) Error(err error, msg string, fields ...Field) {
 func (h *LogHelper) emitOTel(severity otellog.Severity, msg string, fields ...Field) {
 	var record otellog.Record
 	record.SetTimestamp(time.Now())
-	record.SetBody(otellog.StringValue(msg))
+	record.SetBody(attribute.StringValue(msg))
 	record.SetSeverity(severity)
 
 	if h.function != "" {
-		record.AddAttributes(otellog.String("function", h.function))
+		record.AddAttributes(attribute.String("function", h.function))
 	}
 
 	for _, field := range fields {
 		switch v := field.Value.(type) {
 		case string:
-			record.AddAttributes(otellog.String(field.Key, v))
+			record.AddAttributes(attribute.String(field.Key, v))
 		case bool:
-			record.AddAttributes(otellog.Bool(field.Key, v))
+			record.AddAttributes(attribute.Bool(field.Key, v))
 		case int:
-			record.AddAttributes(otellog.Int64(field.Key, int64(v)))
+			record.AddAttributes(attribute.Int64(field.Key, int64(v)))
 		case int64:
-			record.AddAttributes(otellog.Int64(field.Key, v))
+			record.AddAttributes(attribute.Int64(field.Key, v))
 		case float64:
-			record.AddAttributes(otellog.Float64(field.Key, v))
+			record.AddAttributes(attribute.Float64(field.Key, v))
 		case time.Duration:
-			record.AddAttributes(otellog.String(field.Key, v.String()))
+			record.AddAttributes(attribute.String(field.Key, v.String()))
 		default:
-			record.AddAttributes(otellog.String(field.Key, fmt.Sprint(v)))
+			record.AddAttributes(attribute.String(field.Key, fmt.Sprint(v)))
 		}
 	}
 
