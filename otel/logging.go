@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -232,7 +233,7 @@ func (e *consoleExporter) Export(ctx context.Context, records []sdklog.Record) e
 			}
 		}
 
-		record.WalkAttributes(func(kv log.KeyValue) bool {
+		record.WalkAttributes(func(kv attribute.KeyValue) bool {
 			event = addAttributeToEvent(event, kv)
 			return true
 		})
@@ -297,26 +298,22 @@ func severityToZerologEvent(logger zerolog.Logger, severity log.Severity) *zerol
 }
 
 // addAttributeToEvent adds a log attribute to zerolog event
-func addAttributeToEvent(event *zerolog.Event, kv log.KeyValue) *zerolog.Event {
-	key := kv.Key
+func addAttributeToEvent(event *zerolog.Event, kv attribute.KeyValue) *zerolog.Event {
+	key := string(kv.Key)
 	value := kv.Value
 
-	switch value.Kind() {
-	case log.KindBool:
+	switch value.Type() {
+	case attribute.BOOL:
 		return event.Bool(key, value.AsBool())
-	case log.KindInt64:
+	case attribute.INT64:
 		return event.Int64(key, value.AsInt64())
-	case log.KindFloat64:
+	case attribute.FLOAT64:
 		return event.Float64(key, value.AsFloat64())
-	case log.KindString:
+	case attribute.STRING:
 		return event.Str(key, value.AsString())
-	case log.KindBytes:
-		return event.Bytes(key, value.AsBytes())
-	case log.KindSlice:
-		return event.Interface(key, value.AsSlice())
-	case log.KindMap:
-		return event.Interface(key, value.AsMap())
+	case attribute.BYTESLICE:
+		return event.Bytes(key, value.AsByteSlice())
 	default:
-		return event.Interface(key, fmt.Sprint(value))
+		return event.Interface(key, value.AsInterface())
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -46,17 +47,17 @@ func (e *memLogExporter) records() []sdklog.Record {
 // recordAttrs collects a record's attributes into a map for easy assertions.
 func recordAttrs(r *sdklog.Record) map[string]any {
 	out := make(map[string]any)
-	r.WalkAttributes(func(kv log.KeyValue) bool {
-		out[kv.Key] = kv.Value.AsString()
-		switch kv.Value.Kind() {
-		case log.KindBool:
-			out[kv.Key] = kv.Value.AsBool()
-		case log.KindInt64:
-			out[kv.Key] = kv.Value.AsInt64()
-		case log.KindFloat64:
-			out[kv.Key] = kv.Value.AsFloat64()
-		case log.KindString:
-			out[kv.Key] = kv.Value.AsString()
+	r.WalkAttributes(func(kv attribute.KeyValue) bool {
+		out[string(kv.Key)] = kv.Value.AsString()
+		switch kv.Value.Type() {
+		case attribute.BOOL:
+			out[string(kv.Key)] = kv.Value.AsBool()
+		case attribute.INT64:
+			out[string(kv.Key)] = kv.Value.AsInt64()
+		case attribute.FLOAT64:
+			out[string(kv.Key)] = kv.Value.AsFloat64()
+		case attribute.STRING:
+			out[string(kv.Key)] = kv.Value.AsString()
 		}
 		return true
 	})
@@ -189,7 +190,7 @@ func TestNewLoggerProviderWithOptions_OTLPEndpointURL(t *testing.T) {
 
 	logger := provider.Logger("test-scope")
 	var rec log.Record
-	rec.SetBody(log.StringValue("hello"))
+	rec.SetBody(attribute.StringValue("hello"))
 	rec.SetSeverity(log.SeverityInfo)
 	logger.Emit(context.Background(), rec)
 
@@ -417,7 +418,7 @@ func TestLoggerProvider_NoopComparison(t *testing.T) {
 
 	ctx := context.Background()
 	var record log.Record
-	record.SetBody(log.StringValue("test message"))
+	record.SetBody(attribute.StringValue("test message"))
 
 	assert.NotPanics(t, func() {
 		ourLogger.Emit(ctx, record)
